@@ -186,9 +186,9 @@ Android 使用固定 PakePlus WebView 容器直接呈现内置共享 Web 页面�
 
 ## 系统架构
 
-Local 导航、历史分页和后台只读刷新沿 canonical Session 直接读取，不经过 Remote 共用的持久队列；所有写操作仍由唯一队列调度。本地性能修复已完成隔离源码验证，待部署后的实际网页验收，详见[性能记录](docs/superpowers/plans/evidence/2026-11-17-local-dialog-performance.json)。
+Local 导航、历史分页和后台只读刷新沿 canonical Session 直接读取，不经过 Remote 共用的持久队列；所有写操作仍由唯一队列调度。本地性能修复已部署，现役12次HTTP／WS读取为2–14ms，其中HTTP未新增持久读取记录，单次网页打开至正文可见约653ms；这些短测不代表P95。详见[实际部署与验收记录](docs/superpowers/plans/evidence/2026-11-17-remote-production-rpc.json)。
 
-官方 Remote 常驻网关及配套 WebUI 已于2026-11-17部署到现有 Mac，已发布的手机安装包尚未包含本轮改动。手机保留多网关，每个网关在原 URL 表单中选择本地或远程；远程模式下网关 Mac 也走官方 Relay。公开路由、目标文件/项目/通知消费者、唯一共享持久队列、手机 outbox 和后台会话观察器已实现；旧配置默认本地，只有“测试并保存”验证后才切换。本次实际网页、本地连接和 Remote v1 能力已回验；常驻实例已完成首次授权和本机配对，公开 Remote WebSocket 的 initialize 和 model/list 两次成功，客户端断开30秒期间15次状态均 online；实际网页测试保存发现沿用本地6秒预算而超时，60秒 Remote 探测补修已通过26项相关回归，待部署回验。官方全量功能、8小时、跨刷新与恢复延迟分位数仍待验收。使用和验证边界见[Mac管理说明](docs/remote-gateway-management.md)、[现行交互约定](docs/interaction-alignment.md#412-多网关本地与-remote-模式网关和网页已部署remote只读rpc已验证网页保存补修及官方长期验收待完成)、[设计](docs/superpowers/specs/2026-11-13-remote-gateway.md)、[实施计划](docs/superpowers/plans/2026-11-13-remote-gateway.md)和[本次部署收据](docs/superpowers/plans/evidence/2026-11-17-remote-gateway-deploy.json)。
+官方 Remote 常驻网关及配套 WebUI 已于2026-11-17部署到现有 Mac，现役冻结来源为 `555cd3c3`；已发布的手机安装包尚未包含本轮改动。手机保留多网关，每个网关在原 URL 表单中选择本地或远程；远程模式下网关 Mac 也走官方 Relay。公开路由、目标文件/项目/通知消费者、唯一共享持久队列、手机 outbox 和后台会话观察器已实现；旧配置默认本地，只有“测试并保存”验证后才切换。现役授权和本机配对保留，实际 Remote 网页保存、项目列表和真实对话正文读取通过，公开 WS 断开30秒和 HTTP 间隔120秒的两轮只读 RPC 均成功，期间采样 online；仅实测网关 Mac。Remote 首次项目目录约51秒，尚未完成性能优化。8小时只读监测已于北京时间2026-11-17 13:28启动，预计21:28结束，当前运行中；官方全量功能、其他机器、自然凭据刷新、睡眠唤醒和延迟分位数仍待验收。使用和验证边界见[Mac管理说明](docs/remote-gateway-management.md)、[现行交互约定](docs/interaction-alignment.md)、[设计](docs/superpowers/specs/2026-11-13-remote-gateway.md)、[实施计划](docs/superpowers/plans/2026-11-17-remote-web-scope-recovery.md)和[最新部署收据](docs/superpowers/plans/evidence/2026-11-17-remote-production-rpc.json)。
 
 ```mermaid
 flowchart LR

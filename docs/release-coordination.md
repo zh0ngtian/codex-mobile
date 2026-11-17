@@ -276,3 +276,11 @@ APK 为4,755,355字节，未签名IPA为5,030,497字节；两端独立完整下�
 ## 2026-11-17 Remote 首次登记协议修复网关部署
 
 任务 `remote-enrollment-null-hash-20261117` 已 complete，成功批次 `8165e654-74a1-4fef-b148-1daffe984c78` 的持久 receipt 与状态返回一致；来源 `1f6836eeb10f6ff6fc50d37a841c2a74c3657171`，冻结 `018099dc5d2d9caabf5211fccf7343ee2c0dc550`，开发 CI `44005877099` attempt 1 成功。修复仅网关内部首次登记 nullable 设备哈希解析，无客户端接口变化；`webUi=false`，未构建网页或发布客户端。284项适配器（1既有跳过）、164项构建契约、59项协调器及类型检查通过，整合结果门禁再次通过；相关认证范围合并覆盖373项，完整首失败和分次验证口径见[脱敏收据](superpowers/plans/evidence/2026-11-17-remote-enrollment-null-hash.json)。实际产物包含修复，PID 59896→93624，原网页、启动配置、token及原工作区 main/index保留；HTTP健康已核对，首次Remote身份、RPC与持续连接仍待补修后的授权验收。
+
+## 2026-11-17 Remote 恢复规则、网页与本地性能修复部署完成
+
+用户批准仅恢复批次继承已有网页授权后，来源b327021f的任务remote-web-scope-recovery-20261117以webUi=true修复失败叶251876ad，批次 `54ca0273-63a0-44ad-94a1-72713b1673dc` 冻结 `de559f0f73032192b79e5da1f97125e7206dd55d` 并complete。原失败56c4c29f（database is locked）、251876ad（范围冲突）及各冻结任务保留，不改写历史；恢复链原true／false与新true组合按批准规则处理，普通合批冲突仍拒绝。
+
+真实网页发现Remote git读取总预算仍3秒，3500ms协议延迟RED后仅Remote改为20秒、Local仍3秒；30项相关回归、类型与服务端构建通过。后续来源5d867eac的任务remote-project-transport-budget-20261117按webUi=false完成成功批次 `685b4928-d01e-4267-ba97-ba30bc64023f`，冻结 `555cd3c3c5ec68508a8e73c663e538c42c5bce5d`，保留前次网页资源。两批开发CI分别44021508706／44023835622，均attempt 1成功；main/gateway/verify、持久receipt、实际摘要、新PID、入口资产和认证健康独立核对通过，原配置、token、身份／配对及原工作区main/index保留。48项Gateway、290项适配器（1既有跳过）、164项构建契约和类型门禁通过，未变协调器复用59项成功证据。
+
+本地会话性能修复ee705d3d已包含：现役12次HTTP／WS读取2–14ms，HTTP无新增持久读取项，网页单次打开约653ms。Remote网页保存、项目和真实会话正文读取、WS30秒／HTTP120秒间隔只读RPC通过，仅实测网关Mac；目录首屏约51秒，保留此前500失败证据。8小时监测13:28至21:28北京时间运行中，完整功能、其他机器、自然刷新、睡眠与P95待验收。调度完整首轮151通过／4失败与分次覆盖155项记录保留，不能写成单次全绿。本轮没有客户端打包、渠道更新、LAN或OTA；脱敏凭证见[实际部署与RPC记录](superpowers/plans/evidence/2026-11-17-remote-production-rpc.json)。

@@ -1,0 +1,488 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-11-17T05:34:16.226931+00:00",
+  "scope": "现役网关与已授权WebUI；不发布手机客户端",
+  "deployments": [
+    {
+      "taskId": "remote-web-scope-recovery-20261117",
+      "batchId": "54ca0273-63a0-44ad-94a1-72713b1673dc",
+      "sourceCommit": "b327021f1b16382aff0b941d3e3e29c97464236a",
+      "frozenCommit": "de559f0f73032192b79e5da1f97125e7206dd55d",
+      "webUiUpdated": true,
+      "recoveryOf": "251876ad-65f8-4389-9650-ea51a45b5f97",
+      "recoveryChain": [
+        "56c4c29f-5c53-4b8e-941a-fe2614e8ac8f",
+        "251876ad-65f8-4389-9650-ea51a45b5f97"
+      ],
+      "development": {
+        "attempt": 1,
+        "runId": 44021508706,
+        "sourceCommit": "de559f0f73032192b79e5da1f97125e7206dd55d"
+      },
+      "digests": {
+        "serverDigest": "e5015bf0f17c07fed516fe9f489104ca9b83f139a43399609116e774e91deebb",
+        "frontendDigest": "e9cd555498ecf69bac9d633465e6b659f3b273685729f0e32914611e6cd9ac22",
+        "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+        "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+        "archiveSha256": "973f7594db8f9d67d02cf32a79cff23eb2fc887cf92d6463a0b7ad90aed375cc"
+      },
+      "oldPid": 99843,
+      "pid": 38348,
+      "independentVerification": {
+        "receiptEqual": true,
+        "batchId": "54ca0273-63a0-44ad-94a1-72713b1673dc",
+        "frozenCommit": "de559f0f73032192b79e5da1f97125e7206dd55d",
+        "actualDigestsMatch": true,
+        "startupAndOriginalMainIndexPreserved": true,
+        "identityAndLocalPairPreservedAcrossRestart": true,
+        "state": "online",
+        "http": {
+          "/": 200,
+          "/api/host": 200,
+          "/api/status": 200,
+          "mainAsset": 200
+        },
+        "mainAssetMatchesInstalled": true,
+        "pid": 38348,
+        "verifiedAt": "2026-11-17T05:06:39.000820+00:00"
+      }
+    },
+    {
+      "taskId": "remote-project-transport-budget-20261117",
+      "batchId": "685b4928-d01e-4267-ba97-ba30bc64023f",
+      "sourceCommit": "5d867eac569140a256ad4e4b625fb629ad38c688",
+      "frozenCommit": "555cd3c3c5ec68508a8e73c663e538c42c5bce5d",
+      "webUiUpdated": false,
+      "recoveryOf": null,
+      "recoveryChain": [],
+      "development": {
+        "attempt": 1,
+        "runId": 44023835622,
+        "sourceCommit": "555cd3c3c5ec68508a8e73c663e538c42c5bce5d"
+      },
+      "digests": {
+        "serverDigest": "c7b3eef31415a0c1005b42dae8cba5b6841738fece546bd8b7cdb4c1ead77003",
+        "frontendDigest": "e9cd555498ecf69bac9d633465e6b659f3b273685729f0e32914611e6cd9ac22",
+        "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+        "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+        "archiveSha256": "fa46fcc84311d6aec6211403a48c8d185fb32314af1bca1208c966c52b58f809"
+      },
+      "oldPid": 38348,
+      "pid": 2363,
+      "independentVerification": {
+        "receiptEqual": true,
+        "batchId": "685b4928-d01e-4267-ba97-ba30bc64023f",
+        "frozenCommit": "555cd3c3c5ec68508a8e73c663e538c42c5bce5d",
+        "actualDigestsMatch": true,
+        "startupAndOriginalMainIndexPreserved": true,
+        "identityAndLocalPairPreservedAcrossRestart": true,
+        "state": "online",
+        "http": {
+          "/": 200,
+          "/api/host": 200,
+          "/api/status": 200,
+          "mainAsset": 200
+        },
+        "mainAssetMatchesInstalled": true,
+        "pid": 2363,
+        "verifiedAt": "2026-11-17T05:25:33.102008+00:00"
+      }
+    }
+  ],
+  "recoveryScopePolicy": {
+    "sourceCommit": "b327021f1b16382aff0b941d3e3e29c97464236a",
+    "onlyExplicitRecovery": true,
+    "requiresInheritedWebAuthorization": true,
+    "allNewTasksExplicitTrue": true,
+    "falseOnlyInherited": true,
+    "newTaskSetMustBeUnambiguous": true,
+    "ordinaryMixedBatchStillRejected": true,
+    "originalFrozenTasksUnchanged": true
+  },
+  "preservedFailures": [
+    {
+      "batchId": "56c4c29f-5c53-4b8e-941a-fe2614e8ac8f",
+      "error": "database is locked",
+      "result": "产物曾替换但最终批次失败，不改写为成功"
+    },
+    {
+      "batchId": "251876ad-65f8-4389-9650-ea51a45b5f97",
+      "error": "WebUI 更新选项在冻结任务之间冲突",
+      "result": "原任务SHA、validation及冻结失败记录保留，由后续恢复批次完成"
+    }
+  ],
+  "verification": {
+    "adapterTests": {
+      "total": 290,
+      "existingSkip": 1
+    },
+    "gatewayReleaseTests": 48,
+    "buildContractTests": 164,
+    "coordinatorTests": {
+      "total": 59,
+      "reuseUnchangedCore": "5317a816938046f6a64f915b1aac72685d4bace3"
+    },
+    "typecheckAndStrict": true,
+    "serverBuild": true,
+    "checks": [
+      {
+        "name": "adapter-regression",
+        "status": "passed",
+        "logSha256": "2b22c9deeb1fdfbbed24564745a98a1cfea5a8325f52dea72f247bec6527d2bf"
+      },
+      {
+        "name": "build-contract",
+        "status": "passed",
+        "logSha256": "bf42898337f8a87b21ee5c19fd94588cfe768a22acfee9552fc5a632af128cba"
+      },
+      {
+        "name": "typecheck",
+        "status": "passed",
+        "logSha256": "f11972edf1371c6a92e0191771a171b241f194ee82ac7b0cb9df8f740e330355"
+      },
+      {
+        "name": "coordinator-recovery",
+        "status": "passed",
+        "logSha256": "3a0fe4d5bba8fa4bdf71c5cc16677be1bcc994ed98fb156a5a622855d9929a01"
+      }
+    ],
+    "scheduler": {
+      "runtimeSourcesUnchangedSince": "93d5dc8d586d4a4c44b2cc426095ec93e8513dc5",
+      "fullServerFirstRun": {
+        "passed": 151,
+        "failed": 4,
+        "total": 155,
+        "evidence": "/private/tmp/eg-complete/inflight-server/test.log"
+      },
+      "affectedFinal": {
+        "passed": 9,
+        "evidence": "/private/tmp/eg-complete/inflight-affected-final/test.log"
+      },
+      "controlSettleIsolatedPassed": "/private/tmp/eg-complete/inflight-server-retry/test.log",
+      "singleRunAllGreen": false,
+      "combinedCoverage": 155,
+      "reason": "受影响9项通过；原完整回归首失败和同运行代码分次复核均保留，未将首轮写成全绿。"
+    },
+    "projectBudget": {
+      "red": "真实3500ms Git stdin协议写入延迟导致旧3秒总预算失败",
+      "minimalChange": "仅Remote git总预算改为20000ms；Local仍3000ms，权限不变",
+      "relatedCases": 30,
+      "passed": true
+    }
+  },
+  "officialRemote": {
+    "authorizationAndPairingPreserved": true,
+    "verifiedTargets": 1,
+    "targetScope": "仅网关Mac，经官方Relay；未宣称其他机器已实测",
+    "webSocket": {
+      "scope": "production gateway public WS to official Remote for gateway Mac",
+      "startedFromAuthorizedAndPaired": true,
+      "samples": [
+        {
+          "connectAndInitializeMs": 4111,
+          "modelListMs": 7158,
+          "modelCount": 9,
+          "readOnly": true
+        },
+        {
+          "connectAndInitializeMs": 7100,
+          "modelListMs": 12216,
+          "modelCount": 9,
+          "readOnly": true
+        }
+      ],
+      "idleBetweenClientConnectionsSeconds": 30,
+      "observedStates": [
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online"
+      ],
+      "allObservedOnline": true,
+      "testChatsCreated": 0,
+      "modelInferenceRequestsSent": 0,
+      "finishedAt": "2026-11-17T05:25:53.553Z",
+      "limitations": [
+        "short observation; not 8h, natural credential refresh, sleep or P95 proof",
+        "public client close does not prove all internal logical sessions released"
+      ]
+    },
+    "http": {
+      "scope": "production public Remote HTTP RPC",
+      "samples": [
+        {
+          "initializeMs": 4254,
+          "initializedMs": 2882,
+          "thread/loaded/listMs": 7343
+        },
+        {
+          "initializeMs": 5852,
+          "initializedMs": 4655,
+          "thread/loaded/listMs": 19870
+        }
+      ],
+      "idleWithoutProbeRequestsSeconds": 120,
+      "observedStates": [
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online"
+      ],
+      "allObservedOnline": true,
+      "testChatsCreated": 0,
+      "modelInferenceRequestsSent": 0,
+      "finishedAt": "2026-11-17T05:27:41.775Z",
+      "limitations": [
+        "HTTP session may retain upstream logical stream; not zero-stream proof",
+        "120s observation is not 8h, refresh, sleep or P95 proof"
+      ]
+    },
+    "web": {
+      "at": "2026-11-17T05:28:19.262Z",
+      "mode": "remote",
+      "testAndSavePassed": true,
+      "projectResponses": [
+        {
+          "status": 200,
+          "ms": 51413
+        }
+      ],
+      "realExistingConversationBodyVisible": true,
+      "inputEnabled": true,
+      "connectionErrorVisible": false,
+      "testChatsCreated": 0
+    },
+    "preFinalProjectFailures": {
+      "http500Count": 2,
+      "independentRetryStatus": 200,
+      "independentRetryMs": 48601,
+      "note": "旧3秒Remote git窗口已由真实延迟回归复现并补修；最终单轮200不代表所有网络场景通过"
+    }
+  },
+  "localPerformance": {
+    "includedSource": "ee705d3d",
+    "mode": "local",
+    "samples": [
+      {
+        "transport": "HTTP",
+        "method": "initialize",
+        "ms": 34,
+        "accepted": false,
+        "ok": true
+      },
+      {
+        "transport": "HTTP",
+        "method": "thread/read",
+        "ms": 3,
+        "accepted": false,
+        "ok": true
+      },
+      {
+        "transport": "HTTP",
+        "method": "thread/turns/list",
+        "ms": 13,
+        "accepted": false,
+        "ok": true
+      },
+      {
+        "transport": "HTTP",
+        "method": "thread/read",
+        "ms": 5,
+        "accepted": false,
+        "ok": true
+      },
+      {
+        "transport": "HTTP",
+        "method": "thread/turns/list",
+        "ms": 12,
+        "accepted": false,
+        "ok": true
+      },
+      {
+        "transport": "HTTP",
+        "method": "thread/read",
+        "ms": 3,
+        "accepted": false,
+        "ok": true
+      },
+      {
+        "transport": "HTTP",
+        "method": "thread/turns/list",
+        "ms": 14,
+        "accepted": false,
+        "ok": true
+      },
+      {
+        "transport": "WebSocket",
+        "method": "initialize",
+        "ms": 5,
+        "ok": true
+      },
+      {
+        "transport": "WebSocket",
+        "method": "thread/read",
+        "ms": 4,
+        "ok": true
+      },
+      {
+        "transport": "WebSocket",
+        "method": "thread/turns/list",
+        "ms": 13,
+        "ok": true
+      },
+      {
+        "transport": "WebSocket",
+        "method": "thread/read",
+        "ms": 3,
+        "ok": true
+      },
+      {
+        "transport": "WebSocket",
+        "method": "thread/turns/list",
+        "ms": 12,
+        "ok": true
+      },
+      {
+        "transport": "WebSocket",
+        "method": "thread/read",
+        "ms": 2,
+        "ok": true
+      },
+      {
+        "transport": "WebSocket",
+        "method": "thread/turns/list",
+        "ms": 11,
+        "ok": true
+      }
+    ],
+    "maximumReadMs": 14,
+    "httpLedgerReceiptsAdded": 0,
+    "browserOpen": {
+      "at": "2026-11-17T05:22:18.607Z",
+      "mode": "local",
+      "clickedExistingConversation": true,
+      "observedMs": 653,
+      "loading": false,
+      "loaded": true,
+      "testChatsCreated": 0,
+      "limitations": [
+        "单次点击到可见正文的自动化观察时长，不代表P95"
+      ]
+    }
+  },
+  "eightHourObservation": {
+    "status": "running",
+    "sourceCommit": "555cd3c3c5ec68508a8e73c663e538c42c5bce5d",
+    "startedAt": "2026-11-17T05:27:56.654Z",
+    "expectedEndAt": "2026-11-17T13:27:56.503327+00:00",
+    "sampleCountAtReceipt": 5,
+    "firstSample": {
+      "at": "2026-11-17T05:27:56.661Z",
+      "gapMs": 0,
+      "state": "online",
+      "rpc": {
+        "connectAndInitializeMs": 7289,
+        "modelListMs": 28619,
+        "modelCount": 9,
+        "readOnly": true
+      },
+      "ok": true
+    },
+    "completionVerified": false,
+    "privateStatusFile": "/private/tmp/remote-gateway-deploy-20261117/remote-eight-hour-status.json",
+    "limitations": [
+      "periodic state and RPC samples do not prove uninterrupted TCP or zero logical streams",
+      "sleep or sampling gaps are recorded; no P95 or full-feature acceptance claimed"
+    ],
+    "latestSampleAtReceipt": {
+      "at": "2026-11-17T05:33:03.790Z",
+      "gapMs": 67839,
+      "state": "online",
+      "rpc": {
+        "connectAndInitializeMs": 3307,
+        "modelListMs": 7987,
+        "modelCount": 9,
+        "readOnly": true
+      },
+      "ok": true
+    }
+  },
+  "remainingAcceptance": [
+    "官方全功能与其他远程机器",
+    "8小时采样最终结果",
+    "自然凭据刷新、睡眠唤醒与P95",
+    "Remote目录首屏约51秒，尚未做性能优化或分位数验收"
+  ],
+  "testChatsCreated": 0,
+  "inferenceRequests": 0,
+  "clientPackagesPublished": false,
+  "softwareSourceUpdated": false,
+  "historicalLanOrOtaStarted": false
+}

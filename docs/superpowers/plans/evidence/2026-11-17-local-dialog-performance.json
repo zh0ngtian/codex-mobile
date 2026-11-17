@@ -185,5 +185,19 @@
     "integration": "整合433f3d07后，9文件118项相关回归通过；server/app strict及服务端构建通过。未修改Remote探测补修或部署凭证。"
   },
   "deployment": "未部署；未构建客户端或发布安装包",
-  "integratedMain": "433f3d073082eb85194472696096acd5fde59cb2"
+  "integratedMain": "433f3d073082eb85194472696096acd5fde59cb2",
+  "subsequentDeployment": {
+    "status": "deployed",
+    "batchId": "685b4928-d01e-4267-ba97-ba30bc64023f",
+    "frozenCommit": "555cd3c3c5ec68508a8e73c663e538c42c5bce5d",
+    "readSamples": 12,
+    "readMsRange": [
+      2,
+      14
+    ],
+    "httpLedgerReceiptsAdded": 0,
+    "browserOpenObservedMs": 653,
+    "limits": "单次网页观察和短时RPC，非P95；保留上文未部署阶段的历史记录",
+    "receipt": "2026-11-17-remote-production-rpc.json"
+  }
 }

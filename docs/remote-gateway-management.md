@@ -1,6 +1,8 @@
-# Remote 网关 Mac 管理（网关和网页已部署，Remote只读RPC已验证，网页保存补修及官方长期验收待完成）
+# Remote 网关 Mac 管理（网页与短时 RPC 已验证，长期验收进行中）
 
-2026-11-17现役网关及配套 WebUI 已部署这些改动，成功批次 `48f7578a-d8f4-407e-9d24-4820c08336f1`，冻结 `1fd52ff969d373dbdba281bcff41eb3bc6c69a6b`；本次未发布手机安装包。实际网页已连接本地网关，模式选择与 URL 同表单，Remote v1 能力可读取；常驻实例已完成首次 Remote 授权和本机配对，公开 Remote WebSocket 两次只读RPC与断开30秒后重连通过；网页测试保存发现原6秒预算不足，Remote 专用60秒预算补修待部署回验。官方完整功能、长期稳定性与 P95 仍待验收。见[本次部署收据](superpowers/plans/evidence/2026-11-17-remote-gateway-deploy.json)及[实施计划](superpowers/plans/2026-11-13-remote-gateway.md)。
+2026-11-17恢复批次 `54ca0273-63a0-44ad-94a1-72713b1673dc` 完成已授权的网关及网页更新；后续服务端批次 `685b4928-d01e-4267-ba97-ba30bc64023f` 补修Remote项目git读取预算，现役冻结来源 `555cd3c3c5ec68508a8e73c663e538c42c5bce5d`，保留前次网页资源。两份成功持久凭证及实际产物摘要、启动配置、token、Remote活动身份和本机配对已独立核对。本次未发布手机安装包。
+
+实际网页Remote“测试并保存”、项目列表和真实对话正文读取通过；公开WS断开30秒与HTTP间隔120秒的两轮只读RPC成功，期间状态采样均online，仅实测网关Mac。Remote首次项目目录约51秒，仍需性能改进；此前两次500及后续补修证据保留。本地会话性能修复已包含，现役HTTP／WS共12次读取2–14ms，其中HTTP未增加持久读取记录，单次网页打开约653ms。8小时只读监测于北京时间2026-11-17 13:28启动，预计21:28结束，当前运行中；完整功能、其他目标、自然刷新、睡眠唤醒和P95待验收。见[最新部署与实测收据](superpowers/plans/evidence/2026-11-17-remote-production-rpc.json)及[执行计划](superpowers/plans/2026-11-17-remote-web-scope-recovery.md)。
 
 现役入口为 `node ~/.local/share/codex-mobile-gateway/node_modules/codex-mobile/bin/codex-mobile.mjs remote …`；下列 `codex-mobile remote …` 为该入口的简写。从源码验证时先执行 `npm run build:server`，再用 `node bin/codex-mobile.mjs remote …` 调用本工作区编译产物。
 
@@ -77,4 +79,4 @@ codex-mobile remote reassociate --previous-environment-id OLD_ENV_ID --previous-
 
 候选源码 `700c7c7d96c5fc7cadf58913d5f855d1c731ed5a` 的31文件相关回归已有717项通过、7项按配置跳过，源码及含测试的两种严格服务端类型检查、服务端构建通过。先前质量审查复现的root整体替换归属断链已补充同一证明、失效取消和实际收尾回归；规格复审另确认的5处最终期限缺口已逐项红绿修复。QUALITY后续确认的六处过期资源创建边界也已统一保留原父操作及短阶段预算，原独立脚本均触发延迟后验证连接、原生请求或helper创建为零；成功交付后的Relay挑战、零流保活与重连继续通过。最终固定源码的独立规格与质量复审均已通过，见[隔离验收记录](superpowers/plans/evidence/2026-11-13-remote-admin-isolated-validation.json)。同一冻结源码的[官方Remote实际OS入口探针](superpowers/plans/evidence/2026-11-13-remote-admin-product-probe.json)已通过：三次进程各完成只读RPC及CLI状态/真实端口核验，正常退出后重启和SIGKILL后恢复成功，健康owner下第二个进程在Runtime启动前被拒绝。关闭逻辑流25秒后新增RPC成功，认证准备次数保持1。三次启动至RPC和CLI就绪分别为11789、14244、10065ms；这些是完整保留的单次冷启动样本，不能作为P95或8小时验收。
 
-上述正式 Remote RPC 和进程探针是部署前的隔离验证；现役授权后的只读短测另记于[首次登记收据](superpowers/plans/evidence/2026-11-17-remote-enrollment-null-hash.json)。2026-11-17已通过协调器更新实际 launchd 网关和网页，部署时保留原启动配置与 token；未发布手机安装包。手机模式和公开队列的本地验证详见[源码收据](superpowers/plans/evidence/2026-11-17-remote-gateway-completion-validation.json)，完整首失败和修复后补跑口径均保留。现役首次授权及本机配对已完成；网页保存超时补修、官方全功能、P95、跨刷新和连续8小时验收仍待完成。
+上述正式 Remote RPC 和进程探针是部署前的隔离验证；现役授权后的只读短测另记于[首次登记收据](superpowers/plans/evidence/2026-11-17-remote-enrollment-null-hash.json)。2026-11-17已通过协调器更新实际 launchd 网关和网页，部署时保留原启动配置与 token；未发布手机安装包。手机模式和公开队列的本地验证详见[源码收据](superpowers/plans/evidence/2026-11-17-remote-gateway-completion-validation.json)，完整首失败和修复后补跑口径均保留。现役首次授权及本机配对已完成，网页保存、项目／真实会话读取与短时RPC重连已通过，详见[最新实测收据](superpowers/plans/evidence/2026-11-17-remote-production-rpc.json)。首屏目录约51秒；官方全功能、其他机器、P95、自然刷新、睡眠唤醒及8小时最终结果仍待验收。

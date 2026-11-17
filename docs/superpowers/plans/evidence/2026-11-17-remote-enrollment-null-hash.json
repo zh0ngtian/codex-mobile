@@ -84,8 +84,9 @@
     "testChatsCreated": 0
   },
   "remaining": [
-    "网页测试保存6秒超时补修部署及回验",
-    "完整功能、8小时、跨凭据刷新、睡眠唤醒及P95"
+    "完整功能与其他远程机器",
+    "8小时最终结果、自然凭据刷新、睡眠唤醒及P95",
+    "Remote项目目录首屏性能改进"
   ],
   "recordedAt": "2026-11-17T02:53:32.022630+00:00",
   "activationVerification": {
@@ -219,5 +220,6 @@
         "120s observation is not 8h, refresh, sleep or P95 proof"
       ]
     }
-  }
+  },
+  "subsequentProductionReceipt": "2026-11-17-remote-production-rpc.json"
 }
