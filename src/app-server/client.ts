@@ -46,6 +46,7 @@ export interface AppServerSocket {
   openRealtime?: () => Promise<void>;
   closeRealtime?: () => void;
   pendingErrorForRequest?: (id: number | string) => Error | undefined;
+  waitForListSnapshotRefresh?: () => Promise<void>;
 }
 
 export interface AppServerRequestOptions {
@@ -193,6 +194,10 @@ export class AppServerClient {
   onThreadMetadata(listener: ThreadMetadataListener) {
     this.threadMetadataListeners.add(listener);
     return () => this.threadMetadataListeners.delete(listener);
+  }
+
+  async waitForListSnapshotRefresh() {
+    await this.socket.waitForListSnapshotRefresh?.();
   }
 
   private send(message: RpcMessage, timeoutMs?: number, priority?: HttpRequestPriority, operationKey?: string, refreshSnapshot?: boolean) {

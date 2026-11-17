@@ -739,3 +739,33 @@ it('Remote已有导航快照不等待前台慢RPC释放浏览器调度队列', a
     expect(paths).toEqual(['/api/rpc', '/api/read-snapshot']);
   } finally { release(); await Promise.allSettled([slow, navigation]); }
 });
+
+
+it('手动刷新只等待调用时的列表快照，详情及之后的定时同步不能延长本轮', async () => {
+  vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
+  const finishes = new Map<string, (response: Response) => void>();
+  const transport = new HttpRpcTransport({ id: 'snapshot-manual-round', baseUrl: 'http://snapshot-manual.test', token: '', gatewayMode: 'remote', remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } }, { fetch: (async (input, init) => {
+    const url = new URL(String(input)); const request = JSON.parse(String(init?.body)).message;
+    const key = request.params.threadId ?? request.params.cwd;
+    if (url.searchParams.has('refresh')) return new Promise<Response>(resolve => { finishes.set(key, resolve); });
+    return new Response(JSON.stringify({ message: { result: { data: [] } }, updatedAt: 100, refreshing: true }));
+  }) as typeof fetch }); transports.push(transport);
+  await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
+  const client = new AppServerClient(transport);
+  await client.request('thread/list', { cwd: '/first' });
+  await client.request('thread/list', { cwd: '/second' });
+  await client.request('thread/read', { threadId: 'detail' });
+  let settled = false;
+  const round = client.waitForListSnapshotRefresh().then(() => { settled = true; });
+  await client.request('thread/list', { cwd: '/later' });
+  const fresh = () => new Response(JSON.stringify({ message: { result: { data: [] } }, updatedAt: 200, refreshing: false }));
+  await vi.waitFor(() => expect(finishes.has('/second')).toBe(true));
+  finishes.get('/first')!(fresh());
+  await Promise.resolve();
+  expect(settled).toBe(false);
+  finishes.get('/second')!(new Response('{}', { status: 503 }));
+  await round;
+  expect(settled).toBe(true);
+  await vi.waitFor(() => expect(finishes.has('/later') && finishes.has('detail')).toBe(true));
+  finishes.get('/later')!(fresh()); finishes.get('detail')!(fresh());
+});

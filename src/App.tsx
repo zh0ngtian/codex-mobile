@@ -1379,7 +1379,10 @@ function BackendWorkspace({
       connectionManagerRef.current?.reconnect(backend.id);
       return;
     }
-    void loadThreads()
+    const client = clientRef.current;
+    void loadThreads(client)
+      .then(() => client.waitForListSnapshotRefresh?.())
+      .then(() => threadRefreshRef.current!.pending(client))
       .catch(() => undefined)
       .finally(() => {
         if (sequence === refreshSequenceRef.current) setRefreshing(false);
@@ -5494,7 +5497,7 @@ function ConfiguredApp({
       .map((snapshot) => snapshot.backendId),
   );
   const refreshing = enabledBackends.some(
-    (backend) => snapshots[backend.id]?.refreshing || snapshots[backend.id]?.readSnapshotRefreshing,
+    (backend) => snapshots[backend.id]?.refreshing,
   );
   const loadingProjectKeys = new Set(
     Object.values(snapshots)

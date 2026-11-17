@@ -93,6 +93,14 @@ export class HttpRpcTransport extends EventTarget {
     return operation ? new HttpOperationPendingError(operation.requestId, operation.message) : undefined;
   }
 
+  async waitForListSnapshotRefresh() {
+    // 固定本轮已在途的列表任务，后续定时同步和对话详情不能延长手动刷新。
+    const pending = [...this.snapshotRefreshes]
+      .filter(([binding]) => typeof JSON.parse(binding).params?.threadId !== 'string')
+      .map(([, promise]) => promise);
+    await Promise.all(pending);
+  }
+
   constructor(private readonly config: Config, options: { fetch?: typeof fetch; sessionId?: string } = {}) {
     super();
     this.config = structuredClone(config);
