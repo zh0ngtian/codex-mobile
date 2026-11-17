@@ -56,6 +56,47 @@ it('Remote 即使保留旧流式配置也经过耐久 HTTP，探测与实际连�
   try { manager.sync([config]); expect(manager.socket(config.id)).toBeInstanceOf(HttpRpcTransport); }
   finally { manager.close(); }
 });
+it('Remote 测试保存允许超过本地6秒的握手，仍在60秒内结束', async () => {
+  vi.useFakeTimers();
+  const fetchHost = async () => new Response(JSON.stringify({ hostId: 'gateway', displayName: 'Gateway', httpPolling: true,
+    remote: { version: 1, supported: true, authorized: true, paired: true, targets: [target] } }));
+  const initializeHttp = () => new Promise<void>(resolve => setTimeout(resolve, 12_000));
+  const result = probeBackend(remote, { fetchHost, initializeHttp }).then(value => ({ value }), error => ({ error }));
+  await vi.advanceTimersByTimeAsync(12_001);
+  expect(await result).toMatchObject({ value: { hostId: 'gateway' } });
+});
+it('Remote 实际 HTTP 探测将业务预算传入初始化和只读 RPC，并关闭探测传输', async () => {
+  vi.useFakeTimers();
+  vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
+  const methods: string[] = [];
+  const host = { hostId: 'gateway', displayName: 'Gateway', httpPolling: true,
+    remote: { version: 1, supported: true, authorized: true, paired: true, targets: [target] } };
+  vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+    const url = new URL(input);
+    if (url.pathname === '/api/host') return new Response(JSON.stringify(host));
+    expect(url.searchParams.get('mode')).toBe('remote');
+    expect(JSON.parse(url.searchParams.get('target')!)).toEqual(target.reference);
+    if (url.pathname === '/api/events') return new Response(JSON.stringify({ epoch: 'probe', cursor: 0, messages: [], requests: [], active: false }));
+    const { message } = JSON.parse(String(init?.body)); methods.push(message.method);
+    if (message.method !== 'initialized') await new Promise(resolve => setTimeout(resolve, 12_000));
+    return new Response(JSON.stringify({ id: message.id, result: {} }));
+  }));
+  const result = probeBackend(remote).then(value => ({ value }), error => ({ error }));
+  await vi.advanceTimersByTimeAsync(24_100);
+  expect(await result).toMatchObject({ value: { hostId: 'gateway' } });
+  expect(methods).toEqual(['initialize', 'initialized', 'thread/loaded/list']);
+  expect(vi.getTimerCount()).toBe(0);
+});
+it.each([{ config: remote, budget: 60_000 }, { config: local, budget: 6_000 }, { config: remote, budget: 20, explicit: true }])('探测无响应仍在对应预算结束 $budget', async ({ config, budget, explicit }) => {
+  vi.useFakeTimers();
+  const fetchHost = async () => new Response(JSON.stringify({ hostId: 'gateway', displayName: 'Gateway', appServerReady: true, httpPolling: true,
+    remote: { version: 1, supported: true, authorized: true, paired: true, targets: [target] } }));
+  let ended = false;
+  const result = probeBackend(config, { fetchHost, initializeHttp: () => new Promise<void>(() => {}), ...(explicit ? { timeoutMs: budget } : {}) })
+    .then(() => undefined, error => { ended = true; return error; });
+  await vi.advanceTimersByTimeAsync(budget - 1); expect(ended).toBe(false);
+  await vi.advanceTimersByTimeAsync(1); expect(await result).toMatchObject({ message: 'HTTP initialize 超时' });
+});
 it('切换表单模式不探测；测试失败原子保留旧配置与输入', async () => {
   const probe = vi.fn(async () => { throw new Error('网关尚不支持远程模式，请先升级网关'); }); const onChange = vi.fn();
   render(<BackendManagerSheet open registry={{ version: 1, selectedBackendId: local.id, backends: [local] }} summaries={{}} onChange={onChange} onClose={() => {}} probe={probe} />);
