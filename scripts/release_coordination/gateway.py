@@ -130,8 +130,9 @@ class Gateway:
         self.build_log = self.root / 'gateway-build.log'
         self.sha = adapter.context['frozen']['sha']
         self.batch = adapter.context['id']
-        selected_web_ui = None
-        for task in adapter.context.get('tasks', []):
+        tasks = adapter.context.get('tasks', [])
+        web_choices = []
+        for task in tasks:
             validation = task.get('validation', {})
             if 'webUi' not in validation:
                 continue
@@ -139,10 +140,23 @@ class Gateway:
             if (type(requested) is not bool or validation.get('scope') != 'gateway-only' or
                     not task.get('sha') or validation.get('sourceCommit') != task.get('sha')):
                 raise RuntimeError('WebUI 更新选项必须为布尔值并绑定网关任务的实际来源 SHA')
-            if selected_web_ui is not None and selected_web_ui != requested:
+            web_choices.append((task.get('id'), requested))
+        if len({selected for _, selected in web_choices}) > 1:
+            new_ids = adapter.context.get('newTaskIds')
+            task_ids = [task.get('id') for task in tasks]
+            recovery_of = adapter.context.get('recoveryOf')
+            # 只继承原网页授权；新恢复任务不能省略选择或撤回网页范围。
+            inherited_web_scope = (
+                isinstance(recovery_of, str) and bool(recovery_of) and
+                isinstance(new_ids, list) and bool(new_ids) and
+                all(isinstance(item, str) and item for item in [*task_ids, *new_ids]) and
+                len(set(task_ids)) == len(task_ids) and len(set(new_ids)) == len(new_ids) and
+                set(new_ids).issubset(task_ids) and
+                all(dict(web_choices).get(item) is True for item in new_ids) and
+                any(selected and item not in new_ids for item, selected in web_choices))
+            if not inherited_web_scope:
                 raise RuntimeError('WebUI 更新选项在冻结任务之间冲突')
-            selected_web_ui = requested
-        self.web_ui = selected_web_ui is True
+        self.web_ui = any(selected for _, selected in web_choices)
         desktop_options = desktop_meter_options(options, adapter.context.get('tasks', []))
         self.desktop_meter = DesktopMeterInstall(desktop_options, self.package) if desktop_options else None
 
