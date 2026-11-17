@@ -561,11 +561,11 @@ it('mark已耐久uncertain而最终真实授权拒绝时旧claim清理只丢弃�
   expect(f.remoteMessages.filter(message => message.method === 'turn/start')).toEqual([]); expect(f.localMessages).toEqual([]);
 });
 it('精确claim清理遇暂时IO故障保留责任，close后新实例重试原CAS而非丢弃或重收其他项', async () => {
-  const f = await setup(); f.options.attemptTimeoutMs = 100; const one = f.create(); const input = f.input(f.localContext); await one.submit(input);
+  const f = await setup(); f.options.attemptTimeoutMs = 1000; const one = f.create(); const input = f.input(f.localContext); await one.submit(input);
   const proto = OperationQueue.prototype as any; const actual = proto.syncDirectories; let delayed = false;
   const hold = vi.spyOn(proto, 'syncDirectories').mockImplementation(async function (this: any, ...args: any[]) {
     await actual.apply(this, args); const disk = JSON.parse(await readFile(join(f.options.directory, 'operations.json'), 'utf8'));
-    if (!delayed && disk.records[0]?.state === 'claimed') { delayed = true; await new Promise(resolve => setTimeout(resolve, 180)); }
+    if (!delayed && disk.records[0]?.state === 'claimed') { delayed = true; await new Promise(resolve => setTimeout(resolve, 1200)); }
   });
   const release = vi.spyOn(OperationQueue.prototype, 'releaseClaim').mockRejectedValue(new Error('injected cleanup IO failure'));
   await one.runOnce(); expect(release).toHaveBeenCalled(); expect((await f.queue().read(input.id)).state).toBe('claimed'); await one.close(); hold.mockRestore(); release.mockRestore();
