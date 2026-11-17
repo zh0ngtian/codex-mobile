@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-11-17T05:34:16.226931+00:00",
+  "recordedAt": "2026-11-17T06:57:23.966982+00:00",
   "scope": "现役网关与已授权WebUI；不发布手机客户端",
   "deployments": [
     {
@@ -87,6 +87,418 @@
         "pid": 2363,
         "verifiedAt": "2026-11-17T05:25:33.102008+00:00"
       }
+    },
+    {
+      "taskId": "remote-navigation-performance-20261117",
+      "batchId": "15a6452b-2351-4a67-aea6-0f5eec0bf974",
+      "sourceCommit": "72d8478330853951499dee3d4dbd1e5f90b1cf77",
+      "frozenCommit": "985010f1d700d67848f8f16d93d60268cfb03d7b",
+      "webUiUpdated": true,
+      "digests": {
+        "archiveSha256": "1c0f7248e0ea18950289cd50530435d2b92f6b0ccfa66779fce641656ef0d3a0",
+        "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+        "frontendDigest": "bfe86b1d7d1851024f1eeef3556caa6b4945be023da99ba1540da824f58dd650",
+        "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+        "serverDigest": "5197f33860affc7f1c8766848510a0b04bec76d467f0a9972e5a21fd04b35e7c"
+      },
+      "oldPid": 2363,
+      "pid": 27986,
+      "independentVerification": {
+        "receiptEqual": true,
+        "batchId": "15a6452b-2351-4a67-aea6-0f5eec0bf974",
+        "frozenCommit": "985010f1d700d67848f8f16d93d60268cfb03d7b",
+        "actualDigestsMatch": true,
+        "startupAndOriginalMainIndexPreserved": true,
+        "identityAndLocalPairPreservedAcrossRestart": true,
+        "state": "online",
+        "http": {
+          "/": 200,
+          "/api/host": 200,
+          "/api/status": 200,
+          "mainAsset": 200
+        },
+        "mainAssetMatchesInstalled": true,
+        "pid": 27986,
+        "verifiedAt": "2026-11-17T06:10:47.755058+00:00"
+      },
+      "checks": [
+        {
+          "command": [
+            "python3",
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests/ci",
+            "-p",
+            "test_*.py"
+          ],
+          "cwd": "/private/tmp/eg-complete/navigation-ready-adapter/s",
+          "evidence": "/private/tmp/eg-complete/navigation-ready-adapter/test.log",
+          "exitCode": 0,
+          "logSha256": "3634ff0612075f23e0ad08b87947a08c2ac2691c2cfcbc828045acb68519f1c8",
+          "name": "adapter-regression",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "node",
+            "node_modules/vitest/vitest.mjs",
+            "run",
+            "tests/ci",
+            "--maxWorkers",
+            "2",
+            "--testTimeout",
+            "60000"
+          ],
+          "cwd": "/private/tmp/eg-complete/navigation-ready-contract/s",
+          "evidence": "/private/tmp/eg-complete/navigation-ready-contract/test.log",
+          "exitCode": 0,
+          "logSha256": "161e484d6f31650f4f261ee8c75a1a8fa00409c4a30bf3fda0cb53eba94c225c",
+          "name": "build-contract",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "python3",
+            "/private/tmp/remote-gateway-deploy-20261117/navigation-build-checks.py"
+          ],
+          "cwd": "/private/tmp/eg-complete/navigation-ready-type/s",
+          "evidence": "/private/tmp/eg-complete/navigation-ready-type/test.log",
+          "exitCode": 0,
+          "logSha256": "d3b4e64a9a2a81a44c2966c3d91328190927c306c6a85afdd96f2ac2de0f8a75",
+          "name": "typecheck",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "python3",
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests"
+          ],
+          "cwd": "/Users/zhongtian/WorkSpace/release-coordinator",
+          "evidence": "/private/tmp/remote-gateway-deploy-20261117/runtime-budget-recovery-short/test.log",
+          "exitCode": 0,
+          "logSha256": "3a0fe4d5bba8fa4bdf71c5cc16677be1bcc994ed98fb156a5a622855d9929a01",
+          "name": "coordinator-recovery",
+          "reusedUnchangedCoordinator": "5317a816938046f6a64f915b1aac72685d4bace3",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "taskId": "remote-navigation-scheduler-performance-20261117",
+      "batchId": "ef926db3-e847-425f-b996-9e1fbcd473d2",
+      "sourceCommit": "aa022237a9c214f852588c519cdd7a70560634a7",
+      "frozenCommit": "1e7d5aeff9905b5f469aeabe2d3a371d825a14ac",
+      "webUiUpdated": true,
+      "digests": {
+        "archiveSha256": "ead7e8f937408b6dd3a8bca279c8884131c4462c62ed1780c8d0edc440445afd",
+        "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+        "frontendDigest": "c8ce80c94329250f130bd3c18cbc5ee0ec23e882ca41dc28b52cabe56344dc0e",
+        "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+        "serverDigest": "6f27f3236cc6d9b236cd62b9722e56ca34e4fcd25ddbe7261dbe45ef4b3b22d8"
+      },
+      "oldPid": 27986,
+      "pid": 9299,
+      "independentVerification": {
+        "receiptEqual": true,
+        "batchId": "ef926db3-e847-425f-b996-9e1fbcd473d2",
+        "frozenCommit": "1e7d5aeff9905b5f469aeabe2d3a371d825a14ac",
+        "actualDigestsMatch": true,
+        "startupAndOriginalMainIndexPreserved": true,
+        "identityAndLocalPairPreservedAcrossRestart": true,
+        "state": "online",
+        "http": {
+          "/": 200,
+          "/api/host": 200,
+          "/api/status": 200,
+          "mainAsset": 200
+        },
+        "mainAssetMatchesInstalled": true,
+        "pid": 9299,
+        "verifiedAt": "2026-11-17T06:27:36.184463+00:00"
+      },
+      "checks": [
+        {
+          "command": [
+            "python3",
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests/ci",
+            "-p",
+            "test_*.py"
+          ],
+          "cwd": "/private/tmp/eg-complete/scheduler-ready-adapter/s",
+          "evidence": "/private/tmp/eg-complete/scheduler-ready-adapter/test.log",
+          "exitCode": 0,
+          "logSha256": "327551bc172fa5e06ceb5e450443f8ac4037d5a86512ee614a86ba3141baf308",
+          "name": "adapter-regression",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "node",
+            "node_modules/vitest/vitest.mjs",
+            "run",
+            "tests/ci",
+            "--maxWorkers",
+            "2",
+            "--testTimeout",
+            "60000"
+          ],
+          "cwd": "/private/tmp/eg-complete/scheduler-ready-contract/s",
+          "evidence": "/private/tmp/eg-complete/scheduler-ready-contract/test.log",
+          "exitCode": 0,
+          "logSha256": "035b9e5c65363718fbf7a46a355db71819ffe22727aa75783401ce80ff689b85",
+          "name": "build-contract",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "python3",
+            "/private/tmp/remote-gateway-deploy-20261117/navigation-build-checks.py"
+          ],
+          "cwd": "/private/tmp/eg-complete/scheduler-ready-type/s",
+          "evidence": "/private/tmp/eg-complete/scheduler-ready-type/test.log",
+          "exitCode": 0,
+          "logSha256": "83436844272bf021196a8143956c79468fdf75f50fc404ab59996fba9cb93f9d",
+          "name": "typecheck",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "python3",
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests"
+          ],
+          "cwd": "/Users/zhongtian/WorkSpace/release-coordinator",
+          "evidence": "/private/tmp/remote-gateway-deploy-20261117/runtime-budget-recovery-short/test.log",
+          "exitCode": 0,
+          "logSha256": "3a0fe4d5bba8fa4bdf71c5cc16677be1bcc994ed98fb156a5a622855d9929a01",
+          "name": "coordinator-recovery",
+          "reusedUnchangedCoordinator": "5317a816938046f6a64f915b1aac72685d4bace3",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "taskId": "remote-navigation-read-wakeup-20261117",
+      "batchId": "955f4db7-d891-4663-8000-e91b21438323",
+      "sourceCommit": "5c4626f7cc35630b58fd4b8d5f6c35b95e61a4b7",
+      "frozenCommit": "72d496f7c4974cd4637cc8fb52c22ee04177949e",
+      "webUiUpdated": false,
+      "digests": {
+        "archiveSha256": "35ee60efccdb9d96c036af72f7d6cba05952b43733623e0fc2270dbae6f46a21",
+        "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+        "frontendDigest": "c8ce80c94329250f130bd3c18cbc5ee0ec23e882ca41dc28b52cabe56344dc0e",
+        "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+        "serverDigest": "4c2cdc7a024b46292775132d04066716222ce7b461e35caa015b9492cd4a9063"
+      },
+      "oldPid": 9299,
+      "pid": 65461,
+      "independentVerification": {
+        "receiptEqual": true,
+        "batchId": "955f4db7-d891-4663-8000-e91b21438323",
+        "frozenCommit": "72d496f7c4974cd4637cc8fb52c22ee04177949e",
+        "actualDigestsMatch": true,
+        "startupAndOriginalMainIndexPreserved": true,
+        "identityAndLocalPairPreservedAcrossRestart": true,
+        "state": "online",
+        "http": {
+          "/": 200,
+          "/api/host": 200,
+          "/api/status": 200,
+          "mainAsset": 200
+        },
+        "mainAssetMatchesInstalled": true,
+        "pid": 65461,
+        "verifiedAt": "2026-11-17T06:40:32.598826+00:00"
+      },
+      "checks": [
+        {
+          "command": [
+            "python3",
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests/ci",
+            "-p",
+            "test_*.py"
+          ],
+          "cwd": "/private/tmp/eg-complete/wakeup-ready-adapter/s",
+          "evidence": "/private/tmp/eg-complete/wakeup-ready-adapter/test.log",
+          "exitCode": 0,
+          "logSha256": "f59dbc25cd0e2c8aa04e208f573e4817680c831843814350692d5fbc7c8944a0",
+          "name": "adapter-regression",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "node",
+            "node_modules/vitest/vitest.mjs",
+            "run",
+            "tests/ci",
+            "--maxWorkers",
+            "2",
+            "--testTimeout",
+            "60000"
+          ],
+          "cwd": "/private/tmp/eg-complete/wakeup-ready-contract/s",
+          "evidence": "/private/tmp/eg-complete/wakeup-ready-contract/test.log",
+          "exitCode": 0,
+          "logSha256": "f1305c3c9fac51c6feff0292fe182cb2eef0be62826511c437fb7f719c930048",
+          "name": "build-contract",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "python3",
+            "/private/tmp/remote-gateway-deploy-20261117/wakeup-build-checks.py"
+          ],
+          "cwd": "/private/tmp/eg-complete/wakeup-ready-type/s",
+          "evidence": "/private/tmp/eg-complete/wakeup-ready-type/test.log",
+          "exitCode": 0,
+          "logSha256": "c20ab9c71f59e94ad7d2354fa90b284c541fe4dc3077b8403673ed3002d9d8e2",
+          "name": "typecheck",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "python3",
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests"
+          ],
+          "cwd": "/Users/zhongtian/WorkSpace/release-coordinator",
+          "evidence": "/private/tmp/remote-gateway-deploy-20261117/runtime-budget-recovery-short/test.log",
+          "exitCode": 0,
+          "logSha256": "3a0fe4d5bba8fa4bdf71c5cc16677be1bcc994ed98fb156a5a622855d9929a01",
+          "name": "coordinator-recovery",
+          "reusedUnchangedCoordinator": "5317a816938046f6a64f915b1aac72685d4bace3",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "taskId": "remote-navigation-snapshot-lane-20261117",
+      "batchId": "ec9836a0-b9d5-4c79-8317-f2847fa7d911",
+      "sourceCommit": "728ffc0d42205643bb7828270e1b9cc2d66eaaf8",
+      "frozenCommit": "46e1fd5671ab2a6a723bf5bae261e2009ea46b75",
+      "webUiUpdated": true,
+      "digests": {
+        "archiveSha256": "1ab5bcf003ed69a3198b68814715effa5a92c72c473eef4a06fe1b69a1e2d417",
+        "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+        "frontendDigest": "a5c2faf253ec27fdcf61a2571be5b3b5dd927077caa9aff4afaa5d53085bb210",
+        "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+        "serverDigest": "4c2cdc7a024b46292775132d04066716222ce7b461e35caa015b9492cd4a9063"
+      },
+      "oldPid": 65461,
+      "pid": 34462,
+      "independentVerification": {
+        "receiptEqual": true,
+        "batchId": "ec9836a0-b9d5-4c79-8317-f2847fa7d911",
+        "frozenCommit": "46e1fd5671ab2a6a723bf5bae261e2009ea46b75",
+        "actualDigestsMatch": true,
+        "startupAndOriginalMainIndexPreserved": true,
+        "identityAndLocalPairPreservedAcrossRestart": true,
+        "state": "online",
+        "http": {
+          "/": 200,
+          "/api/host": 200,
+          "/api/status": 200,
+          "mainAsset": 200
+        },
+        "mainAssetMatchesInstalled": true,
+        "pid": 34462,
+        "verifiedAt": "2026-11-17T06:52:46.745076+00:00"
+      },
+      "checks": [
+        {
+          "command": [
+            "python3",
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests/ci",
+            "-p",
+            "test_*.py"
+          ],
+          "cwd": "/private/tmp/eg-complete/lane-ready-adapter/s",
+          "evidence": "/private/tmp/eg-complete/lane-ready-adapter/test.log",
+          "exitCode": 0,
+          "logSha256": "930635c51a51cd01d589674e2106b1bba2e5a0cc19721b25fcbe8b6c38e741f3",
+          "name": "adapter-regression",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "node",
+            "node_modules/vitest/vitest.mjs",
+            "run",
+            "tests/ci",
+            "--maxWorkers",
+            "2",
+            "--testTimeout",
+            "60000"
+          ],
+          "cwd": "/private/tmp/eg-complete/lane-ready-contract/s",
+          "evidence": "/private/tmp/eg-complete/lane-ready-contract/test.log",
+          "exitCode": 0,
+          "logSha256": "dc0cd65c2b12b0cc48a67ee1e4234ba9cc126df40fdd94c22d4c29b9611e0713",
+          "name": "build-contract",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "python3",
+            "/private/tmp/remote-gateway-deploy-20261117/navigation-build-checks.py"
+          ],
+          "cwd": "/private/tmp/eg-complete/lane-ready-type/s",
+          "evidence": "/private/tmp/eg-complete/lane-ready-type/test.log",
+          "exitCode": 0,
+          "logSha256": "9400c8a06a5cb18ff10d963211b841ec00c13465bd44935ac0e2a5e1d49601c9",
+          "name": "typecheck",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "python3",
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests"
+          ],
+          "cwd": "/Users/zhongtian/WorkSpace/release-coordinator",
+          "evidence": "/private/tmp/remote-gateway-deploy-20261117/runtime-budget-recovery-short/test.log",
+          "exitCode": 0,
+          "logSha256": "3a0fe4d5bba8fa4bdf71c5cc16677be1bcc994ed98fb156a5a622855d9929a01",
+          "name": "coordinator-recovery",
+          "reusedUnchangedCoordinator": "5317a816938046f6a64f915b1aac72685d4bace3",
+          "status": "passed"
+        }
+      ]
     }
   ],
   "recoveryScopePolicy": {
@@ -438,11 +850,11 @@
     }
   },
   "eightHourObservation": {
-    "status": "running",
+    "status": "stopped-for-navigation-performance-deployment",
     "sourceCommit": "555cd3c3c5ec68508a8e73c663e538c42c5bce5d",
     "startedAt": "2026-11-17T05:27:56.654Z",
     "expectedEndAt": "2026-11-17T13:27:56.503327+00:00",
-    "sampleCountAtReceipt": 5,
+    "sampleCountAtReceipt": 32,
     "firstSample": {
       "at": "2026-11-17T05:27:56.661Z",
       "gapMs": 0,
@@ -462,27 +874,100 @@
       "sleep or sampling gaps are recorded; no P95 or full-feature acceptance claimed"
     ],
     "latestSampleAtReceipt": {
-      "at": "2026-11-17T05:33:03.790Z",
-      "gapMs": 67839,
+      "at": "2026-11-17T06:05:52.298Z",
+      "gapMs": 122709,
       "state": "online",
-      "rpc": {
-        "connectAndInitializeMs": 3307,
-        "modelListMs": 7987,
-        "modelCount": 9,
-        "readOnly": true
+      "ok": false,
+      "error": "rpc-timeout"
+    },
+    "successfulRpcSamples": 30,
+    "failedRpcSamples": [
+      {
+        "at": "2026-11-17T06:03:49.589Z",
+        "gapMs": 65244,
+        "state": "online",
+        "ok": false,
+        "error": "rpc-timeout"
       },
-      "ok": true
-    }
+      {
+        "at": "2026-11-17T06:05:52.298Z",
+        "gapMs": 122709,
+        "state": "online",
+        "ok": false,
+        "error": "rpc-timeout"
+      }
+    ]
   },
   "remainingAcceptance": [
+    "Remote首次未缓存的列表和会话读取延迟",
     "官方全功能与其他远程机器",
-    "8小时采样最终结果",
-    "自然凭据刷新、睡眠唤醒与P95",
-    "Remote目录首屏约51秒，尚未做性能优化或分位数验收"
+    "8小时采样完整结果（旧监测已因部署中止，32次中30次RPC成功，2次超时）",
+    "自然凭据刷新、睡眠唤醒与P95"
   ],
   "testChatsCreated": 0,
   "inferenceRequests": 0,
   "clientPackagesPublished": false,
   "softwareSourceUpdated": false,
-  "historicalLanOrOtaStarted": false
+  "historicalLanOrOtaStarted": false,
+  "currentFrozenCommit": "46e1fd5671ab2a6a723bf5bae261e2009ea46b75",
+  "navigationPerformance": {
+    "scope": "仅网关Mac经官方Relay，iPhone17Pro尺寸网页；每项单次观察，不代表P95",
+    "currentWeb": {
+      "at": "2026-11-17T06:56:00.145Z",
+      "frozenCommit": "46e1fd5671ab2a6a723bf5bae261e2009ea46b75",
+      "mode": "remote",
+      "viewport": {
+        "width": 402,
+        "height": 874
+      },
+      "coldList": {
+        "stillLoadingAtMs": 31695,
+        "visibleByMs": 48282,
+        "exactCompletion": false
+      },
+      "warmListReloadMs": 5419,
+      "refresh": {
+        "existingListStillVisible": true,
+        "clickAndObservationMs": 310,
+        "freshUpstreamCompletionMeasured": false
+      },
+      "coldConversation": {
+        "stillLoadingAtMs": 12357,
+        "visibleByMs": 54627,
+        "exactCompletion": false
+      },
+      "warmConversation": {
+        "clickToBodyAndEnabledInputMs": 1112,
+        "bodyVisible": true
+      },
+      "testChatsCreated": 0,
+      "inferenceRequests": 0,
+      "overallColdPerformancePassed": false
+    },
+    "originalProjectCatalogMs": 51413,
+    "firstBatchProjectCatalogMs": 5769,
+    "lastColdProjectCatalogMs": 5248,
+    "previousWarmConversationMs": 233,
+    "finalRelatedUiTests": 43,
+    "finalRelatedUiSingleRunAllGreen": true,
+    "priorBroadRunsRetained": {
+      "navigation": {
+        "passed": 235,
+        "failed": 7,
+        "singleRunAllGreen": false
+      },
+      "scheduler": [
+        {
+          "passed": 93,
+          "failed": 1
+        },
+        {
+          "passed": 75,
+          "failed": 2
+        }
+      ],
+      "targetedRechecksPassed": true
+    },
+    "coldAcceptance": "未通过；仍需定位首次未缓存读取、原调度队列与上游等待；不能用热缓存或202受理证明冷读取已修复"
+  }
 }

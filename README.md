@@ -186,11 +186,11 @@ Android 使用固定 PakePlus WebView 容器直接呈现内置共享 Web 页面�
 
 ## 系统架构
 
-Local 导航、历史分页和后台只读刷新沿 canonical Session 直接读取，不经过 Remote 共用的持久队列；所有写操作仍由唯一队列调度。本地后台更新恢复引入Remote前的关注会话通知和托管追问处理，不再因打开过普通会话就持续轮询24小时；旧Local观察记录停止调度、原文件保留。该后台范围恢复已完成源码验证，尚未部署到下述现役网关。本地性能修复已部署，现役12次HTTP／WS读取为2–14ms，其中HTTP未新增持久读取记录，单次网页打开至正文可见约653ms；这些短测不代表P95。详见[实际部署与验收记录](docs/superpowers/plans/evidence/2026-11-17-remote-production-rpc.json)。
+Local 导航、历史分页和后台只读刷新沿 canonical Session 直接读取，不经过 Remote 共用的持久队列；所有写操作仍由唯一队列调度。本地后台更新恢复引入Remote前的关注会话通知和托管追问处理，不再因打开过普通会话就持续轮询24小时；旧Local观察记录停止调度、原文件保留。该后台范围恢复已随首批性能修复部署，现役网关已包含。本地性能修复已部署，现役12次HTTP／WS读取为2–14ms，其中HTTP未新增持久读取记录，单次网页打开至正文可见约653ms；这些短测不代表P95。详见[实际部署与验收记录](docs/superpowers/plans/evidence/2026-11-17-remote-production-rpc.json)。
 
-Remote 导航性能修复正在验证：网关按完整授权上下文保存有界、可丢弃的列表和会话读取快照，通过独立只读入口先展示已有内容及更新时间，后台仍由原队列刷新。原公开 RPC、操作 UUID、写入、停止和审批合同保留；项目目录读取合批并复用共享快照。部署状态和实测数据见[本轮计划](docs/superpowers/plans/2026-11-17-remote-navigation-performance.md)。
+Remote 导航共享快照已部署：网关按完整授权上下文保存有界、可丢弃的列表和会话快照，网页先显示已有内容及更新时间，后台仍由原队列刷新；快照读取不等待浏览器慢RPC。项目固定统计读取合批、成功目录共享，托管读取按原UUID等待完成唤醒。原公开RPC、写入、停止、审批和耐久队列合同保留。实际网页已验证已有对话热打开约1.1秒、已有列表整页重载约5.4秒（含初始化）；手动刷新保持旧列表可见，不代表新上游数据已完成。网关重启后首次未缓存列表在31.7秒仍加载、48.3秒内观测到可见；首次未缓存详情也有明显等待，**冷读取性能尚未达标**。单次观察不是P95，详见[本轮计划](docs/superpowers/plans/2026-11-17-remote-navigation-performance.md)。
 
-官方 Remote 常驻网关及配套 WebUI 已于2026-11-17部署到现有 Mac，现役冻结来源为 `555cd3c3`；已发布的手机安装包尚未包含本轮改动。手机保留多网关，每个网关在原 URL 表单中选择本地或远程；远程模式下网关 Mac 也走官方 Relay。公开路由、目标文件/项目/通知消费者、唯一共享持久队列、手机 outbox 和Remote后台会话观察器已实现；旧配置默认本地，只有“测试并保存”验证后才切换。现役授权和本机配对保留，实际 Remote 网页保存、项目列表和真实对话正文读取通过，公开 WS 断开30秒和 HTTP 间隔120秒的两轮只读 RPC 均成功，期间采样 online；仅实测网关 Mac。Remote 首次项目目录约51秒，尚未完成性能优化。8小时只读监测已于北京时间2026-11-17 13:28启动，预计21:28结束，当前运行中；官方全量功能、其他机器、自然凭据刷新、睡眠唤醒和延迟分位数仍待验收。使用和验证边界见[Mac管理说明](docs/remote-gateway-management.md)、[现行交互约定](docs/interaction-alignment.md)、[设计](docs/superpowers/specs/2026-11-13-remote-gateway.md)、[实施计划](docs/superpowers/plans/2026-11-17-remote-web-scope-recovery.md)和[最新部署收据](docs/superpowers/plans/evidence/2026-11-17-remote-production-rpc.json)。
+官方 Remote 常驻网关及配套 WebUI 已于2026-11-17部署到现有 Mac，当前运行冻结来源为 `46e1fd56`；手机安装包尚未包含本轮改动。手机保留多网关，每个网关在原URL表单中选择本地或远程；远程模式下网关Mac也走官方Relay。只有“测试并保存”验证后才切换，旧配置默认本地。公开路由、消费者、共享持久队列、手机outbox和Remote会话观察器已实现，原授权与本机配对保留。仅实测网关Mac；此前公开WS间隔30秒、HTTP间隔120秒的两轮只读RPC成功，采样online。原8小时监测因性能部署中止，保留32次采样：30次RPC成功、2次超时，未完成8小时验收；本轮按用户要求直接网页验证，未重启长期监测。官方全量功能、其他机器、自然凭据刷新、睡眠唤醒与延迟分位数仍待验收。使用与证据见[Mac管理说明](docs/remote-gateway-management.md)、[现行交互约定](docs/interaction-alignment.md)、[设计](docs/superpowers/specs/2026-11-13-remote-gateway.md)及[最新部署与实测收据](docs/superpowers/plans/evidence/2026-11-17-remote-production-rpc.json)。
 
 ```mermaid
 flowchart LR
