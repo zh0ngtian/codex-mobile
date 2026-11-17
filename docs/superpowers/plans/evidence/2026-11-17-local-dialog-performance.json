@@ -182,7 +182,8 @@
     "originalConcurrentRun": "首次并行86项：71通过、15失败；包含默认5秒时限和macOS别名路径问题，未覆盖或抹去该失败结论。",
     "strictServer": "npx tsc -p tsconfig.server.json --pretty false 通过",
     "serverBuild": "npm run build:server 通过",
-    "integration": "待合入最新main后完成相关回归"
+    "integration": "整合433f3d07后，9文件118项相关回归通过；server/app strict及服务端构建通过。未修改Remote探测补修或部署凭证。"
   },
-  "deployment": "未部署；未构建客户端或发布安装包"
+  "deployment": "未部署；未构建客户端或发布安装包",
+  "integratedMain": "433f3d073082eb85194472696096acd5fde59cb2"
 }
