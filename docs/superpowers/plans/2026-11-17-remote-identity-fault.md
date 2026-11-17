@@ -30,13 +30,19 @@ catch (error) {
 ## 2. 固定来源部署
 
 - [x] 运行四项 ready 门禁：Python 适配器、协调器恢复、`tests/ci` 契约和 typecheck，保存命令、日志与退出码。
-- [ ] 核对最新远端 main 并回归整合结果，提交中文 Conventional Commit、推送固定来源；私有 validation 声明 gateway-only、webUi=false，经协调器 ready 并等待 main/gateway/verify 成功。
-- [ ] 验证持久 receipt 与实际安装文件、原网页摘要、环境配置、token 和原授权身份。
+- [x] 核对最新远端 main 并回归整合结果，提交中文 Conventional Commit、推送固定来源；私有 validation 声明 gateway-only、webUi=false，经协调器 ready 并等待 main/gateway/verify 成功。
+- [x] 验证持久 receipt 与实际安装文件、原网页摘要、环境配置、token 和原授权身份。
 
 ## 3. 原身份恢复与网页计时
 
-- [ ] 通过既有 Mac CLI `remote resume --environment-id <原环境> --installation-id <原安装>` 显式恢复同一完整目标；不删除状态文件、不新建身份或扩大权限。
-- [ ] 核验 online、公开 Remote 只读 RPC 和持续连接；直接网页计时刷新完成与正文及输入框就绪。若仍失败保留真实结果，不能把缓存出现或错误返回视为完成。
-- [ ] 保存脱敏证据，更新计划及现役文档，收尾提交推送；不创建模型测试对话，若创建则及时归档。
+- [x] 通过既有 Mac CLI `remote resume --environment-id <原环境> --installation-id <原安装>` 显式恢复同一完整目标；不删除状态文件、不新建身份或扩大权限。
+- [x] 核验 online、公开 Remote 只读 RPC 和持续连接；直接网页计时刷新完成与正文及输入框就绪。若仍失败保留真实结果，不能把缓存出现或错误返回视为完成。
+- [x] 保存脱敏证据，更新计划及现役文档，收尾提交推送；不创建模型测试对话，若创建则及时归档。
 
 本地结果：先前原两项RED均误报identity-changed，修复后GREEN；最终六个父失效场景及相关6文件293项回归通过，290项适配器、164项构建契约、59项协调器、typecheck、服务端strict和build:server通过。显式resume复核原完整身份后online，generation不变且pending清空。私有日志 `/private/tmp/remote-identity-fault-20261117`。
+
+## 实际部署与验收边界
+
+来源f26378eb580d6cab6932ce3f8966fbf936378048，成功批次bc862e03-c0e3-4bce-8195-d79539a2ffe6，冻结719ea8035f90ffed38f168e14a47d6030968250b。main/gateway/verify及持久receipt、实际文件摘要、原网页、配置/token与原授权身份已核对。重启后online，pending为空。公开Remote WS两轮initialize/model/list成功，客户端断开30秒期间15次采样均online，不代表8小时验收。
+
+真实网页：刷新按钮513ms结束，但设备会话加载标记在84.2秒后仍存在，不能声称全量刷新完成；重启后首次打开既有对话3187ms，正文可见、输入框可用。浏览器438×852，单次观察，未等待历史图片下载，不作为iPhone原生布局或P95验收。未发模型消息或创建测试会话、未发布客户端。后台刷新性能继续未通过。本次最后仅文档收尾，复用已核对的成功部署。详见[脱敏凭证](evidence/2026-11-17-remote-identity-fault.json)。
