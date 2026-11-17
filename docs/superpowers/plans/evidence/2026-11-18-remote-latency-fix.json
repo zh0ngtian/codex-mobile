@@ -1,0 +1,128 @@
+{
+  "date": "2026-11-18",
+  "status": "source-verified-not-deployed",
+  "baseline": {
+    "localMain": "7772b28f5e716d8e5e3759fb1e84a089158502ec",
+    "originMain": "61e0edcc4235b1d6777fae2ff31eb4f2cb0360c8"
+  },
+  "changes": [
+    "同一个授权节点共用一次完整证明；各节点继续独立实时核验",
+    "公开RPC复用内部上下文与最终交付检查",
+    "显式能力声明后前台导航快照未命中在同次请求直接读取",
+    "普通直连读取失败不查询旧操作账本或自动重试",
+    "调度等待计入原请求期限"
+  ],
+  "proofCounts": {
+    "scope": "隔离真实Runtime/HttpSessions；不含外层Scheduler和Observer开销",
+    "warmRead": {
+      "before": 20,
+      "after": 5
+    },
+    "notifications10": {
+      "before": 40,
+      "after": 10
+    },
+    "publicSnapshotHit": {
+      "before": 7,
+      "after": 4
+    }
+  },
+  "controlledComparison": {
+    "method": "两份源码使用相同真实Runtime/HttpSessions与模拟Relay；每次真实verifyBinding额外等待20ms；各运行三次普通读取并处理十条通知",
+    "before": {
+      "label": "before",
+      "proofDelayMs": 20,
+      "reads": [
+        {
+          "ms": 463.21166700000026,
+          "proofs": 20,
+          "status": 200
+        },
+        {
+          "ms": 461.03970800000025,
+          "proofs": 20,
+          "status": 200
+        },
+        {
+          "ms": 459.31566699999985,
+          "proofs": 20,
+          "status": 200
+        }
+      ],
+      "notifications10": {
+        "ms": 876.1392919999998,
+        "proofs": 40
+      },
+      "scope": "隔离真实Runtime/HttpSessions与模拟Relay；每次真实verifyBinding额外等待20ms；不是生产端到端实测"
+    },
+    "after": {
+      "label": "after",
+      "proofDelayMs": 20,
+      "reads": [
+        {
+          "ms": 120.70770900000002,
+          "proofs": 5,
+          "status": 200
+        },
+        {
+          "ms": 115.32083300000022,
+          "proofs": 5,
+          "status": 200
+        },
+        {
+          "ms": 114.31916600000022,
+          "proofs": 5,
+          "status": 200
+        }
+      ],
+      "notifications10": {
+        "ms": 219.2260000000001,
+        "proofs": 10
+      },
+      "scope": "隔离真实Runtime/HttpSessions与模拟Relay；每次真实verifyBinding额外等待20ms；不是生产端到端实测"
+    },
+    "productionEndToEnd": false
+  },
+  "validation": {
+    "primary": {
+      "files": 9,
+      "passed": 365,
+      "command": "NODE_OPTIONS=--no-experimental-webstorage node node_modules/vitest/vitest.mjs run tests/server/http-session-remote.test.ts tests/server/remote-runtime.test.ts tests/server/operation-scheduler.test.ts tests/server/gateway-remote-integration.test.ts tests/server/gateway-queued-rpc.test.ts tests/server/gateway-routing.test.ts tests/server/remote-read-snapshots.test.ts tests/ui/http-transport.test.ts tests/ui/http-request-scheduler.test.ts --maxWorkers=3"
+    },
+    "additional": {
+      "files": 2,
+      "passed": 51,
+      "newCases": 2,
+      "command": "NODE_OPTIONS=--no-experimental-webstorage node node_modules/vitest/vitest.mjs run tests/ui/http-transport.test.ts tests/ui/http-request-scheduler.test.ts",
+      "note": "补充RPC错误和非法快照响应不触发第二次请求；其余为已有用例复验"
+    },
+    "uniqueRegressionPasses": 367,
+    "controlledProbePasses": 2,
+    "checks": {
+      "typecheck": "passed",
+      "serverBuild": "passed",
+      "webBuild": "passed"
+    },
+    "environment": "Node26使用既有NODE_OPTIONS=--no-experimental-webstorage以免宿主localStorage遮蔽jsdom；未修改业务代码处理环境问题",
+    "initialEnvironmentRun": {
+      "files": 6,
+      "passed": 91,
+      "failed": 13,
+      "unhandledErrors": 1,
+      "cause": "未设置上述继承环境参数；后续同范围已通过"
+    },
+    "redEvidence": [
+      "旧会话代码普通读取20次校验，期望5次的回归失败",
+      "旧公开路由命中快照7次校验，期望4次的回归失败",
+      "旧快照能力、直连失败和排队预算回归失败"
+    ],
+    "security": "跨Runtime、私有目标或账号拼接拒绝；既有换号、撤权、代际、取消、超时与交付边界回归通过"
+  },
+  "delivery": {
+    "scope": "source-only",
+    "deployed": false,
+    "mobilePackageBuilt": false,
+    "productionTimingAfterFix": "待部署后复测刷新成功完成和正文可见；不能据隔离结果声明线上耗时或P95",
+    "testConversationCreated": false
+  }
+}

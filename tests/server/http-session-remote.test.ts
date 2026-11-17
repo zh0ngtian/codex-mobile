@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { HttpSessions, type HttpSessionRemoteOptions } from '../../server/http-session.js';
-import { TargetResolver } from '../../server/targets.js';
+import { ResolvedRemoteTarget, TargetResolver } from '../../server/targets.js';
 import { localMediaFiles } from '../../server/media-file-source.js';
 import { performance } from 'node:perf_hooks';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -44,6 +44,29 @@ async function sessionFixture() {
   return { ...f, sessions, remote, frames, call, events, send, attach, respond(fn: typeof respond) { respond = fn; },
     init: (id: string) => call(id, { id: 1, method: 'initialize', params: { clientInfo: { name: 'controlled-session', version: '1' } } }) };
 }
+it('同次会话授权只做一次完整绑定校验，读取与通知仍分别核验', async () => {
+  const f = await sessionFixture(); const id = randomUUID(); await f.init(id);
+  const proof = vi.spyOn((f.runtime as any).bundle.provider, 'verifyBinding');
+  expect((await f.call(id, { id: 2, method: 'account/read', params: { refreshToken: false } })).status).toBe(200);
+  expect(proof).toHaveBeenCalledTimes(5);
+  proof.mockClear();
+  const route = f.frames.find(frame => frame.message?.method === 'initialize');
+  const session = (f.sessions as any).sessions.get(id);
+  for (let index = 0; index < 10; index++) f.send(route, { method: 'thread/name/updated', params: { threadId: 'notification', threadName: String(index) } });
+  await until(() => session.history.filter((item: any) => item.message?.method === 'thread/name/updated').length === 10);
+  await session.notificationQueue;
+  expect(proof).toHaveBeenCalledTimes(10);
+});
+it('合并绑定校验仍拒绝另一Runtime和拼接私有目标或账号的句柄', async () => {
+  const f = await sessionFixture(); const foreign = await fixture();
+  const descriptor = f.remote.target.descriptor;
+  const reference = { mode: 'remote' as const, gatewayId: descriptor.gatewayId, account: descriptor.account, target: descriptor.target };
+  for (const target of [
+    new ResolvedRemoteTarget(descriptor, foreign.runtime, reference),
+    new ResolvedRemoteTarget(descriptor, f.runtime, { ...reference, target: { ...reference.target, installationId: 'other' } }),
+    new ResolvedRemoteTarget(descriptor, f.runtime, { ...reference, account: { ...reference.account, accountUserId: 'other' } }),
+  ]) await expect(f.remote.resolver.authorizeOperationExecution(f.remote.context, undefined, target)).rejects.toMatchObject({ code: 'identity-changed' });
+});
 it.each((['summaries', 'projectless', 'projectless-cursor', 'loaded-page'] as const).flatMap(path => (['deadline', 'signal'] as const).map(kind => ({ path, kind }))))('QUALITY sidebar $path内部等待保留原$kind', async ({ path, kind }) => {
   const f = await sessionFixture(); await f.sessions.hostedReady(); const session = [...(f.sessions as any).sessions.values()][0] as any;
   const healthyId = randomUUID(); await f.init(healthyId); let hold = false; let route: any;

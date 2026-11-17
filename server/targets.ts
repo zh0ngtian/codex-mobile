@@ -100,15 +100,22 @@ export class ResolvedRemoteTarget {
   }
   /** 仅比较可信句柄的实际Runtime归属；持久描述相同不代表同一运行实例。 */
   sharesRuntime(other: ResolvedRemoteTarget): boolean { return this.#runtime === other.#runtime; }
+  /** 复用Resolver本次取得的真实proof，绑定私有reference而非只信任公开descriptor。 */
+  assertBinding(runtime: RemoteRuntime, binding: RemoteRuntimeTargetBinding, reference: RemoteTargetReference, execute: boolean): void {
+    const key = authorization(reference.gatewayId, binding, this.#reference.target);
+    if (this.#runtime !== runtime || this.#reference.gatewayId !== reference.gatewayId || this.descriptor.gatewayId !== reference.gatewayId ||
+      !sameRemoteTarget(this.#reference.target, reference.target) || !sameRemoteTarget(this.descriptor.target, this.#reference.target) ||
+      this.descriptor.generation !== binding.generation || this.descriptor.authorizationKey !== key ||
+      this.descriptor.transportNamespace !== hash(['transport-v1', 'remote', key])) throw new TargetResolutionError('identity-changed');
+    check(this.#reference, binding, execute);
+  }
   private async binding(execute: boolean, signal?: AbortSignal): Promise<RemoteRuntimeTargetBinding> {
     try {
       const status = this.#runtime.status();
       if (status.state === 'closed') throw new TargetResolutionError('closed');
       if (status.state === 'paused') throw new TargetResolutionError('paused');
       const binding = await this.#runtime.readTargetBinding(signal);
-      if (authorization(this.descriptor.gatewayId, binding, this.#reference.target) !== this.descriptor.authorizationKey)
-        throw new TargetResolutionError('identity-changed');
-      check(this.#reference, binding, execute);
+      this.assertBinding(this.#runtime, binding, this.#reference, execute);
       return binding;
     } catch (error) { return failure(error); }
   }
@@ -200,10 +207,10 @@ export class TargetResolver {
     return (await this.operationAuthorization(context, action === 'claim', signal)).assertCurrent;
   }
   /** 后续可信scheduler在最后await后交付正文用assertCurrent；传输组合只能使用无FS assertLive。 */
-  authorizeOperationExecution(context: OperationContext, signal?: AbortSignal) {
-    return this.operationAuthorization(context, true, signal);
+  authorizeOperationExecution(context: OperationContext, signal?: AbortSignal, target?: ResolvedRemoteTarget) {
+    return this.operationAuthorization(context, true, signal, target);
   }
-  private async operationAuthorization(context: OperationContext, execute: boolean, signal?: AbortSignal): Promise<{
+  private async operationAuthorization(context: OperationContext, execute: boolean, signal?: AbortSignal, target?: ResolvedRemoteTarget): Promise<{
     assertCurrent: OperationAuthorizationFence; assertLive: OperationAuthorizationFence;
   }> {
     if (context.mode === 'local') {
@@ -235,6 +242,7 @@ export class TargetResolver {
         hash(['gateway-remote-v1', this.identity.gatewayId, binding.managed, context.target]);
       if (context.businessKey !== businessKey || context.authorizationKey !== authorization(this.identity.gatewayId, { ...binding, generation: context.generation }, context.target))
         throw new TargetResolutionError('identity-changed');
+      target?.assertBinding(runtime, binding, reference, execute);
       return { assertCurrent: () => binding.assertCurrent(reference.target, execute), assertLive: () => binding.assertLive(reference.target, execute) };
     } catch (error) { return failure(error); }
   }

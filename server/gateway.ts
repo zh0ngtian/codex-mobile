@@ -360,6 +360,10 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       return;
     }
     const reference = url.searchParams.get('mode') === 'remote' && url.searchParams.has('target') ? parseTargetReference(JSON.parse(url.searchParams.get('target')!)) : undefined;
+    // RPC入口在handle内核验完整context并在交付前复核，不叠加另一份上下文和授权。
+    if (queuedRpc && ['/api/rpc', '/api/events', '/api/operations', '/api/read-snapshot'].includes(url.pathname)) {
+      await queuedRpc.handle(request, response, url, reference); return;
+    }
     const context = apiRequest && resolver && url.pathname !== '/api/host' ? await resolver.operationContext(reference) : undefined;
     if (context?.mode === 'remote') {
       delivery = await resolver!.authorizeOperation(context, 'read');
@@ -367,9 +371,6 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       response.write = ((...args: any[]) => { delivery(); return Reflect.apply(write, response, args); }) as typeof response.write;
       response.end = ((...args: any[]) => { delivery(); return Reflect.apply(end, response, args); }) as typeof response.end;
       response.writeHead = ((...args: any[]) => { delivery(); return Reflect.apply(writeHead, response, args); }) as typeof response.writeHead;
-    }
-    if (queuedRpc && ['/api/rpc', '/api/events', '/api/operations', '/api/read-snapshot'].includes(url.pathname)) {
-      await queuedRpc.handle(request, response, url, reference); return;
     }
     if (queuedRpc && context && url.pathname === '/api/threads/title-summary' && (context.mode === 'remote' || request.headers['x-codex-operation-id'] || request.method === 'GET')) {
       const id = String(request.headers['x-codex-operation-id'] ?? url.searchParams.get('requestId') ?? randomUUID());

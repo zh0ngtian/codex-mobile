@@ -8,7 +8,7 @@ import { rpcSignatureInput } from '../../server/rpc-replay.js';
 import { canonical } from '../../server/follow-ups.js';
 import { until } from './remote-session-fixture.js';
 import WebSocket from 'ws';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { createGateway } from '../../server/gateway.js';
 import { gatewayRemote } from './fixtures/gateway-remote.js';
 
@@ -34,6 +34,14 @@ it('公开网关目录、HTTP、WS 与附件均沿唯一 Runtime，网关本机�
     expect((await rpc({ id: 1, method: 'initialize', params: { clientInfo: { name: 'test', version: '1' } } })).body.result.codexHome).toBe(f.targetHome);
     await rpc({ method: 'initialized' });
     expect((await rpc({ id: 2, method: 'thread/read', params: { threadId: 'thread' } })).body).toMatchObject({ result: { ok: true } });
+    const proof = vi.spyOn((f.runtime as any).bundle.provider, 'verifyBinding');
+    try {
+      const snapshotUrl = url('/api/read-snapshot'); snapshotUrl.searchParams.set('sessionId', session);
+      const snapshot = await fetch(snapshotUrl, { method: 'POST', body: JSON.stringify({ requestId: randomUUID(), message: { id: 5, method: 'thread/read', params: { threadId: 'thread' } } }) });
+      expect(snapshot.status).toBe(200);
+      expect(await snapshot.json()).toMatchObject({ message: { result: { ok: true } } });
+      expect(proof).toHaveBeenCalledTimes(4);
+    } finally { proof.mockRestore(); }
     const wsUrl = url('/ws'); wsUrl.protocol = 'ws:'; socket = new WebSocket(wsUrl);
     await new Promise<void>((resolve, reject) => { socket!.once('open', resolve); socket!.once('error', reject); });
     const request = (message: unknown) => new Promise<any>((resolve, reject) => {

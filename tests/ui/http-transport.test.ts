@@ -22,6 +22,64 @@ const events = (overrides = {}) => new Response(JSON.stringify({
   updatedAt: Date.now(), reset: false, ...overrides,
 }));
 
+it.each([200, 503, 'rpc-error', 'invalid'] as const)('已声明直连快照能力时同次导航只发一个请求，结果=%s', async outcome => {
+  vi.useFakeTimers(); vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
+  const paths: string[] = []; const messages: any[] = [];
+  const transport = new HttpRpcTransport({ id: `inline-snapshot-${outcome}`, baseUrl: `http://inline-${outcome}.test`, token: '', gatewayMode: 'remote',
+    remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } },
+  }, { fetch: (async (input, init) => {
+    const url = new URL(String(input)); paths.push(url.pathname + url.search);
+    const message = JSON.parse(String(init?.body)).message;
+    if (message.method === 'initialize') return new Response(JSON.stringify({ result: { gateway: { directRequests: true, readSnapshotFallback: true } } }));
+    expect(url.pathname).toBe('/api/read-snapshot'); expect(url.searchParams.get('fallback')).toBe('1');
+    await new Promise(resolve => setTimeout(resolve, 5500));
+    return new Response(JSON.stringify(outcome === 'invalid' ? {} : {
+      message: outcome === 'rpc-error' ? { error: { code: -32000, message: '读取失败' } } : { result: { thread: { id: 'cold' } } },
+      updatedAt: Date.now(), refreshing: false,
+    }), { status: outcome === 503 ? 503 : 200 });
+  }) as typeof fetch }); transports.push(transport);
+  await vi.advanceTimersByTimeAsync(0); transport.addEventListener('message', event => messages.push(JSON.parse((event as MessageEvent).data)));
+  await transport.send(JSON.stringify({ id: 1, method: 'initialize', params: {} })); paths.length = 0;
+  const read = transport.send(JSON.stringify({ id: 2, method: 'thread/read', params: { threadId: 'cold' } }), 10000);
+  const result = read.then(() => 'ok', error => String(error));
+  await vi.advanceTimersByTimeAsync(0);
+  await vi.advanceTimersByTimeAsync(5500);
+  expect(await result).toBe(outcome === 503 ? 'Error: 设备网关返回 503' : outcome === 'invalid' ? 'Error: 快照更新未完成' : 'ok');
+  expect(paths).toHaveLength(1);
+  if (outcome === 200) expect(messages).toContainEqual({ id: 2, result: { thread: { id: 'cold' } } });
+  if (outcome === 'rpc-error') expect(messages).toContainEqual({ id: 2, error: { code: -32000, message: '读取失败' } });
+});
+
+it('直连普通读取503立即失败，不查询旧operation或自动重发', async () => {
+  const paths: string[] = [];
+  const transport = setup((async (input, init) => {
+    const url = new URL(String(input)); paths.push(url.pathname);
+    if (url.pathname === '/api/operations') return new Response('{}', { status: 404 });
+    const message = JSON.parse(String(init?.body)).message;
+    return message.method === 'initialize' ? new Response(JSON.stringify({ result: { gateway: { directRequests: true } } })) : new Response('{}', { status: 503 });
+  }) as typeof fetch, 'direct-read-failure');
+  await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
+  await transport.send(JSON.stringify({ id: 1, method: 'initialize', params: {} })); paths.length = 0;
+  await expect(transport.send(JSON.stringify({ id: 2, method: 'account/read', params: { refreshToken: false } }), 100)).rejects.toThrow('503');
+  expect(paths).toEqual(['/api/rpc']);
+});
+
+it('后台读取等待调度期间耗尽原预算后不再发送', async () => {
+  vi.useFakeTimers(); const methods: string[] = []; let release!: () => void;
+  const transport = setup((async (_input, init) => {
+    const message = JSON.parse(String(init?.body)).message; methods.push(message.method);
+    if (message.method === 'account/read') await new Promise<void>(resolve => { release = resolve; });
+    return new Response(JSON.stringify({ result: {} }));
+  }) as typeof fetch, 'queued-read-deadline');
+  await vi.advanceTimersByTimeAsync(0);
+  const foreground = transport.send(JSON.stringify({ id: 1, method: 'account/read' }), 10000);
+  await vi.advanceTimersByTimeAsync(0);
+  const background = transport.send(JSON.stringify({ id: 2, method: 'thread/list' }), 100, 'background').catch(error => error);
+  await vi.advanceTimersByTimeAsync(101); release(); await foreground;
+  expect(await background).toBeInstanceOf(Error);
+  expect(methods).toEqual(['account/read']);
+});
+
 describe("HTTP 文字传输", () => {
   it.each([null, "/work/project"])("旧创建请求未知时，显式新会话有独立操作标识，cwd=%s", async cwd => {
     const id = `fresh-thread-${cwd ?? 'projectless'}`;

@@ -62,21 +62,7 @@ function assertCall(call: SessionCallOptions) {
 
 async function authorizeSession(remote: HttpSessionRemoteOptions, call: SessionCallOptions) {
   assertRemoteOperation(); assertCall(call);
-  const scope = await remote.target.remoteScope(call.signal);
-  if (remote.context.mode !== 'remote' || !sameRemoteManaged(scope.managed, remote.context.managed) ||
-    Object.hasOwn(scope.managed, 'userId') !== Object.hasOwn(remote.context.managed, 'userId'))
-    throw new TypeError('Remote session 当前传输与原managed身份不一致');
-  // 当前handle与原context恢复授权必须来自resolver的同一真实当前代，不能拼接另一个Runtime。
-  const current = await remote.resolver.resolve({ mode: 'remote', gatewayId: remote.context.gatewayId, account: {
-    accountId: remote.context.managed.accountId, accountUserId: remote.context.managed.accountUserId,
-    ...(Object.hasOwn(remote.context.managed, 'userId') ? { userId: remote.context.managed.userId } : {}),
-  }, target: remote.context.target }, call.signal);
-  const descriptor = remote.target.descriptor;
-  if (!current.sharesRuntime(remote.target) || current.descriptor.generation !== descriptor.generation || current.descriptor.authorizationKey !== descriptor.authorizationKey ||
-    current.descriptor.transportNamespace !== descriptor.transportNamespace)
-    throw new TypeError('Remote session 当前传输不属于resolver当前授权代');
-  const fence = await remote.resolver.authorizeOperationExecution(remote.context, call.signal);
-  assertCall(call); await remote.target.assertCurrent(call.signal);
+  const fence = await remote.resolver.authorizeOperationExecution(remote.context, call.signal, remote.target);
   fence.assertCurrent(); assertCall(call);
   return fence;
 }

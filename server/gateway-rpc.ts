@@ -4,7 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { TargetResolver } from './targets.js';
 import { OperationScheduler } from './operation-scheduler.js';
 import { OperationQueueError, type OperationContext } from './operation-queue.js';
-import { HttpSessions, isReadOnlyRpc, readRpcEnvelope, HOSTED_SESSION_ID, type PublicRpcEnvelope, type SessionCallOptions } from './http-session.js';
+import { HttpSessions, isReadOnlyRpc, readRpcEnvelope, HOSTED_SESSION_ID, type PublicRpcEnvelope, type RpcMessage, type SessionCallOptions } from './http-session.js';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const SIDECHAT = 'c0dec000-0000-4000-8000-000000000002';
@@ -45,6 +45,12 @@ export class GatewayRpc {
       const result = await this.scheduler.protocol({ context, sessionId, requestId: envelope.requestId, message }, call);
       if (result.outcome !== 'response') reject(503, '连接初始化未完成');
       if (!(result.message.result as any)?.gateway?.acceptingOffline) this.sessions.set(binding, await this.scheduler.sessionsForTarget(context, call));
+      if (message.method === 'initialize' && this.scheduler.directRequests && (result.message as RpcMessage).error == null) {
+        const upstream = result.message.result as Record<string, unknown>;
+        return { status: 200, body: { ...result.message, result: { ...upstream,
+          gateway: { ...(upstream?.gateway as object), directRequests: true, readSnapshotFallback: true },
+        } } };
+      }
       return { status: 200, body: result.message };
     }
     let sessions = this.sessions.get(binding);
@@ -105,6 +111,10 @@ export class GatewayRpc {
           if (!value) reject(404, '快照不可用');
         } else {
           value = this.scheduler.snapshots.get(context, envelope.message);
+          if (!value && url.searchParams.get('fallback') === '1' && this.scheduler.directRequests) {
+            const result = await this.dispatch(context, sessionId, envelope, call);
+            value = { message: result.body, updatedAt: Date.now(), refreshing: false };
+          }
           if (!value) reject(404, '快照尚未建立');
         }
         fence();

@@ -8,6 +8,38 @@ import { GatewayRemoteServices } from '../../server/gateway-remote-services.js';
 import { OperationScheduler } from '../../server/operation-scheduler.js';
 import { gatewayRemote } from './fixtures/gateway-remote.js';
 
+it('直连导航快照未命中在同次请求读取，命中不重复请求上游且撤权后不可读', async () => {
+  const f = await gatewayRemote(); let services: GatewayRemoteServices | undefined;
+  const scheduler = new OperationScheduler({ directory: join(f.gatewayHome, 'ledger'), gatewayId: 'gateway', gatewayCodexHome: f.gatewayHome,
+    directRequests: true, resolver: f.resolver, upstreamUrl: 'ws://127.0.0.1:1', remoteConsumers: async (_context, target, call) => {
+      services ??= await GatewayRemoteServices.create(target, f.gatewayHome, call.signal);
+      return { projections: services.projections, sidechatReplay: services.sidechatReplay };
+    } });
+  const rpc = new GatewayRpc(f.resolver, scheduler);
+  const server = createServer((req, res) => { void rpc.handle(req, res, new URL(req.url!, 'http://test'), f.reference); });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${(server.address() as any).port}`, sessionId = randomUUID();
+  const post = async (path: string, message: unknown) => {
+    const response = await fetch(`${origin}${path}${path.includes('?') ? '&' : '?'}sessionId=${sessionId}`, {
+      method: 'POST', body: JSON.stringify({ requestId: randomUUID(), message }),
+    });
+    return { status: response.status, body: await response.json() as any };
+  };
+  try {
+    const initialized = await post('/api/rpc', { id: 1, method: 'initialize', params: { clientInfo: { name: 'navigation', version: '1' } } });
+    expect(initialized.body.result.gateway).toMatchObject({ directRequests: true, readSnapshotFallback: true });
+    await post('/api/rpc', { method: 'initialized' });
+    const message = { id: 7, method: 'thread/read', params: { threadId: 'cold' } };
+    expect(await post('/api/read-snapshot?fallback=1', message)).toMatchObject({ status: 200, body: { message: { id: 7, result: { ok: true } }, refreshing: false } });
+    expect(await post('/api/read-snapshot?fallback=1', { ...message, id: 8 })).toMatchObject({ status: 200, body: { message: { id: 8, result: { ok: true } } } });
+    expect(f.frames.filter(frame => frame.method === 'thread/read')).toHaveLength(1);
+    await f.runtime.close();
+    expect((await post('/api/read-snapshot?fallback=1', message)).status).not.toBe(200);
+  } finally {
+    server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); await scheduler.close(); await services?.close();
+  }
+}, 15000);
+
 it('公开 HTTP 请求经唯一耐久队列；查询原 UUID 不重复发送且不可跨 Session 读取', async () => {
   const f = await gatewayRemote(); let services: GatewayRemoteServices | undefined;
   const scheduler = new OperationScheduler({ directory: join(f.gatewayHome, 'ledger'), gatewayId: 'gateway', gatewayCodexHome: f.gatewayHome,

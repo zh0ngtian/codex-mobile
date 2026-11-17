@@ -59,6 +59,8 @@ export class HttpRpcTransport extends EventTarget {
   private cursor = 0;
   private epoch = "";
   private initialized = false;
+  private directRequests = false;
+  private snapshotFallback = false;
   private polling = false;
   private catchingUp = true;
   private catchUpAnnounced = false;
@@ -192,13 +194,21 @@ export class HttpRpcTransport extends EventTarget {
     }
   }
 
-  private async readSnapshot(message: RpcMessage, original: RpcMessage, timeoutMs: number, refreshSnapshot: boolean): Promise<boolean> {
+  private async readSnapshot(message: RpcMessage, original: RpcMessage, timeoutMs: number, refreshSnapshot: boolean, foreground: boolean): Promise<boolean> {
     if (this.config.gatewayMode !== 'remote' || !snapshotRead(message)) return false;
+    const inline = this.snapshotFallback && foreground;
     const body = JSON.stringify({ requestId: transportUuid(), message });
     let cached: any;
-    try { cached = await this.fetchJson('/api/read-snapshot', { method: 'POST', headers: { 'content-type': 'application/json' }, body }, {}, Math.min(timeoutMs, 5000)); }
-    catch (error) { if ([401, 403, 409].includes((error as any)?.status)) throw error; return false; }
-    if (!cached?.message || cached.message.error || cached.message.result == null || !Number.isFinite(cached.updatedAt)) return false;
+    try { cached = await this.fetchJson('/api/read-snapshot', { method: 'POST', headers: { 'content-type': 'application/json' }, body }, inline ? { fallback: '1' } : {}, inline ? timeoutMs : Math.min(timeoutMs, 5000)); }
+    catch (error) { if (inline || [401, 403, 409].includes((error as any)?.status)) throw error; return false; }
+    if (inline && cached?.message?.error) {
+      if (message.method === 'mobile/turns/details' && cached.message.error.code === -32601) { this.detailsUnsupported = true; return false; }
+      this.emit({ ...cached.message, id: original.id }); return true;
+    }
+    if (!cached?.message || cached.message.error || cached.message.result == null || !Number.isFinite(cached.updatedAt)) {
+      if (inline) throw new Error(t('快照更新未完成'));
+      return false;
+    }
     if (refreshSnapshot) this.emit({ method: 'mobile/readSnapshot/status', params: { request: original, updatedAt: cached.updatedAt, refreshing: cached.refreshing === true } });
     this.emit({ ...cached.message, id: original.id });
     if (refreshSnapshot && cached.refreshing === true) {
@@ -234,13 +244,17 @@ export class HttpRpcTransport extends EventTarget {
       if (original.id != null && snapshotRead(message)) {
         await this.restored;
         if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
-        // 已有快照无需等待慢RPC占用的浏览器名额；未命中及后台刷新仍走原调度。
-        if (await this.readSnapshot(message, original, Math.max(1, deadline - Date.now()), refreshSnapshot)) return;
+        // 前台导航可由网关在同次请求补齐缺失快照；后台读取保留原调度配额。
+        if (await this.readSnapshot(message, original, Math.max(1, deadline - Date.now()), refreshSnapshot, priority === 'foreground')) return;
         remainingTimeoutMs = Math.max(1, deadline - Date.now());
       }
     }
     return httpRequestScheduler.run(new URL(this.config.baseUrl).origin, priority, this.requestLifetime.signal,
-      () => this.sendNow(raw, remainingTimeoutMs, operationKey));
+      () => {
+        const remaining = Math.min(remainingTimeoutMs, deadline - Date.now());
+        if (remaining <= 0) throw new Error(t('{method} 请求超时', { method: JSON.parse(raw).method ?? 'HTTP' }));
+        return this.sendNow(raw, remaining, operationKey);
+      });
   }
 
   private async sendNow(raw: string, timeoutMs: number, operationKey?: string): Promise<void> {
@@ -310,6 +324,7 @@ export class HttpRpcTransport extends EventTarget {
           }
         } catch (reason) {
           failure = reason;
+          if (this.directRequests && !signature) throw reason;
           if ([401, 409, 404, 400].includes((reason as { status?: number }).status ?? 0)) {
             // 旧未知项可能早已执行；新一轮拒绝不能撤销早先的受理事实。
             if (mayHaveBeenAccepted && signature) throw new HttpOperationPendingError(requestId, operation.message, reason);
@@ -335,6 +350,11 @@ export class HttpRpcTransport extends EventTarget {
         throw failure ?? new Error(t("设备尚未连接，请稍后重试"));
       }
       if (signature) { this.writes.delete(signature); this.saveWrites(); if (operation.legacyOutbox) await gatewayOutbox.remove(requestId); }
+      if (message.method === 'initialize' && !response.error) {
+        const gateway = (response.result as { gateway?: { directRequests?: boolean; readSnapshotFallback?: boolean } } | undefined)?.gateway;
+        this.directRequests = gateway?.directRequests === true;
+        this.snapshotFallback = gateway?.readSnapshotFallback === true;
+      }
       if (message.id != null && message.method) this.emit({ ...response, id: message.id });
       else if (response.error) throw new Error(response.error.message);
       if (message.method === "initialized") {
