@@ -58,6 +58,7 @@ export class OperationScheduler {
   readonly #queue: OperationQueue;
   readonly #authorization = new AsyncLocalStorage<Map<string, OperationAuthorizationFence | unknown>>();
   readonly #controllers = new Set<AbortController>();
+  readonly #dispatchClaims = new Map<string, string>();
   readonly #calls = new Set<Promise<unknown>>();
   readonly #sessions = new Map<string, HttpSessions>();
   readonly #sessionOpenings = new Map<string, Promise<HttpSessions>>();
@@ -111,7 +112,14 @@ export class OperationScheduler {
         const route = (value: OperationContext) => value.mode === 'local' ? value :
           { mode: value.mode, gatewayId: value.gatewayId, businessKey: value.businessKey, managed: value.managed, target: value.target };
         if (key(route(context)) !== key(route(routeContext))) throw new OperationQueueError('rpc-binding-conflict', 409);
-        const record = await this.ledger([context], ['read'], call, () => this.#queue.read(id));
+        const { record, dispatching } = await this.ledger([context], ['read'], call, async () => {
+          const claimToken = this.#dispatchClaims.get(id);
+          const record = await this.#queue.read(id);
+          // 与原记录一并冻结在途快照，后续授权等待期间完成也不能误报unknown。
+          const dispatching = record.state === 'uncertain' && !!record.claimToken &&
+            (claimToken === record.claimToken || this.#dispatchClaims.get(id) === record.claimToken);
+          return { record, dispatching };
+        });
         if (record.rpcReceipt?.sessionId !== sessionId || record.rpcReceipt.requestId !== id) throw new OperationQueueError('rpc-binding-conflict', 409);
         if (expected && (record.rpcReceipt.submissionSignature ?? record.rpcReceipt.signature) !== createHash('sha256').update(rpcSignatureInput(expected.message, expected.epoch)).digest('hex')) throw new OperationQueueError('rpc-binding-conflict', 409);
         let response: RpcMessage | undefined;
@@ -122,7 +130,7 @@ export class OperationScheduler {
         if (record.state === 'cancelled') response = { error: { code: -32800, message: '未发送的操作已取消' } };
         const fence = await this.#options.resolver.authorizeOperation(context, 'read', call.signal);
         delivery = () => { fence(); this.assertOpen(); if (call.signal?.aborted || performance.now() >= call.deadline) throw new Error('操作查询预算已结束'); };
-        const value = { status: response ? 'completed' : ['queued', 'claimed'].includes(record.state) ? 'pending' : 'uncertain',
+        const value = { status: response ? 'completed' : ['queued', 'claimed'].includes(record.state) || dispatching ? 'pending' : 'uncertain',
           operation: { id: record.id, revision: record.revision, state: record.state, receiveOrder: record.receiveOrder },
           ...(response ? { message: response } : {}) };
         delivery(); return value;
@@ -616,6 +624,8 @@ export class OperationScheduler {
     fence.assertCurrent(); this.assertOpen(); return sessions;
   }
   private async execute(record: OperationRecord): Promise<void> {
+    const claimToken = record.claimToken!;
+    this.#dispatchClaims.set(record.id, claimToken);
     let potential = false;
     let preparedClaim: OperationClaim | undefined;
     try {
@@ -685,6 +695,8 @@ export class OperationScheduler {
         if (!preparedClaim || preparedClaim.revision !== record.revision) await this.cleanupClaim({ id: record.id, revision: record.revision, context: record.context, claimToken: record.claimToken! });
       }
       throw error;
+    } finally {
+      if (this.#dispatchClaims.get(record.id) === claimToken) this.#dispatchClaims.delete(record.id);
     }
   }
   private cleanupClaim(claim: OperationClaim): Promise<void> {
