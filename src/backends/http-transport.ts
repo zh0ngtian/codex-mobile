@@ -191,7 +191,7 @@ export class HttpRpcTransport extends EventTarget {
     try { cached = await this.fetchJson('/api/read-snapshot', { method: 'POST', headers: { 'content-type': 'application/json' }, body }, {}, Math.min(timeoutMs, 5000)); }
     catch (error) { if ([401, 403, 409].includes((error as any)?.status)) throw error; return false; }
     if (!cached?.message || cached.message.error || cached.message.result == null || !Number.isFinite(cached.updatedAt)) return false;
-    this.emit({ method: 'mobile/readSnapshot/status', params: { updatedAt: cached.updatedAt, refreshing: cached.refreshing === true } });
+    this.emit({ method: 'mobile/readSnapshot/status', params: { request: original, updatedAt: cached.updatedAt, refreshing: cached.refreshing === true } });
     this.emit({ ...cached.message, id: original.id });
     if (cached.refreshing === true) {
       const binding = JSON.stringify({ method: message.method, params: message.params });
@@ -201,9 +201,9 @@ export class HttpRpcTransport extends EventTarget {
             const fresh = await this.fetchJson('/api/read-snapshot', { method: 'POST', headers: { 'content-type': 'application/json' }, body }, { refresh: '1' }, 60000);
             if (fresh?.message?.result == null || fresh.message.error || !Number.isFinite(fresh.updatedAt)) throw new Error('快照更新未完成');
             if (JSON.stringify(fresh.message.result) !== JSON.stringify(cached.message.result)) this.emit({ method: 'mobile/readSnapshot/updated', params: { request: original, response: fresh.message, updatedAt: fresh.updatedAt } });
-            this.emit({ method: 'mobile/readSnapshot/status', params: { updatedAt: fresh.updatedAt, refreshing: false } });
+            this.emit({ method: 'mobile/readSnapshot/status', params: { request: original, updatedAt: fresh.updatedAt, refreshing: false } });
           } catch {
-            this.emit({ method: 'mobile/readSnapshot/status', params: { updatedAt: cached.updatedAt, refreshing: false, failed: true } });
+            this.emit({ method: 'mobile/readSnapshot/status', params: { request: original, updatedAt: cached.updatedAt, refreshing: false, failed: true } });
           }
         });
         this.snapshotRefreshes.set(binding, work);

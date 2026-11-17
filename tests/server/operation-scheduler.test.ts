@@ -685,3 +685,37 @@ it('原回复在公开查询最后授权等待期间完成时，不把先前在�
   expect((await query).status).not.toBe('uncertain');
   expect(await scheduler.operation(input.id, input.context, input.sessionId)).toMatchObject({ status: 'completed' });
 });
+
+it('历史未知只读按原revision限频查账，未知写每轮仍查且新导航继续', async () => {
+  const f = await setup(); const scheduler = f.create(); const queue = f.queue();
+  const staleRead = f.input(f.localContext, 'old-read', 'thread/read');
+  const staleWrite = f.input(f.localContext, 'old-write');
+  for (const input of [staleRead, staleWrite]) {
+    await scheduler.submit(input);
+    const claim = await queue.claimNext(input.context.businessKey, { isRead: () => true });
+    expect(claim?.id).toBe(input.id);
+    await queue.markPotentialSend(input.id, claim!.revision, claim!.claimToken!);
+  }
+  const reads = vi.spyOn(OperationQueue.prototype, 'read');
+  await scheduler.runOnce();
+  expect(reads.mock.calls.filter(([id]) => id === staleRead.id)).toHaveLength(1);
+  reads.mockClear();
+  const fresh = f.input(f.localContext, 'new-navigation', 'thread/read'); await scheduler.submit(fresh);
+  await scheduler.runOnce();
+  expect(reads.mock.calls.filter(([id]) => id === staleRead.id)).toHaveLength(0);
+  expect(reads.mock.calls.filter(([id]) => id === staleWrite.id)).toHaveLength(1);
+  expect((await queue.read(fresh.id)).state).toBe('succeeded');
+  expect((await queue.read(staleRead.id)).state).toBe('uncertain');
+  expect(f.localMessages.filter(m => m.method === 'turn/start')).toHaveLength(0);
+  expect(f.localMessages.filter(m => m.method === 'thread/read')).toHaveLength(1);
+  const original = await queue.read(staleRead.id);
+  await queue.settle(original.id, original.revision, original.claimToken!, 'failed');
+  reads.mockClear(); await scheduler.runOnce();
+  expect(reads.mock.calls.filter(([id]) => id === staleRead.id)).toHaveLength(1);
+  const now = performance.now.bind(performance);
+  const clock = vi.spyOn(performance, 'now').mockImplementation(() => now() + 30_001);
+  try {
+    reads.mockClear(); await scheduler.runOnce();
+    expect(reads.mock.calls.filter(([id]) => id === staleRead.id)).toHaveLength(1);
+  } finally { clock.mockRestore(); }
+});

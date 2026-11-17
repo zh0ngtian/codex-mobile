@@ -450,6 +450,7 @@ function BackendWorkspace({
   const { requests, approval, userAnswers } = approvalRequests;
   useEffect(() => { approvalRequests.syncAsyncQuestions(active); }, [active, approvalRequests.syncAsyncQuestions]);
   const [readSnapshotStatus, setReadSnapshotStatus] = useState("");
+  const [threadReadSnapshotStatus, setThreadReadSnapshotStatus] = useState<{ threadId: string; status: string } | null>(null);
   const [syncState, setSyncState] = useState<{ updatedAt: number | null; stale: boolean } | null>(null);
   const [models, setModels] = useState<AnyRecord[]>([]);
   const [permissionProfiles, setPermissionProfiles] = useState<AnyRecord[]>([]);
@@ -1390,6 +1391,7 @@ function BackendWorkspace({
     invalidateUploadUsage();
     setSyncState(null);
     setReadSnapshotStatus("");
+    setThreadReadSnapshotStatus(null);
     let manager: BackendConnectionManager;
     manager = new BackendConnectionManager({
       onConnection: (_backendId, status, connectionError) => {
@@ -1441,7 +1443,11 @@ function BackendWorkspace({
           const params = (message.params ?? {}) as AnyRecord;
           if (message.method === 'mobile/readSnapshot/status') {
             if (disposed || client !== clientRef.current || !Number.isFinite(params.updatedAt)) return;
-            setReadSnapshotStatus(t('快照更新于 {time} · {state}', { time: new Date(params.updatedAt).toLocaleTimeString(), state: params.failed ? t('更新失败，保留已有内容') : params.refreshing ? t('正在后台更新') : t('已同步') }));
+            const status = t('快照更新于 {time} · {state}', { time: new Date(params.updatedAt).toLocaleTimeString(), state: params.failed ? t('更新失败，保留已有内容') : params.refreshing ? t('正在后台更新') : t('已同步') });
+            const threadId = params.request?.params?.threadId;
+            if (typeof threadId === 'string') {
+              if (threadId === activeThreadTargetRef.current) setThreadReadSnapshotStatus({ threadId, status });
+            } else setReadSnapshotStatus(status);
             return;
           }
           if (message.method === 'mobile/readSnapshot/updated') {
@@ -4773,7 +4779,7 @@ function BackendWorkspace({
           client={clientRef.current}
           error={error}
           syncState={syncState}
-          readSnapshotStatus={readSnapshotStatus}
+          readSnapshotStatus={threadReadSnapshotStatus?.threadId === active?.id ? threadReadSnapshotStatus?.status : undefined}
           draft={draft}
           draftImages={draftImages}
           draftFiles={draftFiles}
