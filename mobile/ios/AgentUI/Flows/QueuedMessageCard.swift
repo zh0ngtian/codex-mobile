@@ -57,6 +57,8 @@ struct QueuedMessageCard: View {
                 HStack(spacing: 12) {
                     Button(preferences.text("保存", "Save"), action: saveEdit)
                         .buttonStyle(.borderedProminent)
+                        .tint(AgentTheme.ink)
+                        .foregroundStyle(AgentTheme.page)
                         .frame(minHeight: 44)
                         .disabled(!canEdit || !editedHasContent || savingEdit)
                     Button(preferences.text("取消编辑", "Cancel edit"), action: cancelEdit)

@@ -1674,6 +1674,15 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertLessThan(cancel.frame.minX, edit.frame.minX)
         XCTAssertLessThan(edit.frame.maxX, steer.frame.minX)
         captureConversation("队列按钮-同排", app: app)
+        edit.tap()
+        let save = app.buttons["保存"]
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        XCTAssertTrue(save.isEnabled)
+        XCTAssertTrue(app.buttons["取消编辑"].exists)
+        captureConversation("队列编辑-保存文字可见", app: app)
+        app.buttons["取消编辑"].tap()
+        XCTAssertTrue(edit.waitForExistence(timeout: 5))
+        XCTAssertFalse(save.exists)
     }
 
     func testUserBodyLongPressShowsMessageMenuThenSelectsText() {
