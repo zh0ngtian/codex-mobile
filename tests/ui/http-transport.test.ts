@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HttpRpcTransport } from "../../src/backends/http-transport";
+import { gatewayOutbox } from "../../src/backends/outbox";
 import { AppServerClient } from "../../src/app-server/client";
 
 const transports: HttpRpcTransport[] = [];
@@ -658,4 +659,42 @@ it('Sidechat在HTTP请求仍待确认时也不把正文或指令写入localStora
  const disk = Object.keys(localStorage).map(key => localStorage.getItem(key)).join('');
  expect(disk).not.toContain('SIDECHAT_LOCAL_PRIVATE_BODY');
  release!(); await pending;
+});
+
+it('Remote导航先交付网关共享快照，后台更新另发通知且不重复公共RPC', async () => {
+  vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
+  let finish!: (response: Response) => void; const calls: string[] = [];
+  const transport = new HttpRpcTransport({ id: 'snapshot-test', baseUrl: 'http://snapshot.test', token: 'test', gatewayMode: 'remote', remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } }, { sessionId: '12345678-1234-4234-8234-123456789abc', fetch: (async (input) => {
+    const url = new URL(String(input)); calls.push(url.pathname);
+    if (url.searchParams.has('refresh')) return new Promise<Response>(resolve => { finish = resolve; });
+    return new Response(JSON.stringify({ message: { result: { thread: { id: 't', name: 'saved' } } }, updatedAt: 100, refreshing: true }));
+  }) as typeof fetch }); transports.push(transport);
+  await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
+  const messages: any[] = []; transport.addEventListener('message', event => messages.push(JSON.parse((event as MessageEvent).data)));
+  await transport.send(JSON.stringify({ id: 3, method: 'thread/read', params: { threadId: 't' } }));
+  expect(messages.find(value => value.id === 3)).toMatchObject({ result: { thread: { name: 'saved' } } });
+  expect(calls).not.toContain('/api/rpc');
+  finish(new Response(JSON.stringify({ message: { result: { thread: { id: 't', name: 'fresh' } } }, updatedAt: 200, refreshing: false })));
+  await vi.waitFor(() => expect(messages.find(value => value.method === 'mobile/readSnapshot/updated')).toMatchObject({ params: { response: { result: { thread: { name: 'fresh' } } }, updatedAt: 200 } }));
+});
+
+it('旧Remote网关无快照入口时仍通过原RPC完成导航', async () => {
+  vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]); const paths: string[] = [];
+  const transport = new HttpRpcTransport({ id: 'old-snapshot-gateway', baseUrl: 'http://old-snapshot.test', gatewayMode: 'remote', remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } }, { fetch: (async (input) => {
+    const path = new URL(String(input)).pathname; paths.push(path);
+    return path === '/api/read-snapshot' ? new Response('{}', { status: 404 }) : new Response(JSON.stringify({ result: { thread: { id: 't' } } }));
+  }) as typeof fetch }); transports.push(transport);
+  await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
+  const messages: any[] = []; transport.addEventListener('message', event => messages.push(JSON.parse((event as MessageEvent).data)));
+  await transport.send(JSON.stringify({ id: 4, method: 'thread/read', params: { threadId: 't' } }));
+  expect(paths).toEqual(['/api/read-snapshot', '/api/rpc']); expect(messages).toContainEqual({ id: 4, result: { thread: { id: 't' } } });
+});
+it('后台快照失败保留已交付内容并通知失败，不发伪造更新', async () => {
+  vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
+  const transport = new HttpRpcTransport({ id: 'failed-snapshot-gateway', baseUrl: 'http://failed-snapshot.test', gatewayMode: 'remote', remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } }, { fetch: (async (input) => new URL(String(input)).searchParams.has('refresh') ? new Response('{}', { status: 503 }) : new Response(JSON.stringify({ message: { result: { thread: { id: 't' } } }, updatedAt: 100, refreshing: true }))) as typeof fetch }); transports.push(transport);
+  await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
+  const messages: any[] = []; transport.addEventListener('message', event => messages.push(JSON.parse((event as MessageEvent).data)));
+  await transport.send(JSON.stringify({ id: 5, method: 'thread/read', params: { threadId: 't' } }));
+  await vi.waitFor(() => expect(messages).toContainEqual({ method: 'mobile/readSnapshot/status', params: { updatedAt: 100, refreshing: false, failed: true } }));
+  expect(messages.filter(value => value.id === 5)).toEqual([{ id: 5, result: { thread: { id: 't' } } }]); expect(messages.some(value => value.method === 'mobile/readSnapshot/updated')).toBe(false);
 });

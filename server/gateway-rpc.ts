@@ -1,3 +1,4 @@
+import { snapshotRead } from './remote-read-snapshots.js';
 import { performance } from 'node:perf_hooks';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { TargetResolver } from './targets.js';
@@ -84,7 +85,21 @@ export class GatewayRpc {
       if (!UUID.test(sessionId) || [HOSTED_SESSION_ID, SIDECHAT].includes(sessionId)) reject(400, 'Session ID 无效或保留');
       const context = await this.resolver.operationContext(reference, controller.signal);
       let value: unknown; let status = 200;
-      if (url.pathname === '/api/rpc' && request.method === 'POST') {
+      if (url.pathname === '/api/read-snapshot' && request.method === 'POST') {
+        const envelope = await readRpcEnvelope(request);
+        if (context.mode !== 'remote' || !snapshotRead(envelope.message)) reject(400, '只允许Remote导航快照读取');
+        const fence = await this.resolver.authorizeOperation(context, 'read', controller.signal); fence();
+        if (url.searchParams.get('refresh') === '1') {
+          const message = await this.scheduler.hostedRpc(context, envelope.message, call);
+          if (message.error != null) reject(503, '快照更新失败');
+          value = this.scheduler.snapshots.get(context, envelope.message);
+          if (!value) reject(404, '快照不可用');
+        } else {
+          value = this.scheduler.snapshots.get(context, envelope.message);
+          if (!value) reject(404, '快照尚未建立');
+        }
+        fence();
+      } else if (url.pathname === '/api/rpc' && request.method === 'POST') {
         const envelope = await readRpcEnvelope(request);
         const result = await this.dispatch(context, sessionId, envelope, call); status = result.status; value = result.body;
       } else if (url.pathname === '/api/events' && request.method === 'GET') {

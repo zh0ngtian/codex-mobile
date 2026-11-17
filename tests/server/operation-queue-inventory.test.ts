@@ -174,3 +174,19 @@ it('真实文件读取边界EIO不能变为空目录，恢复后仍发现原项'
   expect((await readFile(f.path)).equals(before)).toBe(true);
   expect((await f.reopen().inventory())[0]!.operations[0]!.id).toBe(original.id);
 });
+
+
+it('相同账本字节的重复查询只校验一次，但外部修改仍重新校验且返回对象隔离', async () => {
+  const f = await fixture(); const operation = input(); await f.queue.submit(operation);
+  const reopened = f.reopen();
+  const descriptors = vi.spyOn(Object, 'getOwnPropertyDescriptors');
+  await reopened.read(operation.id); const first = descriptors.mock.calls.length;
+  expect(first).toBeGreaterThan(0); descriptors.mockClear();
+  const record = await reopened.read(operation.id);
+  const repeated = descriptors.mock.calls.length; expect(repeated).toBe(0);
+  (record.body as any).secret = 'caller mutation';
+  expect((await reopened.read(operation.id)).body).toEqual(operation.body);
+  const raw = JSON.parse(await readFile(f.path, 'utf8')); raw.records[0].revision = 0;
+  await writeFile(f.path, JSON.stringify(raw), { mode: 0o600 });
+  await expect(reopened.read(operation.id)).rejects.toThrow();
+});

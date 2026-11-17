@@ -1,3 +1,4 @@
+import { RemoteReadSnapshots } from './remote-read-snapshots.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
@@ -54,6 +55,7 @@ const abandonedClaims = new Map<string, { directory: string; gatewayId: string; 
 
 /** 公开 RPC、托管业务和追问共用的唯一耐久调度 owner。 */
 export class OperationScheduler {
+  readonly snapshots = new RemoteReadSnapshots();
   readonly #options: Options;
   readonly #queue: OperationQueue;
   readonly #authorization = new AsyncLocalStorage<Map<string, OperationAuthorizationFence | unknown>>();
@@ -139,7 +141,7 @@ export class OperationScheduler {
         if (expected && (record.rpcReceipt.submissionSignature ?? record.rpcReceipt.signature) !== createHash('sha256').update(rpcSignatureInput(expected.message, expected.epoch)).digest('hex')) throw new OperationQueueError('rpc-binding-conflict', 409);
         let response: RpcMessage | undefined;
         if (['succeeded', 'failed'].includes(record.state) && !record.failure) {
-          const result = await this.readResult(id, call); if (result.outcome === 'response') response = result.message;
+          const result = await this.readResult(id, call, record); if (result.outcome === 'response') response = result.message;
         }
         if (record.failure === 'control-expired') response = { error: { code: -32001, message: '原控制已过期，未发送' } };
         if (record.state === 'cancelled') response = { error: { code: -32800, message: '未发送的操作已取消' } };
@@ -595,6 +597,7 @@ export class OperationScheduler {
         if (message) result = { ...result, status: 'completed', message };
       }
       if (result.status !== 'completed' || !result.message || (record.state === 'failed' && result.message.error != null)) return;
+      this.snapshots.put(record.context, rpc.message, result.message);
       if (result.message.error == null && (record.settings as any)?.source === 'public-rpc-v1') await this.#options.onResponse?.(record.context, rpc.message, result.message, rpc.sessionId);
       await this.ledger([context], ['transition'], call, () => this.#queue.settle(record.id, record.revision, record.claimToken!, result.message!.error != null ? 'failed' : 'succeeded', rpc.message.method === 'thread/start' && result.message!.error == null ? (result.message!.result as any)?.thread?.id : undefined));
     });
@@ -699,6 +702,7 @@ export class OperationScheduler {
             this.#results.set(record.id, result);
             if (this.#results.size > 128) this.#results.delete(this.#results.keys().next().value!);
           }
+          this.snapshots.put(record.context, rpc.message, result.message);
           if (result.message.error == null && (record.settings as any)?.source === 'public-rpc-v1') await this.#options.onResponse?.(record.context, rpc.message, result.message, rpc.sessionId);
           await this.ledger([record.context], ['transition'], call, () => this.#queue.settle(record.id, marked.revision, record.claimToken!, result.message.error != null ? 'failed' : 'succeeded', rpc.message.method === 'thread/start' && result.message.error == null ? (result.message.result as any)?.thread?.id : undefined));
         }
@@ -739,11 +743,11 @@ export class OperationScheduler {
       });
     } finally { clearTimeout(timer); }
   }
-  private async readResult(id: string, original?: SessionCallOptions): Promise<SessionDispatchResult> {
+  private async readResult(id: string, original?: SessionCallOptions, authorizedRecord?: OperationRecord): Promise<SessionDispatchResult> {
     let finalFence: OperationAuthorizationFence | undefined; let finalCheck = () => {}; const parents = captureRemoteOperation();
     const result = await this.budget(async call => {
-      const context = await this.#queue.locate(id);
-      const record = await this.ledger([context], ['read'], call, () => this.#queue.read(id));
+      const context = authorizedRecord?.context ?? await this.#queue.locate(id);
+      const record = authorizedRecord ?? await this.ledger([context], ['read'], call, () => this.#queue.read(id));
       const rpc = record.rpcReceipt ?? body(record); if (!rpc) throw new Error('旧记录缺少原RPC收据定位');
       let result: SessionDispatchResult;
       const actual = this.#results.get(id);

@@ -669,3 +669,6 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .thread-rename-sheet .action-spinner { width: 16px; height: 16px; }
 
 .thread-rename-sheet .thread-rename-summary { width: 100%; }
+
+.read-snapshot-status { display: block; color: #666; font-size: 11px; line-height: 1.35; padding: 3px 12px; }
+.conversation-header .read-snapshot-status { padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

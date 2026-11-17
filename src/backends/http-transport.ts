@@ -3,7 +3,7 @@ import { gatewayUrl, transportNamespace, type GatewayRoute } from './gateway-rou
 import { isClientForeground } from "../native-ui/foreground";
 import type { RpcMessage } from "../app-server/client";
 import { t } from "../i18n";
-import { isNavigationResume } from "../../server/rpc-replay";
+import { isNavigationResume, snapshotRead } from "../../server/rpc-replay";
 import { httpRequestScheduler, type HttpRequestPriority } from "./http-request-scheduler";
 
 export interface HttpSyncState { updatedAt: number | null; stale: boolean }
@@ -81,6 +81,7 @@ export class HttpRpcTransport extends EventTarget {
   private operationTimer: ReturnType<typeof setTimeout> | undefined;
   private operationDueAt = 0;
   private detailsUnsupported = false;
+  private readonly snapshotRefreshes = new Map<string, Promise<void>>();
   private reconciling = false;
   private reconcileOffset = 0;
   private readonly restored: Promise<void>;
@@ -183,6 +184,35 @@ export class HttpRpcTransport extends EventTarget {
     }
   }
 
+  private async readSnapshot(message: RpcMessage, original: RpcMessage, timeoutMs: number): Promise<boolean> {
+    if (this.config.gatewayMode !== 'remote' || !snapshotRead(message)) return false;
+    const body = JSON.stringify({ requestId: transportUuid(), message });
+    let cached: any;
+    try { cached = await this.fetchJson('/api/read-snapshot', { method: 'POST', headers: { 'content-type': 'application/json' }, body }, {}, Math.min(timeoutMs, 5000)); }
+    catch (error) { if ([401, 403, 409].includes((error as any)?.status)) throw error; return false; }
+    if (!cached?.message || cached.message.error || cached.message.result == null || !Number.isFinite(cached.updatedAt)) return false;
+    this.emit({ method: 'mobile/readSnapshot/status', params: { updatedAt: cached.updatedAt, refreshing: cached.refreshing === true } });
+    this.emit({ ...cached.message, id: original.id });
+    if (cached.refreshing === true) {
+      const binding = JSON.stringify({ method: message.method, params: message.params });
+      if (!this.snapshotRefreshes.has(binding)) {
+        const work = httpRequestScheduler.run(new URL(this.config.baseUrl).origin, 'background', this.requestLifetime.signal, async () => {
+          try {
+            const fresh = await this.fetchJson('/api/read-snapshot', { method: 'POST', headers: { 'content-type': 'application/json' }, body }, { refresh: '1' }, 60000);
+            if (fresh?.message?.result == null || fresh.message.error || !Number.isFinite(fresh.updatedAt)) throw new Error('快照更新未完成');
+            if (JSON.stringify(fresh.message.result) !== JSON.stringify(cached.message.result)) this.emit({ method: 'mobile/readSnapshot/updated', params: { request: original, response: fresh.message, updatedAt: fresh.updatedAt } });
+            this.emit({ method: 'mobile/readSnapshot/status', params: { updatedAt: fresh.updatedAt, refreshing: false } });
+          } catch {
+            this.emit({ method: 'mobile/readSnapshot/status', params: { updatedAt: cached.updatedAt, refreshing: false, failed: true } });
+          }
+        });
+        this.snapshotRefreshes.set(binding, work);
+        void work.finally(() => this.snapshotRefreshes.delete(binding)).catch(() => {});
+      }
+    }
+    return true;
+  }
+
   async send(raw: string, timeoutMs = 10_000, priority: HttpRequestPriority = "foreground", operationKey?: string): Promise<void> {
     if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     return httpRequestScheduler.run(new URL(this.config.baseUrl).origin, priority, this.requestLifetime.signal,
@@ -250,6 +280,7 @@ export class HttpRpcTransport extends EventTarget {
       response = undefined;
       response = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wireOperation) }, {}, remainingReadBudget());
     };
+    if (!signature && message.id != null && await this.readSnapshot(wireMessage, message, remainingReadBudget())) return;
     if (signature) this.inflightWrites.add(requestId);
     if (signature && message.method && message.id != null) this.inflightRpcWrites.set(message.id, operation);
     try {

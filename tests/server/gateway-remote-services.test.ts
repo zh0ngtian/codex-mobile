@@ -1,7 +1,8 @@
+import * as projectReader from '../../server/codex-projects.js';
 // @vitest-environment node
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { GatewayRemoteServices } from '../../server/gateway-remote-services.js';
 import { gatewayRemote } from './fixtures/gateway-remote.js';
 const cleanups: (() => Promise<void>)[] = [];
@@ -34,4 +35,21 @@ it('媒体缓存引用只能解析到本授权自己的缓存，身份变更后�
   expect(services.resolveReference('codex-cache:../../etc/passwd')).toBeNull();
   f.setManaged({ accountUserId: 'another-user' });
   await expect(services.projectState()).rejects.toThrow();
+}, 15000);
+
+it('项目共享快照先返回旧目录，后台刷新合并，撤权后旧快照也拒绝返回', async () => {
+  const f = await gatewayRemote(); const target = await f.resolver.resolve(f.reference);
+  const services = await GatewayRemoteServices.create(target, f.gatewayHome); cleanups.push(() => services.close());
+  await writeFile(join(f.targetHome, '.codex-global-state.json'), JSON.stringify({ 'local-projects': { p: { id: 'p', rootPaths: ['/first'] } } }));
+  expect((await services.projectState()).projects).toEqual(['/first']);
+  let finish!: (value: { projects: string[]; projectlessThreadIds: string[] }) => void;
+  const read = vi.spyOn(projectReader, 'readCodexProjectState').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  try {
+    expect((await services.projectState()).projects).toEqual(['/first']);
+    expect((await services.projectState()).projects).toEqual(['/first']);
+    expect(read).toHaveBeenCalledTimes(1);
+    finish({ projects: ['/fresh'], projectlessThreadIds: [] });
+    await vi.waitFor(async () => expect((await services.projectState()).projects).toEqual(['/fresh']));
+    f.setManaged({ accountUserId: 'other' }); await expect(services.projectState()).rejects.toThrow();
+  } finally { finish?.({ projects: [], projectlessThreadIds: [] }); read.mockRestore(); }
 }, 15000);

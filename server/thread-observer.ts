@@ -4,7 +4,7 @@ import { PrivateStore } from './remote/private-store.js';
 import type { TargetResolver } from './targets.js';
 import type { OperationContext } from './operation-queue.js';
 import type { OperationScheduler } from './operation-scheduler.js';
-import type { RpcMessage } from './http-session.js';
+import type { SessionCallOptions, RpcMessage } from './http-session.js';
 
 interface Observation {
   version: 1; id: string; context: OperationContext; threadId: string; fingerprint?: string;
@@ -38,6 +38,7 @@ export class ThreadObserver {
     scheduler: Pick<OperationScheduler, 'hostedRpc' | 'submit' | 'runOnce' | 'hasPending' | 'operation'>;
     followed?: (context: OperationContext, threadId: string) => boolean;
     now?: () => number;
+    onChanged?: (context: OperationContext, threadId: string, call: SessionCallOptions) => Promise<void>;
   }) {
     this.store = new PrivateStore(options.directory); this.ready = this.load();
   }
@@ -128,7 +129,10 @@ export class ThreadObserver {
       const turns = (response.result as any)?.data;
       if (!Array.isArray(turns)) throw new Error('无法读取观察回合');
       const fingerprint = hash({ thread: { id: thread.id, name: thread.name, preview: thread.preview, cwd: thread.cwd, archived: thread.archived, status: thread.status }, turns });
-      if (record.fingerprint !== fingerprint) { record.fingerprint = fingerprint; record.lastBusinessUpdate = this.now(); }
+      if (record.fingerprint !== fingerprint) {
+        await this.options.onChanged?.(record.context, record.threadId, call); fence();
+        record.fingerprint = fingerprint; record.lastBusinessUpdate = this.now();
+      }
       record.lastSuccessfulPoll = this.now();
       const active = running(thread.status) || turns.some(turn => running(turn.status));
       if (active) this.runningThreads.add(record.id); else this.runningThreads.delete(record.id);

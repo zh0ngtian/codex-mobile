@@ -169,6 +169,7 @@ export class OperationQueue {
   readonly #gatewayId: string;
   readonly #authorize: (context: Readonly<OperationContext>, action: Action) => Promise<OperationAuthorizationFence>;
   #poisoned = false;
+  #validatedBytes?: Buffer;
   constructor(options: { directory: string; gatewayId: string; authorize: (context: Readonly<OperationContext>, action: Action) => Promise<OperationAuthorizationFence> }) {
     if (typeof options.directory !== 'string' || !text(options.directory) || !text(options.gatewayId) || typeof options.authorize !== 'function') fail('invalid-input', 400);
     this.#store = new PrivateStore(options.directory); this.#gatewayId = options.gatewayId; this.#authorize = options.authorize;
@@ -188,7 +189,10 @@ export class OperationQueue {
       try {
         this.checkFile(await handle.stat());
         const bytes = await handle.readFile(); if (bytes.length > 68 * 1024 * 1024) fail();
+        // 每次仍读取真实文件及检查权限；不能以mtime或内存记录替代跨进程事实。
+        const alreadyValidated = this.#validatedBytes?.equals(bytes) === true;
         const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+        if (alreadyValidated) return value as Ledger;
         if (!shape(value, ['version', 'gatewayId', 'nextOrder', 'records', 'followUpsImport']) || value.version !== 1 || value.gatewayId !== this.#gatewayId || !Number.isSafeInteger(value.nextOrder) || Number(value.nextOrder) < 1 || !Array.isArray(value.records)) fail();
         if (value.followUpsImport !== undefined && (!shape(value.followUpsImport, ['source', 'context', 'sha256', 'count']) || !text(value.followUpsImport.source) || !contextValid(value.followUpsImport.context) || value.followUpsImport.context.mode !== 'local' || typeof value.followUpsImport.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.followUpsImport.sha256) || !Number.isSafeInteger(value.followUpsImport.count) || Number(value.followUpsImport.count) < 0)) fail();
         const ids = new Set<string>(); const orders = new Set<number>();
@@ -209,6 +213,7 @@ export class OperationQueue {
           if (!importedAttempt && (attempted ? (!text(record.claimToken) || !Number.isSafeInteger(record.claimPid) || Number(record.claimPid) < 1) : (Object.hasOwn(record, 'claimToken') || Object.hasOwn(record, 'claimPid')))) fail();
           ids.add(record.id); orders.add(Number(record.receiveOrder));
         }
+        this.#validatedBytes = bytes;
         return value as unknown as Ledger;
       } finally { await handle.close(); }
     } catch (error) { if (missing(error)) return { version: 1, gatewayId: this.#gatewayId, nextOrder: 1, records: [] }; fail(); }

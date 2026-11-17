@@ -57,3 +57,18 @@ it('取消订阅的未知结果跨重启只对账原 UUID，不提前清理或�
   complete = true; now += 3000; await observer.poll(); expect(new Set(ids).size).toBe(1); expect(snapshots).toBe(2); await observer.close();
   observer = new ThreadObserver(options); now += 86400000; await observer.poll(); expect(snapshots).toBe(2); expect(ids).toHaveLength(3); await observer.close();
 });
+
+it('只有成功的业务变化刷新已缓存读取，心跳和失败不伪造更新', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'observer-snapshot-'))); roots.push(directory);
+  let now = 0; let text = 'one'; const updates: string[] = [];
+  const observer = new ThreadObserver({ directory, now: () => now, resolver: { async authorizeOperation() { return () => {}; } },
+    async onChanged(scope, id) { expect(scope).toEqual(context); updates.push(id); }, scheduler: {
+      async hostedRpc() { return { result: { thread: { id: 'thread', updatedAt: now }, data: [{ id: 'turn', items: [{ text }] }] } }; },
+      async hasPending() { return false; }, async submit() { return {} as any; }, async runOnce() {}, async operation() { return {} as any; },
+    } });
+  try {
+    await observer.opened(context, 'thread', 'phone'); await observer.poll(); expect(updates).toEqual(['thread']);
+    now += 3001; await observer.poll(); expect(updates).toEqual(['thread']);
+    text = 'two'; now += 3001; await observer.poll(); expect(updates).toEqual(['thread', 'thread']);
+  } finally { await observer.close(); }
+});
