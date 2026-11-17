@@ -291,6 +291,7 @@ interface HistoricalMessageEditState {
 }
 
 interface BackendThreadSnapshot {
+  readSnapshotStatus?: string;
   backendId: string;
   conversationProject?: string;
   threads: AnyRecord[];
@@ -448,6 +449,7 @@ function BackendWorkspace({
   const approvalRequests = useApprovalRequests();
   const { requests, approval, userAnswers } = approvalRequests;
   useEffect(() => { approvalRequests.syncAsyncQuestions(active); }, [active, approvalRequests.syncAsyncQuestions]);
+  const [readSnapshotStatus, setReadSnapshotStatus] = useState("");
   const [syncState, setSyncState] = useState<{ updatedAt: number | null; stale: boolean } | null>(null);
   const [models, setModels] = useState<AnyRecord[]>([]);
   const [permissionProfiles, setPermissionProfiles] = useState<AnyRecord[]>([]);
@@ -1039,7 +1041,8 @@ function BackendWorkspace({
       if (client !== clientRef.current || client.signal?.aborted) return;
       setThreadListRefreshing(true);
       try {
-        await syncDesktopPinned(client);
+        const pinnedRead = syncDesktopPinned(client);
+        void pinnedRead.catch(() => {});
         if (client !== clientRef.current || client.signal?.aborted) return;
         let projectCatalogReadSucceeded = false;
         let directories = projects;
@@ -1048,7 +1051,7 @@ function BackendWorkspace({
           readLocalProjectlessThreadIds(window.localStorage, backend.id),
         );
         try {
-          const projectState = await fetchBackendProjectState(backend, "background", client.signal);
+          const [projectState] = await Promise.all([fetchBackendProjectState(backend, "background", client.signal), pinnedRead]);
           if (client !== clientRef.current || client.signal?.aborted) return;
           projectCatalogReadSucceeded = true;
           directories = projectState.projects;
@@ -1286,6 +1289,7 @@ function BackendWorkspace({
 
   useEffect(() => {
     onSnapshotChange({
+      readSnapshotStatus,
       backendId: backend.id,
       conversationProject: active?.id ? (active.isProjectless === true ? '' : active.cwd ?? '') : undefined,
       threads,
@@ -1312,6 +1316,7 @@ function BackendWorkspace({
     active?.isProjectless,
     error,
     onSnapshotChange,
+    readSnapshotStatus,
     openingThreadId,
     resolvedSearchQuery,
     searchError,
@@ -1384,6 +1389,7 @@ function BackendWorkspace({
     };
     invalidateUploadUsage();
     setSyncState(null);
+    setReadSnapshotStatus("");
     let manager: BackendConnectionManager;
     manager = new BackendConnectionManager({
       onConnection: (_backendId, status, connectionError) => {
@@ -1433,6 +1439,26 @@ function BackendWorkspace({
       onNotification: (_backendId, message, source) => {
           const client = source as AppServerClient;
           const params = (message.params ?? {}) as AnyRecord;
+          if (message.method === 'mobile/readSnapshot/status') {
+            if (disposed || client !== clientRef.current || !Number.isFinite(params.updatedAt)) return;
+            setReadSnapshotStatus(t('快照更新于 {time} · {state}', { time: new Date(params.updatedAt).toLocaleTimeString(), state: params.failed ? t('更新失败，保留已有内容') : params.refreshing ? t('正在后台更新') : t('已同步') }));
+            return;
+          }
+          if (message.method === 'mobile/readSnapshot/updated') {
+            if (disposed || client !== clientRef.current) return;
+            const request = params.request; const result = params.response?.result;
+            if (!request || !result) return;
+            const threadId = request.params?.threadId;
+            if (threadId && threadId === activeThreadTargetRef.current && result.thread?.id === threadId && activeRef.current?.id === threadId) {
+              const page = result.initialTurnsPage;
+              applyActiveThreadSnapshot({ ...result.thread, ...(page?.data ? { turns: [...page.data].reverse() } : {}) });
+              if (request.method === 'thread/resume') void reconcileActiveThread(client).catch(() => {});
+            } else if (threadId && threadId === activeThreadTargetRef.current && activeRef.current?.id === threadId) {
+              void reconcileActiveThread(client).catch(() => {});
+            }
+            if (!threadId) void loadThreads(client).catch(() => {});
+            return;
+          }
           if (message.method === "mobile/events/catchup") {
             completionEventCatchUpRef.current = params.active === true;
             return;
@@ -4747,6 +4773,7 @@ function BackendWorkspace({
           client={clientRef.current}
           error={error}
           syncState={syncState}
+          readSnapshotStatus={readSnapshotStatus}
           draft={draft}
           draftImages={draftImages}
           draftFiles={draftFiles}
@@ -5721,6 +5748,7 @@ function ConfiguredApp({
       >
         <aside className="conversation-sidebar" aria-label={t("会话列表")}>
           <ThreadListPage
+            readSnapshotStatus={snapshots[listBackendId]?.readSnapshotStatus ?? Object.values(snapshots).map(snapshot => snapshot.readSnapshotStatus).find(Boolean)}
             sidebarOpen={sidebarOpen}
             onCloseSidebar={closeSidebar}
             backends={runtimeBackends}

@@ -249,6 +249,9 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     },
   }) : undefined;
   conversationObserver = resolver && scheduler ? new ThreadObserver({ directory: join(home, 'codex-mobile-observers'), resolver, scheduler,
+    onChanged: async (context, threadId, call) => {
+      for (const message of scheduler.snapshots.requestsForThread(context, threadId)) await scheduler.hostedRpc(context, message, call);
+    },
     followed: (context, threadId) => context.mode === 'local' ? notifications.followedThreadIds.has(threadId) : contextBundles.get(context.authorizationKey)?.notifications.followedThreadIds.has(threadId) === true,
   }) : undefined;
   conversationObserver?.start();
@@ -295,6 +298,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       "/api/images/preview",
       "/api/image-generation-error",
       "/api/rpc",
+      "/api/read-snapshot",
       "/api/events",
       "/api/operations",
       "/api/follow-ups",
@@ -354,7 +358,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       response.end = ((...args: any[]) => { delivery(); return Reflect.apply(end, response, args); }) as typeof response.end;
       response.writeHead = ((...args: any[]) => { delivery(); return Reflect.apply(writeHead, response, args); }) as typeof response.writeHead;
     }
-    if (queuedRpc && ['/api/rpc', '/api/events', '/api/operations'].includes(url.pathname)) {
+    if (queuedRpc && ['/api/rpc', '/api/events', '/api/operations', '/api/read-snapshot'].includes(url.pathname)) {
       await queuedRpc.handle(request, response, url, reference); return;
     }
     if (queuedRpc && context && url.pathname === '/api/threads/title-summary' && (context.mode === 'remote' || request.headers['x-codex-operation-id'] || request.method === 'GET')) {

@@ -213,18 +213,71 @@ async function remoteProjectState(source: RemoteProjectSource): Promise<CodexPro
   return parseCodexProjectState(decodeRemoteCommandText(Buffer.concat(parts)), binding.metadata.codexHome);
 }
 
+// 固定只读git在目标内合批；输出分页，保持每个仓库原有1MiB边界。
+const WORKTREES_PYTHON = String.raw`import base64,hashlib,json,subprocess,sys,threading
+q=json.loads(sys.argv[1]);result=[]
+for root in sys.argv[2:]:
+ p=subprocess.Popen(['git','--no-optional-locks','-C',root,'worktree','list','--porcelain','-z'],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+ out=[];err=[];overflow=[]
+ def capture(stream,parts):
+  size=0
+  while True:
+   chunk=stream.read(65536)
+   if not chunk:break
+   size+=len(chunk)
+   if size>1048576:overflow.append(True);p.kill();break
+   parts.append(chunk)
+ threads=[threading.Thread(target=capture,args=(p.stdout,out)),threading.Thread(target=capture,args=(p.stderr,err))]
+ for t in threads:t.start()
+ try:p.wait(timeout=20)
+ except BaseException:p.kill();p.wait();raise
+ finally:
+  for t in threads:t.join()
+ if overflow:raise ValueError('worktree output too large')
+ result.append(dict(root=root,code=p.returncode,stdout=base64.b64encode(b''.join(out)).decode('ascii'),stderr=base64.b64encode(b''.join(err)).decode('ascii')))
+raw=json.dumps(result).encode('utf-8')
+print(json.dumps(dict(total=len(raw),sha256=hashlib.sha256(raw).hexdigest(),offset=q['offset'],base64=base64.b64encode(raw[q['offset']:q['offset']+1048576]).decode('ascii'))))
+`;
+async function remoteWorktrees(source: RemoteProjectSource, roots: string[]) {
+  const binding = source.commands.fileTransportBinding(source.session); const outputs = new Map<string, { code: number; stdout: string; stderr: string }>();
+  // 参数小于Commands单参数16KiB；超出时拆分，不丢项目。
+  const batches: string[][] = []; let batch: string[] = [];
+  for (const root of roots) { if (batch.length && (batch.length >= 200 || Buffer.byteLength(JSON.stringify([...batch, root])) > 12000)) { batches.push(batch); batch = []; } batch.push(root); }
+  if (batch.length) batches.push(batch);
+  for (const roots of batches) {
+    const deadline = performance.now() + 20000; const parts: Buffer[] = []; let offset = 0; let signature: string | undefined;
+    for (;;) {
+      const remaining = Math.floor(deadline - performance.now()); if (remaining < 1) throw new Error('Remote项目worktree读取超时');
+      const result = await source.commands.execute({ argv: [binding.python, '-I', '-c', WORKTREES_PYTHON, JSON.stringify({ offset }), ...roots], cwd: binding.metadata.codexHome, timeoutMs: remaining, stdoutBytesCap: 2 * 1024 * 1024, stderrBytesCap: 16384, signal: source.signal });
+      if (result.exitCode !== 0 || result.stderr.length) throw new Error('Remote项目worktree读取失败');
+      const value = JSON.parse(decodeRemoteCommandText(result.stdout));
+      if (!Number.isSafeInteger(value.total) || value.total < offset || value.offset !== offset || typeof value.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.sha256) || typeof value.base64 !== 'string') throw new Error('Remote worktree响应无效');
+      const current = JSON.stringify([value.total, value.sha256]); if (signature !== undefined && signature !== current) throw new Error('Remote worktree读取期间已变化'); signature = current;
+      const part = Buffer.from(value.base64, 'base64'); if (part.toString('base64') !== value.base64 || part.length !== Math.min(1048576, value.total - offset)) throw new Error('Remote worktree响应无效');
+      parts.push(part); offset += part.length;
+      if (offset === value.total) { const raw = Buffer.concat(parts); if (createHash('sha256').update(raw).digest('hex') !== value.sha256) throw new Error('Remote worktree校验失败');
+        const rows = JSON.parse(decodeRemoteCommandText(raw));
+        if (!Array.isArray(rows) || rows.length !== roots.length) throw new Error('Remote worktree响应无效');
+        rows.forEach((row, i) => { if (row.root !== roots[i] || !Number.isInteger(row.code) || typeof row.stdout !== 'string' || typeof row.stderr !== 'string') throw new Error('Remote worktree响应无效'); outputs.set(row.root, { code: row.code, stdout: decodeRemoteCommandText(Buffer.from(row.stdout, 'base64')), stderr: decodeRemoteCommandText(Buffer.from(row.stderr, 'base64')) }); }); break;
+      }
+    }
+  }
+  return outputs;
+}
+
 export async function readCodexProjectState(globalStatePath: string, source?: RemoteProjectSource) {
   const state = source ? await remoteProjectState(source) : parseCodexProjectState(await readFile(globalStatePath, "utf8"), dirname(globalStatePath));
   const projectWorktrees: Record<string, string[]> = {};
   const registered = new Set(state.projects);
+  const remoteOutputs = source ? await remoteWorktrees(source, state.projects) : undefined;
   for (const root of state.projects) {
     let output: string;
     try {
       const args = ["--no-optional-locks", "-C", root, "worktree", "list", "--porcelain", "-z"];
       if (source) {
-        const result = await source.commands.execute({ argv: ['git', ...args], cwd: source.commands.metadata.codexHome, timeoutMs: 20000, stdoutBytesCap: 1024 * 1024, stderrBytesCap: 1024 * 1024, signal: source.signal });
-        if (result.exitCode !== 0) throw Object.assign(new Error('Remote项目worktree读取失败'), { code: result.exitCode, stderr: decodeRemoteCommandText(result.stderr) });
-        output = decodeRemoteCommandText(result.stdout);
+        const result = remoteOutputs!.get(root)!;
+        if (result.code !== 0) throw Object.assign(new Error('Remote项目worktree读取失败'), { code: result.code, stderr: result.stderr });
+        output = result.stdout;
       } else ({ stdout: output } = await execute("git", args, { timeout: 3_000, maxBuffer: 1024 * 1024 }));
     } catch (error: any) {
       // 普通文件夹及已删除的项目没有 Git worktree；其他读取故障必须报告。

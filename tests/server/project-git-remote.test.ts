@@ -50,7 +50,7 @@ it('Remote项目worktree读取允许超过本地3秒的协议往返，仍执行�
   const intercepted = vi.spyOn(f.session, 'call').mockImplementation(async (method, params, options) => {
     if (method === 'command/exec/write') {
       const payload = JSON.parse(Buffer.from((params as any).deltaBase64, 'base64').toString());
-      if (payload.mode === 'execute' && payload.argv?.[0] === 'git') {
+      if (payload.mode === 'execute' && (payload.argv?.[0] === 'git' || payload.argv?.[3]?.includes('worktree output too large'))) {
         held = true;
         await new Promise(resolve => setTimeout(resolve, 3500));
       }
@@ -67,6 +67,16 @@ it('Remote项目worktree读取允许超过本地3秒的协议往返，仍执行�
     expect(f.active).toBe(0);
   } finally { intercepted.mockRestore(); }
 }, 15000);
+it('多个项目的worktree在目标合批，网络调用不随项目数量增长', async () => {
+  const f = await target(); const p = await repo(f); const linked = join(f.root, 'batch-linked');
+  await git(p, ['commit', '--allow-empty', '-m', 'base']); await git(p, ['worktree', 'add', '-b', 'batch', linked]);
+  const projects = [p, linked, '/missing-one', '/missing-two', '/missing-three'];
+  await writeFile(join(f.root, '.codex-global-state.json'), JSON.stringify({ 'local-projects': Object.fromEntries(projects.map((root, i) => [String(i), { id: String(i), rootPaths: [root] }])), 'project-order': projects.map((_, i) => String(i)) }));
+  const result = await readCodexProjectState('/never/gateway', { session: f.session, commands: f.commands });
+  expect(result.projects).toEqual(projects); expect(result.projectWorktrees).toBeUndefined();
+  // metadata握手一次 + 状态投影一次 + worktree合批一次。
+  expect(f.frames.filter(frame => frame.method === 'command/exec')).toHaveLength(3);
+});
 it.each(['unused', 'required', 'root', 'mixed'])('合法深层JSON不引入Python递归深度限制：%s', async location => {
   const f = await target(); const deep = location === 'mixed' ? '{"k":['.repeat(12000) + '0' + ']}'.repeat(12000) : '['.repeat(1100) + '0' + ']'.repeat(1100);
   const raw = ['unused', 'mixed'].includes(location) ? `{"unused":${deep},"projectless-thread-ids":["preserved"]}` : location === 'required' ? `{"local-projects":{"p":{"unused":${deep}}},"projectless-thread-ids":["preserved"]}` : deep;

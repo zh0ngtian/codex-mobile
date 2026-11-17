@@ -12,7 +12,7 @@ import { MessageWebCitations } from './web-citations.js';
 import { InlineImages } from './inline-images.js';
 import { TitleSummaries } from './title-summaries.js';
 import { readCodexProjectState } from './codex-projects.js';
-import { runRemoteCleanup } from './remote/operation-guard.js';
+import { runRemoteCleanup, withIndependentRemoteOperation } from './remote/operation-guard.js';
 import type { HttpSessionRemoteOptions } from './http-session.js';
 
 /** 一个已证明目标的实际消费者；只创建逻辑管理流，物理 Relay 仍由现有 Runtime 持有。 */
@@ -26,6 +26,9 @@ export class GatewayRemoteServices {
   private meter?: Promise<RemoteModelUploadSource>;
   private readonly lifetime = new AbortController();
   private closed = false;
+  private projectSnapshot?: Awaited<ReturnType<typeof readCodexProjectState>>;
+  private projectRefresh?: Promise<void>;
+  private projectSnapshotAt = 0;
   private closing?: Promise<void>;
   private constructor(readonly target: ResolvedRemoteTarget, home: string,
     private session: RemoteRpcSession, readonly commands: RemoteCommands, readonly files: RemoteFiles) {
@@ -60,9 +63,19 @@ export class GatewayRemoteServices {
   }
   private assertOpen(): void { if (this.closed) throw new Error('目标消费者已关闭'); }
   async projectState(signal?: AbortSignal) {
-    this.assertOpen(); await this.target.assertCurrent(signal);
-    const result = await readCodexProjectState('', { session: this.session, commands: this.commands, signal });
-    await this.target.assertCurrent(signal); this.assertOpen(); signal?.throwIfAborted(); return result;
+    this.assertOpen(); await this.target.assertCurrent(signal); signal?.throwIfAborted();
+    if (Date.now() - this.projectSnapshotAt >= 86400000) this.projectSnapshot = undefined;
+    if (!this.projectRefresh) {
+      const work = withIndependentRemoteOperation(() => this.assertOpen(), async () => {
+        const result = await readCodexProjectState('', { session: this.session, commands: this.commands, signal: this.lifetime.signal });
+        await this.target.assertCurrent(this.lifetime.signal); this.assertOpen(); this.projectSnapshot = structuredClone(result); this.projectSnapshotAt = Date.now();
+      });
+      this.projectRefresh = work;
+      void work.finally(() => { if (this.projectRefresh === work) this.projectRefresh = undefined; }).catch(() => {});
+    }
+    if (!this.projectSnapshot) await this.projectRefresh;
+    await this.target.assertCurrent(signal); this.assertOpen(); signal?.throwIfAborted();
+    return structuredClone(this.projectSnapshot!);
   }
   async uploadPath(id: string, extension: string, signal?: AbortSignal): Promise<string> {
     this.assertOpen(); await this.target.assertCurrent(signal);
@@ -117,6 +130,7 @@ export class GatewayRemoteServices {
     this.closing = runRemoteCleanup(async () => {
       const failures: unknown[] = [];
       const finish = async (operation: () => Promise<unknown>) => { try { await operation(); } catch (error) { failures.push(error); } };
+      await this.projectRefresh?.catch(() => {});
       const meter = await this.meter?.catch(() => undefined); await finish(async () => meter?.close());
       await finish(() => this.rollouts.close()); await finish(() => this.files.close()); await finish(() => this.commands.close());
       this.session.close(); await finish(() => this.session.settled());

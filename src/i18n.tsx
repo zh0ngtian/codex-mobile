@@ -13,6 +13,9 @@ export type LanguagePreference = "system" | Locale;
 const LANGUAGE_STORAGE_KEY = "codex-mobile:language";
 
 const english: Record<string, string> = {
+  '快照更新于 {time} · {state}': 'Snapshot updated at {time} · {state}',
+  '更新失败，保留已有内容': 'Update failed; showing saved content',
+  '正在后台更新': 'Updating in background',
   "操作已提交原网关，等待执行或原请求结果确认": "Submitted to the original gateway. Waiting for execution or confirmation.",
   "创建结果待确认": "Creation awaiting confirmation", "会话创建失败": "Conversation creation failed", "待创建": "Pending creation",
   "会话创建已由网关接收，恢复连接后将绑定真实会话；结果待确认时不会重复创建": "The gateway accepted this conversation request. It will link to the real conversation when connected, without repeating an unconfirmed creation.",

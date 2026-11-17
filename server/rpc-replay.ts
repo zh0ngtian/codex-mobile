@@ -20,3 +20,6 @@ export function rpcSignatureInput(message: { method?: string }, epoch?: string):
 export function rpcControlRequestKey(id: unknown, epoch?: string): string | undefined {
   return typeof id === 'string' ? id : typeof id === 'number' && Number.isFinite(id) && epoch ? `request:${epoch}:${JSON.stringify(id)}` : undefined;
 }
+
+const snapshotReadMethods = new Set(['thread/list', 'threadSection/list', 'thread/read', 'thread/turns/list', 'mobile/sidebar/summaries', 'mobile/sidebar/projectless', 'mobile/turns/details']);
+export function snapshotRead(message: { method?: string; params?: unknown }): boolean { return snapshotReadMethods.has(message.method ?? '') || isNavigationResume(message); }
