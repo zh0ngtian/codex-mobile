@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { TargetResolver } from './targets.js';
 import { OperationScheduler } from './operation-scheduler.js';
 import { OperationQueueError, type OperationContext } from './operation-queue.js';
-import { HttpSessions, readRpcEnvelope, HOSTED_SESSION_ID, type PublicRpcEnvelope, type SessionCallOptions } from './http-session.js';
+import { HttpSessions, isReadOnlyRpc, readRpcEnvelope, HOSTED_SESSION_ID, type PublicRpcEnvelope, type SessionCallOptions } from './http-session.js';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const SIDECHAT = 'c0dec000-0000-4000-8000-000000000002';
@@ -47,6 +47,9 @@ export class GatewayRpc {
       sessions ??= await this.scheduler.sessionsForTarget(context, call);
       return { status: 200, body: await sessions.publicRpc(sessionId, envelope, call) };
     }
+    if (context.mode === 'local' && isReadOnlyRpc(message)) {
+      return { status: 200, body: await this.scheduler.localRead(context, sessionId, envelope, call) };
+    }
     try {
       const original = await this.scheduler.operation(envelope.requestId, context, sessionId, call, envelope);
       return original.message ? { status: 200, body: original.message } : { status: 202, body: { accepted: true, ...original } };
@@ -88,6 +91,10 @@ export class GatewayRpc {
         value = await this.scheduler.events(context, sessionId, Number(url.searchParams.get('after') ?? '0'), call);
       } else if (url.pathname === '/api/operations' && request.method === 'GET') {
         const id = url.searchParams.get('requestId') ?? ''; if (!UUID.test(id)) reject(400, '请求 UUID 无效');
+        const sessions = this.sessions.get(JSON.stringify(context));
+        if (context.mode === 'local' && sessions?.hasTransientOperation(sessionId, id)) {
+          await sessions.handle(request, response, url); return;
+        }
         try { value = await this.scheduler.operation(id, context, sessionId, call); }
         catch (error) {
           // 原 UUID 仅查询已有 WAL，绝不把缺失视为未发送或重试授权。

@@ -5,7 +5,7 @@ import { resolve, join } from 'node:path';
 import { readFile, realpath } from 'node:fs/promises';
 import { TextDecoder } from 'node:util';
 import { OperationQueue, OperationQueueError, followUpMessage, FOLLOW_UP_TURN_EXPIRED_ERROR, type OperationAuthorizationFence, type OperationClaim, type OperationContext, type OperationControl, type OperationReceipt, type OperationRecord } from './operation-queue.js';
-import { HttpSessions, HOSTED_SESSION_ID, isReadOnlyRpc, readOriginalOperation, type HttpSessionRemoteOptions, type RpcMessage, type SessionCallOptions, type SessionDispatchAttempt, type SessionDispatchResult } from './http-session.js';
+import { HttpSessions, HOSTED_SESSION_ID, isReadOnlyRpc, readOriginalOperation, type HttpSessionRemoteOptions, type PublicRpcEnvelope, type RpcMessage, type SessionCallOptions, type SessionDispatchAttempt, type SessionDispatchResult } from './http-session.js';
 import { isNavigationResume, rpcSignatureInput, rpcControlRequestKey } from './rpc-replay.js';
 import { TargetResolver, type ResolvedRemoteTarget } from './targets.js';
 import { assertRemoteOperation, captureRemoteOperation, withIndependentRemoteOperation, withRemoteOperation } from './remote/operation-guard.js';
@@ -101,6 +101,21 @@ export class OperationScheduler {
   protocol(input: { context: OperationContext; sessionId: string; requestId: string; message: RpcMessage }, original?: SessionCallOptions) { return this.own(() => this.protocolRpc(input, original)); }
   events(context: OperationContext, sessionId: string, after: number, original?: SessionCallOptions) { return this.own(() => this.sessionEvents(context, sessionId, after, original)); }
   result(id: string, original?: SessionCallOptions): Promise<SessionDispatchResult> { return this.own(() => this.readResult(id, original)); }
+  /** 本地只读复用原 Session 的瞬态幂等缓存，不触碰共享耐久账本。 */
+  localRead(context: OperationContext, sessionId: string, envelope: PublicRpcEnvelope, original: SessionCallOptions): Promise<RpcMessage> {
+    if (context.mode !== 'local' || !isReadOnlyRpc(envelope.message)) throw new TypeError('本地读取入口只允许可信只读方法');
+    return this.own(() => this.budget(async call => {
+      const sessions = await this.sessions(context, call);
+      const response = await sessions.publicRpc(sessionId, envelope, call);
+      if (envelope.message.method === 'thread/resume' && response.error == null && this.#options.onResponse) {
+        // 观察登记归网关持有，手机返回或断开不等待其磁盘写入；close 仍等待它结束。
+        void this.own(() => withIndependentRemoteOperation(() => this.assertOpen(), async () => {
+          await this.#options.onResponse!(context, envelope.message, response, sessionId);
+        })).catch(error => { this.lastError = error; });
+      }
+      return response;
+    }, original));
+  }
   operation(id: string, routeContext: OperationContext, sessionId: string, original?: SessionCallOptions, expected?: { message: RpcMessage; epoch?: string }) {
     routeContext = structuredClone(routeContext);
     expected = expected ? structuredClone(expected) : undefined;
@@ -136,6 +151,7 @@ export class OperationScheduler {
     const binding = key([context, { ...message, id: undefined }]);
     const current = this.#hostedReads.get(binding); if (current) return current;
     const work = this.own(() => this.budget(async call => {
+      if (context.mode === 'local') return (await this.sessions(context, call)).hostedRpc(message, randomUUID(), call);
       let id = this.#hostedQueued.get(binding);
       if (!id) {
         const groups = await this.#queue.inventory();

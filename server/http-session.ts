@@ -1247,6 +1247,9 @@ export class HttpSessions {
   publicRpc(sessionId: string, body: PublicRpcEnvelope, call: SessionCallOptions = sessionCall()): Promise<RpcMessage> {
     return this.withCall(call, (call, authorize) => this.rpcForSession(this.session(sessionId, authorize), body, call));
   }
+  hasTransientOperation(sessionId: string, requestId: string): boolean {
+    return this.sessions.get(sessionId)?.operations.get(requestId)?.durable === false;
+  }
   private async rpcForSession(session: Session, body: PublicRpcEnvelope, call: SessionCallOptions): Promise<RpcMessage> {
     const message = body.message;
     let result: RpcMessage | undefined;

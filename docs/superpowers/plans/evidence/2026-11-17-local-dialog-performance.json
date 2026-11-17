@@ -1,0 +1,188 @@
+{
+  "date": "2026-11-17",
+  "baselineMain": "b2639b303edc1bfa553a14a12ac1804f7afdf8de",
+  "scope": "本地会话只读请求、导航与后台刷新恢复原 canonical Session 快速路径；源码交付，未部署",
+  "cause": "Remote 公开装配将 Local 读取一并纳入持久队列；每次定位、读取和轮询都重读完整账本、校验历史收据并同步目录链，前台还等待观察登记写盘。",
+  "productionReadonlyBaselineMs": {
+    "thread/read": 5799,
+    "thread/turns/list": 4518,
+    "directCanonicalThreadRead": 1,
+    "directCanonicalTurnsList": 12
+  },
+  "controlledComparison": {
+    "upstream": "同一真实本机 canonical app-server，只读同一已有会话",
+    "storage": "两套独立私有目录，各预置2600条合法合成成功收据，不复制生产队列或执行存量写操作",
+    "samplesPerTransportAndMethod": 3,
+    "observations": [
+      {
+        "version": "before",
+        "transport": "HTTP",
+        "method": "thread/read",
+        "ms": 2244
+      },
+      {
+        "version": "before",
+        "transport": "HTTP",
+        "method": "thread/turns/list",
+        "ms": 1740
+      },
+      {
+        "version": "before",
+        "transport": "HTTP",
+        "method": "thread/read",
+        "ms": 1632
+      },
+      {
+        "version": "before",
+        "transport": "HTTP",
+        "method": "thread/turns/list",
+        "ms": 1848
+      },
+      {
+        "version": "before",
+        "transport": "HTTP",
+        "method": "thread/read",
+        "ms": 1451
+      },
+      {
+        "version": "before",
+        "transport": "HTTP",
+        "method": "thread/turns/list",
+        "ms": 1366
+      },
+      {
+        "version": "before",
+        "transport": "WebSocket",
+        "method": "thread/read",
+        "ms": 1749
+      },
+      {
+        "version": "before",
+        "transport": "WebSocket",
+        "method": "thread/turns/list",
+        "ms": 1998
+      },
+      {
+        "version": "before",
+        "transport": "WebSocket",
+        "method": "thread/read",
+        "ms": 1959
+      },
+      {
+        "version": "before",
+        "transport": "WebSocket",
+        "method": "thread/turns/list",
+        "ms": 2901
+      },
+      {
+        "version": "before",
+        "transport": "WebSocket",
+        "method": "thread/read",
+        "ms": 1621
+      },
+      {
+        "version": "before",
+        "transport": "WebSocket",
+        "method": "thread/turns/list",
+        "ms": 1575
+      },
+      {
+        "version": "after",
+        "transport": "HTTP",
+        "method": "thread/read",
+        "ms": 3
+      },
+      {
+        "version": "after",
+        "transport": "HTTP",
+        "method": "thread/turns/list",
+        "ms": 13
+      },
+      {
+        "version": "after",
+        "transport": "HTTP",
+        "method": "thread/read",
+        "ms": 3
+      },
+      {
+        "version": "after",
+        "transport": "HTTP",
+        "method": "thread/turns/list",
+        "ms": 15
+      },
+      {
+        "version": "after",
+        "transport": "HTTP",
+        "method": "thread/read",
+        "ms": 3
+      },
+      {
+        "version": "after",
+        "transport": "HTTP",
+        "method": "thread/turns/list",
+        "ms": 13
+      },
+      {
+        "version": "after",
+        "transport": "WebSocket",
+        "method": "thread/read",
+        "ms": 2
+      },
+      {
+        "version": "after",
+        "transport": "WebSocket",
+        "method": "thread/turns/list",
+        "ms": 12
+      },
+      {
+        "version": "after",
+        "transport": "WebSocket",
+        "method": "thread/read",
+        "ms": 1
+      },
+      {
+        "version": "after",
+        "transport": "WebSocket",
+        "method": "thread/turns/list",
+        "ms": 11
+      },
+      {
+        "version": "after",
+        "transport": "WebSocket",
+        "method": "thread/read",
+        "ms": 2
+      },
+      {
+        "version": "after",
+        "transport": "WebSocket",
+        "method": "thread/turns/list",
+        "ms": 11
+      }
+    ],
+    "ledgerRecords": {
+      "before": {
+        "initial": 2600,
+        "final": 2612
+      },
+      "after": {
+        "initial": 2600,
+        "final": 2600
+      }
+    },
+    "limits": "单机短测，非整页渲染或延迟分位数验收"
+  },
+  "testChatsCreated": 0,
+  "inferenceRequests": 0,
+  "regression": {
+    "initialRed": "修改产品前，HTTP、WebSocket 和后台读取在真实账本锁占用时全部失败，共3项。",
+    "localRead": "新增5项通过：Remote关闭与账本锁占用、导航/分页、瞬态UUID幂等和查询、跨Session隔离、写操作分类、后台读取、异步观察登记与关闭等待。",
+    "existingLocal": "gateway.test、http-session.test、thread-observer.test 共82项通过；观察器夹具规范化macOS临时目录真实路径，不改安全校验。",
+    "remote": "gateway-queued-rpc、gateway-remote-integration、gateway-scheduler-services 共8项通过。",
+    "scheduler": "完整70项以15秒外层测试时限复核，66项通过、4项失败；其中200ms锁外接收测试单独重跑通过。其余3项短预算/调度时序测试在未修改的b2639b30隔离源码亦失败，不修改其断言或产品调度预算。",
+    "originalConcurrentRun": "首次并行86项：71通过、15失败；包含默认5秒时限和macOS别名路径问题，未覆盖或抹去该失败结论。",
+    "strictServer": "npx tsc -p tsconfig.server.json --pretty false 通过",
+    "serverBuild": "npm run build:server 通过",
+    "integration": "待合入最新main后完成相关回归"
+  },
+  "deployment": "未部署；未构建客户端或发布安装包"
+}

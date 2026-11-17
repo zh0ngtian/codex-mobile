@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -9,7 +9,7 @@ import type { OperationContext } from '../../server/operation-queue.js';
 const roots: string[] = []; afterEach(async () => { await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true }))); });
 const context: OperationContext = { mode: 'local', gatewayId: 'g', businessKey: 'b', authorizationKey: 'a', localHostId: 'h' };
 it('真实内容的时钟跨重启保持，离线不清理，24h 后只撤销逻辑订阅', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'observer-')); roots.push(directory);
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'observer-'))); roots.push(directory);
   let now = 1000; let offline = false; let text = 'first'; const sent: any[] = [];
   const scheduler = {
     async hostedRpc(_context: unknown, message: any) {
@@ -29,7 +29,7 @@ it('真实内容的时钟跨重启保持，离线不清理，24h 后只撤销逻
   await observer.close(); observer = new ThreadObserver(options); await observer.poll(); expect(sent).toHaveLength(1); await observer.close();
 });
 it('活跃手机、队列、运行及关注责任阻止 24h 清理', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'observer-')); roots.push(directory);
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'observer-'))); roots.push(directory);
   let now = 0; let pending = true; let followed = false; const sent: any[] = [];
   const observer = new ThreadObserver({ directory, now: () => now, resolver: { async authorizeOperation() { return () => {}; } },
     followed: () => followed, scheduler: {
@@ -44,7 +44,7 @@ it('活跃手机、队列、运行及关注责任阻止 24h 清理', async () =>
 });
 
 it('取消订阅的未知结果跨重启只对账原 UUID，不提前清理或重新恢复订阅', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'observer-release-')); roots.push(directory);
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'observer-release-'))); roots.push(directory);
   let now = 0; let complete = false; let snapshots = 0; const ids: string[] = [];
   const options = { directory, now: () => now, resolver: { async authorizeOperation() { return () => {}; } }, scheduler: {
     async hostedRpc() { snapshots++; return { result: { data: [], thread: { id: 'thread', status: 'idle' } } }; },
