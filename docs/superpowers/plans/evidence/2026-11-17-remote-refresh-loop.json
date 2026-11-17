@@ -1,0 +1,97 @@
+{
+  "recordedAt": "2026-11-17T08:51:05.159647+00:00",
+  "task": "remote-refresh-loop-20261117",
+  "batchId": "7ee5a223-720f-421e-8609-d2ca613ada0f",
+  "sourceCommit": "14f9c427d962a25e63bfe312863f8e8d8773fa9b",
+  "frozenCommit": "5013564ca0d427c9bb7217f83dc18dddfb10f8c3",
+  "phases": [
+    "gateway",
+    "main",
+    "prepare",
+    "verify"
+  ],
+  "persistentReceiptMatches": true,
+  "installedDigestsMatch": true,
+  "webUi": true,
+  "configurationTokenAndOriginalIdentityPreserved": true,
+  "remoteState": "online",
+  "digests": {
+    "serverDigest": "e015d587f8b9cb8fccc80129ab8dc68310e1130c98c3103c720d8f94d9ac1aff",
+    "frontendDigest": "65f2a1c9f8524380d5f0c487bc73c4cdb2cbf25e26947cd76542e2ff483c3339",
+    "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+    "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233"
+  },
+  "testChatsCreated": 0,
+  "clientPackagesReleased": false,
+  "status": "deployed-and-verified",
+  "webTimings": {
+    "recordedAt": "2026-11-17T08:54:30.858Z",
+    "mode": "remote",
+    "viewport": {
+      "height": 852,
+      "width": 438
+    },
+    "refresh": {
+      "endpoint": "设备已连接、所有列表后台读取结束、刷新按钮aria-busy=false、同步提示已同步",
+      "samples": [
+        {
+          "ms": 5877,
+          "busyObserved": true
+        },
+        {
+          "ms": 7441,
+          "busyObserved": true
+        },
+        {
+          "ms": 8353,
+          "busyObserved": true
+        }
+      ],
+      "previousStillBusyAfterMs": 84210
+    },
+    "conversation": {
+      "firstOpenAfterServerRestart": true,
+      "bodyAndInputReadyMs": 3317,
+      "loadingIndicatorRemoved": true,
+      "historicalImagesNotWaitedFor": true
+    },
+    "quietWindow": {
+      "observedMs": 60506,
+      "truncated": false,
+      "hasMore": false,
+      "projectCatalogRequests": 0,
+      "projectUpstreamRefreshes": 0
+    },
+    "testChatsCreated": 0,
+    "modelInferenceRequestsSent": 0,
+    "limitations": [
+      "三次单次刷新及一次首次打开；不是P95或长期连接验收",
+      "热打开642ms观察命中过渡前旧DOM，已丢弃，不计入结果"
+    ]
+  },
+  "tests": {
+    "uiRegression": 202,
+    "integrationUiRegression": 202,
+    "serverCompatibility": 6,
+    "adapterRegression": 290,
+    "buildContract": 164,
+    "coordinatorRecovery": 59,
+    "typecheck": true,
+    "integrationTypecheck": true,
+    "serverStrict": true,
+    "serverBuild": true,
+    "webBuild": true,
+    "expectedRedEvidence": [
+      "transport feedback",
+      "App projection",
+      "project scope",
+      "parallel completion status"
+    ]
+  },
+  "screenshotSha256": "d74ee528a6e77024fa4e167309e54d6d24569c3f1812fe91b57e4e83fc4fe6eb",
+  "limitations": [
+    "三次刷新和一次重启后首次详情；不代表P95、冷列表或8小时长连接验收",
+    "历史图片下载不计入正文及输入就绪时间",
+    "只验证现有网关Mac，未发布手机安装包，未扩大授权"
+  ]
+}

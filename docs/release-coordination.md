@@ -301,3 +301,7 @@ APK 为4,755,355字节，未签名IPA为5,030,497字节；两端独立完整下�
 ## 2026-11-17 Remote身份误判修复部署
 
 任务remote-identity-fault-20261117以来源f26378eb580d6cab6932ce3f8966fbf936378048完成成功批次bc862e03-c0e3-4bce-8195-d79539a2ffe6，冻结719ea8035f90ffed38f168e14a47d6030968250b。main/gateway/verify、持久receipt与实际摘要一致，当前Remote online、原授权与配对保持。服务端内部分类修复保留现役网页，无客户端构建。293项相关回归、290项适配器、164项构建契约、59项协调器、typecheck、服务端strict和构建通过。真实网页正文3187ms；刷新按钮513ms结束，设备会话加载84.2秒后仍在继续，整体性能未通过。仅文档收尾复用本批部署，详细证据见[身份误判修复与网页实测](superpowers/plans/evidence/2026-11-17-remote-identity-fault.json)。
+
+## 2026-11-17 Remote列表后台刷新循环修复部署
+
+任务remote-refresh-loop-20261117以来源14f9c427d962a25e63bfe312863f8e8d8773fa9b、scope=gateway-only、webUi=true完成批次7ee5a223-720f-421e-8609-d2ca613ada0f，冻结5013564ca0d427c9bb7217f83dc18dddfb10f8c3。main/gateway/verify及持久receipt、实际server/frontend/bin/manifest摘要、原配置/token和身份配对均核对，Remote online且pendingResume为空。202项UI及传输回归、6项服务端兼容回归、290项适配器、164项构建契约、59项协调器、类型/strict和Web/服务端构建通过；整合冻结提交后202项与类型复验通过。真实网页三次完整刷新5877/7441/8353ms、重启后首次详情正文和输入就绪3317ms，60.5秒空闲无目录重读或项目上游刷新。只更新现有网关和网页；手机安装包、LAN、签名/OTA均未发布。最后仅文档收尾，核对运行代码未变及来源祖先关系后复用本次成功部署。见[脱敏凭证](superpowers/plans/evidence/2026-11-17-remote-refresh-loop.json)。
