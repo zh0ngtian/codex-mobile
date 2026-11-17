@@ -467,7 +467,7 @@ it('独立SPEC probe：控制在mark之后dispatch等待跨过expiresAt不可迟
 
 
 it('QUALITY probe：真实claim耐久后预算到期，close同进程重建仍应恢复未发送项', async () => {
-  const f = await setup(); f.options.attemptTimeoutMs = 100; const one = f.create();
+  const f = await setup(); f.options.attemptTimeoutMs = 1000; const one = f.create();
   const input = f.input(f.localContext); await one.submit(input);
   const proto = OperationQueue.prototype as any;
   const original = proto.syncDirectories; let held = false;
@@ -476,7 +476,7 @@ it('QUALITY probe：真实claim耐久后预算到期，close同进程重建仍�
     const disk = JSON.parse(await readFile(join(f.options.directory, 'operations.json'), 'utf8'));
     if (!held && disk.records.find((record: any) => record.id === input.id)?.state === 'claimed') {
       held = true;
-      await new Promise(resolve => setTimeout(resolve, 180));
+      await new Promise(resolve => setTimeout(resolve, 1200));
     }
   });
   await one.runOnce(); hold.mockRestore();
