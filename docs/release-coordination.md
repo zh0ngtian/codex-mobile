@@ -291,3 +291,9 @@ APK 为4,755,355字节，未签名IPA为5,030,497字节；两端独立完整下�
 用户授权推荐性能修复通过验证后部署，并指定直接网页验证。成功批次依次为`15a6452b-2351-4a67-aea6-0f5eec0bf974`（冻结985010f1，网页/服务端）、`ef926db3-e847-425f-b996-9e1fbcd473d2`（1e7d5aef，网页/服务端）、`955f4db7-d891-4663-8000-e91b21438323`（72d496f7，仅服务端，复用前批网页）、`ec9836a0-b9d5-4c79-8317-f2847fa7d911`（46e1fd56，网页/服务端）。均完成main/gateway/verify，持久receipt、实际安装摘要、网页资产及PID独立核对，原token、启动配置、Remote身份和配对、原工作区main/index保持。
 
 现役热打开正文与输入可用约1112ms，已有列表整页重载5419ms，刷新保留已有内容；冷列表31.7秒仍等待、48.3秒内才观测到可见，冷详情也存在明显等待，整体冷性能验收未通过。最终43项HTTP传输/调度、290项适配器（1既有跳过）、164项构建契约、类型与两种构建通过；历史完整服务端回归中的失败与分次复核记录保留，不写成单轮全绿。原8小时只读采样部署前中止，32次中30次RPC成功、2次超时；本轮按要求直接网页复验，未重启监测。未打包或发布APK/IPA、未更新软件源或历史渠道。详见[本轮计划](superpowers/plans/2026-11-17-remote-navigation-performance.md)与[脱敏凭证](superpowers/plans/evidence/2026-11-17-remote-production-rpc.json)。
+
+## 2026-11-17 原消息队列恢复网关与网页部署
+
+用户明确授权网关和自带网页一起更新后，任务 `restored-message-queue-web-deploy-20261117` 以 `scope=gateway-only`、`webUi=true` 完成成功批次 `aa0726b9-5d07-45e0-b13e-1649860cda33`。来源 `79468d9828976bb0f0cba113a1299844987cf8a2`、冻结 `07fa1673884d22b5176b55aaaca779ec18e225ab`，开发CI `44042137576` attempt1成功，main／gateway／verify及持久receipt一致。290项适配器、59项协调器、164项构建契约和类型门禁通过；原队列相关回归及服务端strict通过。
+
+服务端和网页实际摘要、新PID与监听、原配置／token、Remote身份／配对及其他工作区HEAD/index独立核对通过。Local／Remote HTTP只读RPC及队列读取、Remote WS66秒五次采样与客户端重连通过；未创建测试会话或调用推理。手机安装包与软件源未发布；短测不代表8小时或P95通过。本批不修改历史失败或成功记录，文档收尾复用同一部署。[脱敏收据](superpowers/plans/evidence/2026-11-17-restored-queue-gateway-deploy.json)。
