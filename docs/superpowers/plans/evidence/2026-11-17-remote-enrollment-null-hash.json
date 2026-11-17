@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "1f6836eeb10f6ff6fc50d37a841c2a74c3657171",
+  "frozenCommit": "018099dc5d2d9caabf5211fccf7343ee2c0dc550",
+  "batchId": "8165e654-74a1-4fef-b148-1daffe984c78",
+  "taskId": "remote-enrollment-null-hash-20261117",
+  "deploymentComplete": true,
+  "officialRpcVerified": false,
+  "diagnosis": {
+    "officialEnrollStartRequests": 2,
+    "httpStatuses": [
+      200,
+      200
+    ],
+    "deviceIdentityHashWasNull": true,
+    "sameResponseWithoutNullPassesOriginalValidator": true,
+    "canonicalIdentityStable": true
+  },
+  "tdd": {
+    "red": {
+      "tests": 100,
+      "passed": 99,
+      "failed": 1,
+      "failure": "official enroll null hash rejected"
+    },
+    "green": {
+      "relatedFiles": 5,
+      "uniqueTestsCovered": 373,
+      "allUniqueTestsEventuallyPassed": true,
+      "singleAllGreenFullRun": false,
+      "firstRun": {
+        "passed": 370,
+        "failed": 3
+      },
+      "runtimeIsolatedRerun": {
+        "passed": 103,
+        "failed": 1
+      },
+      "remainingBoundaryFocusedRerun": {
+        "passed": 1,
+        "failed": 0
+      },
+      "note": "原失败日志保留；不修改超时边界夹具或相关产品代码"
+    }
+  },
+  "requiredChecks": {
+    "adapter-regression": true,
+    "build-contract": true,
+    "typecheck": true,
+    "coordinator-recovery": true
+  },
+  "adapterTests": {
+    "total": 284,
+    "skipped": 1
+  },
+  "buildContractTests": 164,
+  "coordinatorRecoveryTests": 59,
+  "strictServer": true,
+  "strictNpm": true,
+  "serverBuild": true,
+  "deployment": {
+    "serverDigest": "883f3c08b0731dfd07215c354ea252e7bd589b171d41a01a4b95b0b3b3427b0f",
+    "frontendDigest": "32d1b144ad27cc56c2ff508185bb56026c18f1b589a990cb2a690ab2ace4eabd",
+    "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+    "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+    "archiveSha256": "80578a91f493812ed428ed85515f0f8160fdc5801d5ddfccd2c2e81250a3b6bf",
+    "pid": 93624,
+    "oldPid": 59896
+  },
+  "developmentCi": {
+    "attempt": 1,
+    "runId": 44005877099,
+    "sourceCommit": "018099dc5d2d9caabf5211fccf7343ee2c0dc550"
+  },
+  "preservation": {
+    "startAndEnvironment": true,
+    "webUi": true,
+    "originalMainAndIndex": true
+  },
+  "scope": {
+    "gatewayOnly": true,
+    "webUiBuilt": false,
+    "clientPublished": false,
+    "testChatsCreated": 0
+  },
+  "remaining": [
+    "生产补修后首次Remote授权及本机配对",
+    "官方只读RPC与短时持续连接",
+    "完整功能、8小时、跨凭据刷新、睡眠唤醒及P95"
+  ],
+  "recordedAt": "2026-11-17T02:53:32.022630+00:00"
+}

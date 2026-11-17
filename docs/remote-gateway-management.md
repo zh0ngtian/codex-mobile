@@ -40,7 +40,7 @@ codex-mobile remote pair-local
 
 `login` 发起 canonical 的普通 ChatGPT 登录；`authorize` 只用于尚无活动 Remote 身份的首次授权，登记网关自己的设备身份并完成本机配对和双 ID 证明。两者各自可能打开浏览器。`targets` 刷新当前 controller 可见的目录，`pair-local` 显式核验并配对 canonical 证明的本机。
 
-浏览器“授权成功”仅表示 step-up 完成；必须等待 CLI 成功及 `status` 中活动身份／本机配对就绪。2026-11-17 实测官方首次登记挑战以 `device_identity_hash: null` 表示设备尚未绑定，原解析误拒绝；源码已补修，仅首次登记允许 null／缺省，签名仍携带自身设备哈希，刷新继续严格核对。该补修的部署及实际 RPC 验收状态见[修复计划](superpowers/plans/2026-11-17-remote-enrollment-null-hash.md)。
+浏览器“授权成功”仅表示 step-up 完成；必须等待 CLI 成功及 `status` 中活动身份／本机配对就绪。2026-11-17 实测官方首次登记挑战以 `device_identity_hash: null` 表示设备尚未绑定，原解析误拒绝；已由成功批次 `8165e654-74a1-4fef-b148-1daffe984c78`（冻结 `018099dc`）补修部署，仅首次登记允许 null／缺省，签名仍携带自身设备哈希，刷新继续严格核对。修复后已重新发起授权，等待用户完成；实际登记、RPC 与持续连接尚未通过。详见[修复计划](superpowers/plans/2026-11-17-remote-enrollment-null-hash.md)及[收据](superpowers/plans/evidence/2026-11-17-remote-enrollment-null-hash.json)。
 
 其他机器必须使用真实目录或配对流程提供的完整 `environmentId + installationId`。下列 `ENV_ID`、`INSTALLATION_ID` 和 `PAIR_CODE` 均须替换为对应实际值；名称和 IP 不作为身份依据。
 

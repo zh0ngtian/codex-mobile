@@ -271,3 +271,8 @@ APK 为4,755,355字节，未签名IPA为5,030,497字节；两端独立完整下�
 ## 2026-11-17 Remote 网关及测试网页部署
 
 用户明确要求部署网关并提供测试网页。任务 `remote-gateway-web-test-20261117` 以来源 `1e9917729082e1b1f6755335988f8375a4314613`、`scope=gateway-only`、`webUi=true` 通过成功批次 `48f7578a-d8f4-407e-9d24-4820c08336f1` 的 main/gateway/verify。冻结 `1fd52ff969d373dbdba281bcff41eb3bc6c69a6b`，开发 CI `44000253551` attempt 1 成功；同一持久 receipt 已核对。实际前端与服务端摘要、新 PID 和监听、认证健康接口、网页及入口资产、本地连接和同表单模式选择已验证，启动配置与 token 保持。四项本地门禁通过；旧原生 ACK 夹具因缺少现行 gatewayMode 的两次 RED 保留，补齐夹具后完整164项构建契约通过，未修改产品代码。常驻实例当前 Remote `unconfigured`，首次授权与本机配对仍待完成，不能将部署成功等同于官方 Remote RPC 或长期验收通过。本次未发布客户端、更新软件源或启用历史 LAN／OTA。见[公共部署收据](superpowers/plans/evidence/2026-11-17-remote-gateway-deploy.json)和[部署计划](superpowers/plans/2026-11-17-remote-gateway-deploy.md)。
+
+
+## 2026-11-17 Remote 首次登记协议修复网关部署
+
+任务 `remote-enrollment-null-hash-20261117` 已 complete，成功批次 `8165e654-74a1-4fef-b148-1daffe984c78` 的持久 receipt 与状态返回一致；来源 `1f6836eeb10f6ff6fc50d37a841c2a74c3657171`，冻结 `018099dc5d2d9caabf5211fccf7343ee2c0dc550`，开发 CI `44005877099` attempt 1 成功。修复仅网关内部首次登记 nullable 设备哈希解析，无客户端接口变化；`webUi=false`，未构建网页或发布客户端。284项适配器（1既有跳过）、164项构建契约、59项协调器及类型检查通过，整合结果门禁再次通过；相关认证范围合并覆盖373项，完整首失败和分次验证口径见[脱敏收据](superpowers/plans/evidence/2026-11-17-remote-enrollment-null-hash.json)。实际产物包含修复，PID 59896→93624，原网页、启动配置、token及原工作区 main/index保留；HTTP健康已核对，首次Remote身份、RPC与持续连接仍待补修后的授权验收。
