@@ -4,7 +4,7 @@ import { promisify } from 'node:util';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { readCodexProjectState, parseCodexProjectState } from '../../server/codex-projects.js';
 import { TurnChangeHistory } from '../../server/turn-change-history.js';
 import { remoteRollouts } from '../../server/rollout-source.js';
@@ -38,6 +38,35 @@ it('项目实际坏UTF8字节按原Local readFile替换语义解析，投影不�
   await writeFile(join(f.root, '.codex-global-state.json'), bytes);
   expect(await readCodexProjectState('/gateway', { session: f.session, commands: f.commands })).toEqual(parseCodexProjectState(bytes.toString('utf8'), f.home));
 });
+it('Remote项目worktree读取允许超过本地3秒的协议往返，仍执行真实只读git', async () => {
+  const f = await target(true); const p = await repo(f);
+  const linked = join(f.root, 'linked');
+  await git(p, ['commit', '--allow-empty', '-m', 'base']);
+  await git(p, ['worktree', 'add', '-b', 'linked', linked]);
+  await writeFile(join(f.root, '.codex-global-state.json'), JSON.stringify({
+    'local-projects': { p: { id: 'p', rootPaths: [p] } }, 'project-order': ['p'],
+  }));
+  const call = f.session.call.bind(f.session); let held = false;
+  const intercepted = vi.spyOn(f.session, 'call').mockImplementation(async (method, params, options) => {
+    if (method === 'command/exec/write') {
+      const payload = JSON.parse(Buffer.from((params as any).deltaBase64, 'base64').toString());
+      if (payload.mode === 'execute' && payload.argv?.[0] === 'git') {
+        held = true;
+        await new Promise(resolve => setTimeout(resolve, 3500));
+      }
+    }
+    return call(method, params, options);
+  });
+  try {
+    const state = await readCodexProjectState('/never/gateway', { session: f.session, commands: f.commands });
+    expect(held).toBe(true);
+    expect(state.projectWorktrees).toEqual({ [p]: [linked] });
+    expect(f.frames.filter(frame => frame.method === 'command/exec').length).toBe(3);
+    expect(f.frames.filter(frame => frame.method === 'command/exec').every(frame =>
+      !Object.hasOwn(frame.params as object, 'permissions'))).toBe(true);
+    expect(f.active).toBe(0);
+  } finally { intercepted.mockRestore(); }
+}, 15000);
 it.each(['unused', 'required', 'root', 'mixed'])('合法深层JSON不引入Python递归深度限制：%s', async location => {
   const f = await target(); const deep = location === 'mixed' ? '{"k":['.repeat(12000) + '0' + ']}'.repeat(12000) : '['.repeat(1100) + '0' + ']'.repeat(1100);
   const raw = ['unused', 'mixed'].includes(location) ? `{"unused":${deep},"projectless-thread-ids":["preserved"]}` : location === 'required' ? `{"local-projects":{"p":{"unused":${deep}}},"projectless-thread-ids":["preserved"]}` : deep;

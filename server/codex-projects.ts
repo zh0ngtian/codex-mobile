@@ -222,7 +222,7 @@ export async function readCodexProjectState(globalStatePath: string, source?: Re
     try {
       const args = ["--no-optional-locks", "-C", root, "worktree", "list", "--porcelain", "-z"];
       if (source) {
-        const result = await source.commands.execute({ argv: ['git', ...args], cwd: source.commands.metadata.codexHome, timeoutMs: 3000, stdoutBytesCap: 1024 * 1024, stderrBytesCap: 1024 * 1024, signal: source.signal });
+        const result = await source.commands.execute({ argv: ['git', ...args], cwd: source.commands.metadata.codexHome, timeoutMs: 20000, stdoutBytesCap: 1024 * 1024, stderrBytesCap: 1024 * 1024, signal: source.signal });
         if (result.exitCode !== 0) throw Object.assign(new Error('Remote项目worktree读取失败'), { code: result.exitCode, stderr: decodeRemoteCommandText(result.stderr) });
         output = decodeRemoteCommandText(result.stdout);
       } else ({ stdout: output } = await execute("git", args, { timeout: 3_000, maxBuffer: 1024 * 1024 }));
