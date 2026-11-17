@@ -47,6 +47,8 @@ async function bounded<T>(operation: () => Promise<T>, timeoutMs: number, onTime
 async function external<T>(operation: () => Promise<T>, authMessage: string, defaultNetwork = false): Promise<T> {
   try { return await operation(); }
   catch (error) {
+    // 父业务fence/期限失效不能被外部错误脱敏转换成账号撤权。
+    assertRemoteOperation();
     if (error instanceof RemoteNetworkError || (defaultNetwork && !(error instanceof RemoteAuthRequiredError))) throw new RemoteNetworkError();
     throw new RemoteAuthRequiredError(authMessage);
   }
@@ -71,7 +73,7 @@ export class RemoteAuthProviderImpl implements RemoteAuthProvider {
     try {
       const value = await this.options.store.readJson('enrollment.json');
       return value === null ? null : parseEnrollment(value);
-    } catch { throw new RemoteAuthRequiredError('Remote 注册记录不可用，需要重新认证'); }
+    } catch { assertRemoteOperation(); throw new RemoteAuthRequiredError('Remote 注册记录不可用，需要重新认证'); }
   }
   /** 活动连接的只读完整绑定复核；不登记、不刷新 Remote token。 */
   async verifyBinding(expected?: EnrollmentRecord): Promise<EnrollmentRecord> {
@@ -89,14 +91,14 @@ export class RemoteAuthProviderImpl implements RemoteAuthProvider {
   private async loadAuth(binding?: Binding): Promise<ManagedAuth> {
     let auth: ManagedAuth;
     try { auth = validateManagedAuth(await bounded(() => external(() => this.options.loadManagedAuth(), '普通账号认证不可用'), this.requestTimeoutMs)); }
-    catch (error) { if (error instanceof RemoteNetworkError || error instanceof RemoteAuthRequiredError) throw error; throw new RemoteAuthRequiredError('普通账号认证不可用'); }
+    catch (error) { assertRemoteOperation(); if (error instanceof RemoteNetworkError || error instanceof RemoteAuthRequiredError) throw error; throw new RemoteAuthRequiredError('普通账号认证不可用'); }
     if (binding) assertAccount(auth, binding);
     return auth;
   }
   private async identity(record?: EnrollmentRecord): Promise<DeviceIdentity> {
     let identity: DeviceIdentity;
     try { identity = validateDeviceIdentity(await bounded(() => external(() => this.options.deviceKey.getIdentity(), '自己的 Remote 硬件身份不可用'), this.signTimeoutMs)); }
-    catch (error) { if (error instanceof RemoteNetworkError) throw error; throw new RemoteAuthRequiredError('自己的 Remote 硬件身份不可用'); }
+    catch (error) { assertRemoteOperation(); if (error instanceof RemoteNetworkError) throw error; throw new RemoteAuthRequiredError('自己的 Remote 硬件身份不可用'); }
     if (record && (deviceIdentityHash(identity) !== record.identityHash || JSON.stringify(identity) !== JSON.stringify(record.identity))) invalid();
     return identity;
   }
@@ -184,7 +186,7 @@ export class RemoteAuthProviderImpl implements RemoteAuthProvider {
     const bytes = Buffer.from(JSON.stringify({ domain: 'codex-device-key-sign-payload/v1', payload }));
     let signature: string;
     try { signature = await bounded(() => external(() => this.options.deviceKey.sign(bytes), 'Remote 硬件签名失败'), this.signTimeoutMs); }
-    catch (error) { if (error instanceof RemoteNetworkError) throw error; throw new RemoteAuthRequiredError('Remote 硬件签名失败'); }
+    catch (error) { assertRemoteOperation(); if (error instanceof RemoteNetworkError) throw error; throw new RemoteAuthRequiredError('Remote 硬件签名失败'); }
     if (!verifyDeviceSignature(identity, bytes, signature)) invalid();
     // 硬件签名可能等待：证明离开 provider 前重新读取全部持久化绑定与自己的密钥。
     if (record) await this.recheck(record);
@@ -231,6 +233,7 @@ export class RemoteAuthProviderImpl implements RemoteAuthProvider {
         } finally { reader.releaseLock(); }
       }, 'Remote 认证已失效或被拒绝', true), this.requestTimeoutMs, () => controller.abort());
     } catch (error) {
+      assertRemoteOperation();
       if (error instanceof RemoteAuthRequiredError || error instanceof RemoteNetworkError) throw error;
       throw new RemoteNetworkError();
     }

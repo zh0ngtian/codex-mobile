@@ -13,6 +13,7 @@ import { withRemoteOperation } from '../../server/remote/operation-guard.js';
 import { performance } from 'node:perf_hooks';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RemoteRuntime, type RemoteRuntimeOptions } from '../../server/remote/runtime.js';
+import { RemoteRuntimeError } from '../../server/remote/runtime-lifecycle.js';
 import { RemoteAuthProviderImpl } from '../../server/remote/auth.js';
 import { RemoteIdentityRegistry } from '../../server/remote/identity-registry.js';
 import { ManagedAuthLoader } from '../../server/remote/managed-auth.js';
@@ -1426,6 +1427,33 @@ it('真实挂起mutation与readonly各自busy拒绝不覆盖当前operation的�
   const busyWrite = f.runtime.recover(); const writeCheck = expect(busyWrite).rejects.toMatchObject({ code: 'busy' });
   expect(() => fresh.assertLive()).not.toThrow(); await writeCheck; release(); await readonly;
   expect(() => fresh.assertCurrent()).not.toThrow();
+});
+
+it.each((['file', 'key'] as const).flatMap(boundary =>
+  (['unavailable', 'timeout', 'cancelled'] as const).map(code => ({ boundary, code })),
+))('父操作失效 $boundary/$code 不误判身份变化或暂停原授权', async ({ boundary, code }) => {
+  const f = await fixture();
+  await f.runtime.authorize();
+  await until(() => f.runtime.status().state === 'online');
+  const before = f.runtime.status();
+  const bundle = (f.runtime as any).bundle;
+  let live = true;
+  const source = boundary === 'file' ? bundle.loader.options : bundle.key;
+  const method = boundary === 'file' ? 'readAuthFile' : 'getIdentity';
+  const original = source[method].bind(source);
+  const spy = vi.spyOn(source, method).mockImplementation(async (...args: unknown[]) => {
+    const result = await original(...args);
+    live = false;
+    return result;
+  });
+  await expect(withRemoteOperation(() => {
+    if (!live) throw new RemoteRuntimeError(code);
+  }, () => f.runtime.readTargetBinding())).rejects.toMatchObject({ code });
+  spy.mockRestore(); live = true;
+  expect(f.runtime.status()).toMatchObject({ state: 'online', generation: before.generation });
+  expect(await (await f.registry.readActive())!.store.readJson('runtime-state.json')).toMatchObject({ paused: false });
+  await expect(f.runtime.readTargetBinding()).resolves.toMatchObject({ generation: before.generation, state: 'online' });
+  expect(f.connections).toHaveLength(1);
 });
 
 it.each(['start', 'restart'] as const)('readonly已发现身份变化后还原凭据再%s仍持久暂停，不能绕过Mac显式resume', async kind => {

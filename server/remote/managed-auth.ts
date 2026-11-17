@@ -71,7 +71,7 @@ export async function readManagedAuthFile(codexHome: string): Promise<unknown> {
       }) as unknown;
     }
     throw authFailure();
-  } catch { throw authFailure(); }
+  } catch { assertRemoteOperation(); throw authFailure(); }
 }
 function expiration(auth: ManagedAuth): number | undefined {
   // 只解析本地 JWT exp，不宣称验证签名。毫秒转换也必须保持安全整数。
@@ -128,6 +128,8 @@ export class ManagedAuthLoader {
         })]);
         active(); return value;
       } catch (error) {
+        // 业务父操作失效不是凭据变化；先保留可信检查的原分类，再脱敏外部错误。
+        assertRemoteOperation();
         if (error instanceof RemoteNetworkError || (network && !(error instanceof RemoteAuthRequiredError))) throw new RemoteNetworkError();
         throw authFailure();
       } finally { clearTimeout(timer); if (abort) this.abort.signal.removeEventListener('abort', abort); }
@@ -151,7 +153,7 @@ export class ManagedAuthLoader {
         if (this.binding && this.binding.codexHome !== home) throw authFailure();
         if (this.abort.signal.aborted) throw new RemoteNetworkError();
         this.canonical = { session, home, refreshed: false, generation: 0 }; return this.canonical;
-      } catch (error) { abandoned = true; void this.resources.close(session); void this.resources.close(unclaimed); unclaimed = undefined; throw error instanceof RemoteNetworkError ? new RemoteNetworkError() : authFailure(); }
+      } catch (error) { abandoned = true; void this.resources.close(session); void this.resources.close(unclaimed); unclaimed = undefined; assertRemoteOperation(); throw error instanceof RemoteNetworkError ? new RemoteNetworkError() : authFailure(); }
       finally { this.connecting = undefined; }
     })());
     return this.connecting;
@@ -190,6 +192,7 @@ export class ManagedAuthLoader {
         connection.refreshed = true; connection.generation++;
       } catch (error) {
         if (error instanceof RemoteNetworkError) this.invalidate(connection);
+        assertRemoteOperation();
         throw error instanceof RemoteNetworkError ? new RemoteNetworkError() : authFailure();
       } finally { if (this.refreshing === refreshing) this.refreshing = undefined; }
     })();
