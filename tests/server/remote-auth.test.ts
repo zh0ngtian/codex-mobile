@@ -81,6 +81,14 @@ describe('普通账号令牌归一化', () => {
 });
 
 describe('自己的Remote enrollment', () => {
+  it('官方首次登记的null设备哈希表示未绑定，签名仍绑定自己的设备', async () => {
+    const f = await fixture(); f.setStart(start => mutateChallenge(start, { device_identity_hash: null }));
+    await expect(f.provider.enroll(stepUp())).resolves.toMatchObject({ identityHash: deviceIdentityHash(f.identity) });
+    const proof = f.calls[1]!.body.device_key_proof as Record<string, string>;
+    const signed = JSON.parse(Buffer.from(proof.signed_payload_base64!, 'base64').toString());
+    expect(signed.payload.deviceIdentitySha256Base64url).toBe(deviceIdentityHash(f.identity));
+    expect(f.signed()).toBe(1);
+  });
   it('精确接受JWT base user，按官方字段和顺序签名，只持久化自己的绑定', async () => {
     const f = await fixture();
     const enrollment = await f.provider.enroll(stepUp());
@@ -119,7 +127,7 @@ describe('自己的Remote enrollment', () => {
     expect(g.signed()).toBe(0); expect(await g.store.readJson('enrollment.json')).toBeNull();
   });
   it.each([
-    ['client_id', 'other'], ['account_user_id', 'other'], ['purpose', 'wrong'], ['audience', 'wrong'], ['target_origin', 'https://evil.example'], ['target_path', '/elsewhere'], ['device_identity_hash', 'wrong'], ['challenge_expires_at', NOW / 1000], ['challenge_expires_at', NOW / 1000 + 3600], ['challenge_expires_at', 'future'], ['challenge_id', ''], ['nonce', ''], ['challenge_token', ''],
+    ['client_id', 'other'], ['account_user_id', 'other'], ['purpose', 'wrong'], ['audience', 'wrong'], ['target_origin', 'https://evil.example'], ['target_path', '/elsewhere'], ['device_identity_hash', 'wrong'], ['device_identity_hash', ''], ['device_identity_hash', 0], ['device_identity_hash', false], ['challenge_expires_at', NOW / 1000], ['challenge_expires_at', NOW / 1000 + 3600], ['challenge_expires_at', 'future'], ['challenge_id', ''], ['nonce', ''], ['challenge_token', ''],
   ])('绑定校验失败 %s=%s 时不得签名或持久化', async (key, value) => {
     const f = await fixture(); f.setStart(start => mutateChallenge(start, { [key]: value }));
     await expect(f.provider.enroll(stepUp())).rejects.toBeInstanceOf(RemoteAuthRequiredError);
@@ -191,8 +199,8 @@ describe('Remote refresh与WebSocket证明', () => {
     await expect(new RemoteAuthProviderImpl(f.options).prepareConnection()).rejects.toBeInstanceOf(RemoteAuthRequiredError);
     expect(f.signed()).toBe(before); expect(await f.store.readJson('enrollment.json')).toEqual(stored);
   });
-  it('refresh必须有自己的identity hash且绑定backend精确account user', async () => {
-    const f = await fixture(); await f.provider.enroll(stepUp()); f.setStart(start => mutateChallenge(start, { device_identity_hash: undefined })); const before = f.signed();
+  it.each([undefined, null, '', false, 0, 'wrong'])('refresh必须有自己的identity hash，拒绝 %s', async deviceHash => {
+    const f = await fixture(); await f.provider.enroll(stepUp()); f.setStart(start => mutateChallenge(start, { device_identity_hash: deviceHash })); const before = f.signed();
     await expect(new RemoteAuthProviderImpl(f.options).prepareConnection()).rejects.toBeInstanceOf(RemoteAuthRequiredError);
     expect(f.signed()).toBe(before);
   });
