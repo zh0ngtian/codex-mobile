@@ -19,7 +19,7 @@ function canonical(value: unknown): string {
 const hash = (value: unknown) => createHash('sha256').update(canonical(value)).digest('hex');
 const running = (value: any) => ['active', 'running', 'inProgress', 'in_progress'].includes(typeof value === 'string' ? value : value?.type);
 
-/** 已打开会话的后台责任；只释放逻辑订阅，不关闭 Runtime/Relay 或删除会话。 */
+/** 仅 Remote 已打开会话的后台责任；Local 沿用原关注通知与托管追问。 */
 export class ThreadObserver {
   private readonly store: PrivateStore;
   private readonly records = new Map<string, Observation>();
@@ -53,6 +53,8 @@ export class ThreadObserver {
         !Number.isFinite(record.lastBusinessUpdate) || typeof record.released !== 'boolean' || hash([record.context, record.threadId]) !== id ||
         (record.fingerprint !== undefined && !/^[a-f0-9]{64}$/.test(record.fingerprint)) ||
         (record.releaseOperationId !== undefined && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(record.releaseOperationId))) throw new Error('会话观察存储损坏');
+      // 旧 Local 观察文件保留原位，升级后不再轮询或重交其释放操作。
+      if (record.context.mode !== 'remote') continue;
       this.records.set(id, record); this.due.set(id, 0);
     }
   }
@@ -65,7 +67,7 @@ export class ThreadObserver {
     this.saving = work; return work;
   }
   async opened(context: OperationContext, threadId: string, phone?: string) {
-    if (!threadId || threadId.length > 1024 || this.closed) return;
+    if (context.mode !== 'remote' || !threadId || threadId.length > 1024 || this.closed) return;
     await this.ready;
     const fence = await this.options.resolver.authorizeOperation(context, 'read'); fence();
     const id = hash([context, threadId]);
@@ -76,9 +78,11 @@ export class ThreadObserver {
     await this.save(record, fence);
   }
   touch(context: OperationContext, phone: string) {
+    if (context.mode !== 'remote') return;
     const item = this.phones.get(hash([context, phone])); if (item) item.expires = this.now() + 60000;
   }
   event(context: OperationContext, message: RpcMessage) {
+    if (context.mode !== 'remote') return;
     const threadId = message.params?.threadId; if (typeof threadId !== 'string') return;
     const id = hash([context, threadId]); if (!this.records.has(id)) return;
     if (message.id != null && message.method) this.approvalThreads.add(id);

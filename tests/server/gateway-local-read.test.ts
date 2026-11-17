@@ -110,6 +110,7 @@ it.each(['HTTP', 'WebSocket'])('%s 本地打开会话不等待 Remote 账本锁�
     unlocked.release(); await lock; await Promise.allSettled(pending);
     socket?.terminate(); await gateway.close(); await upstream.close();
   }
+  await expect(readFile(join(f.gatewayHome, 'codex-mobile-observers', 'index.json'))).rejects.toMatchObject({ code: 'ENOENT' });
 }, 20000);
 
 it.each(['turn/start', 'thread/resume'])('本地 %s 携 client readOnly 标记仍先持久入队', async method => {

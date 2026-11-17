@@ -680,7 +680,7 @@ it('Remote导航先交付网关共享快照，后台更新另发通知且不重�
 
 it('旧Remote网关无快照入口时仍通过原RPC完成导航', async () => {
   vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]); const paths: string[] = [];
-  const transport = new HttpRpcTransport({ id: 'old-snapshot-gateway', baseUrl: 'http://old-snapshot.test', gatewayMode: 'remote', remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } }, { fetch: (async (input) => {
+  const transport = new HttpRpcTransport({ id: 'old-snapshot-gateway', baseUrl: 'http://old-snapshot.test', token: '', gatewayMode: 'remote', remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } }, { fetch: (async (input) => {
     const path = new URL(String(input)).pathname; paths.push(path);
     return path === '/api/read-snapshot' ? new Response('{}', { status: 404 }) : new Response(JSON.stringify({ result: { thread: { id: 't' } } }));
   }) as typeof fetch }); transports.push(transport);
@@ -691,7 +691,7 @@ it('旧Remote网关无快照入口时仍通过原RPC完成导航', async () => {
 });
 it('后台快照失败保留已交付内容并通知失败，不发伪造更新', async () => {
   vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
-  const transport = new HttpRpcTransport({ id: 'failed-snapshot-gateway', baseUrl: 'http://failed-snapshot.test', gatewayMode: 'remote', remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } }, { fetch: (async (input) => new URL(String(input)).searchParams.has('refresh') ? new Response('{}', { status: 503 }) : new Response(JSON.stringify({ message: { result: { thread: { id: 't' } } }, updatedAt: 100, refreshing: true }))) as typeof fetch }); transports.push(transport);
+  const transport = new HttpRpcTransport({ id: 'failed-snapshot-gateway', baseUrl: 'http://failed-snapshot.test', token: '', gatewayMode: 'remote', remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } }, { fetch: (async (input) => new URL(String(input)).searchParams.has('refresh') ? new Response('{}', { status: 503 }) : new Response(JSON.stringify({ message: { result: { thread: { id: 't' } } }, updatedAt: 100, refreshing: true }))) as typeof fetch }); transports.push(transport);
   await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
   const messages: any[] = []; transport.addEventListener('message', event => messages.push(JSON.parse((event as MessageEvent).data)));
   await transport.send(JSON.stringify({ id: 5, method: 'thread/read', params: { threadId: 't' } }));
