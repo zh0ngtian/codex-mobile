@@ -353,6 +353,89 @@ class GatewayTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, '冲突'):
             self.module.Gateway(self.adapter)
 
+    def recovery_web_ui_context(self):
+        def task(name, sha, selected):
+            return {'id': name, 'sha': sha, 'validation': {
+                'sourceCommit': sha, 'scope': 'gateway-only', 'webUi': selected}}
+        self.adapter.context.update({
+            'recoveryOf': 'failed-leaf',
+            'newTaskIds': ['repair'],
+            'tasks': [task('authorized-web', 'a' * 40, True),
+                      task('server-repair', 'b' * 40, False),
+                      task('repair', 'c' * 40, True)]})
+        return self.adapter.context
+
+    def test_recovery_inherits_authorized_web_scope_and_receipts_actual_install(self):
+        context = self.recovery_web_ui_context()
+        original = json.dumps(context, sort_keys=True)
+        gateway = self.module.Gateway(self.adapter)
+        receipt = gateway.run()
+        self.assertTrue(receipt['webUi'])
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build']), 1)
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build:server']), 1)
+        self.assertEqual(self.adapter.package.joinpath('dist/index.html').read_text(), 'new frontend')
+        self.assertTrue(gateway.check()['done'])
+        self.assertEqual(json.dumps(context, sort_keys=True), original, '不可改写继承的冻结任务')
+
+    def test_recovery_web_scope_requires_explicit_unambiguous_new_tasks(self):
+        for key, value in [('recoveryOf', None), ('recoveryOf', ''),
+                           ('newTaskIds', None), ('newTaskIds', []),
+                           ('newTaskIds', 'repair'), ('newTaskIds', ['missing']),
+                           ('newTaskIds', ['repair', 'repair']),
+                           ('newTaskIds', ['repair', 'server-repair']),
+                           ('newTaskIds', ['repair', 'authorized-web'])]:
+            with self.subTest(key=key, value=value):
+                context = self.recovery_web_ui_context()
+                context[key] = value
+                with self.assertRaisesRegex(RuntimeError, '冲突'):
+                    self.module.Gateway(self.adapter)
+        context = self.recovery_web_ui_context()
+        context['tasks'].append(dict(context['tasks'][-1]))
+        with self.assertRaisesRegex(RuntimeError, '冲突'):
+            self.module.Gateway(self.adapter)
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build']), 0)
+
+    def test_recovery_web_scope_cannot_add_authorization_or_accept_unspecified_new_scope(self):
+        context = self.recovery_web_ui_context()
+        context['tasks'][0]['validation']['webUi'] = False
+        with self.assertRaisesRegex(RuntimeError, '冲突'):
+            self.module.Gateway(self.adapter)
+        for selected in [False, 'omitted']:
+            with self.subTest(selected=selected):
+                context = self.recovery_web_ui_context()
+                validation = context['tasks'][-1]['validation']
+                if selected == 'omitted':
+                    validation.pop('webUi')
+                else:
+                    validation['webUi'] = selected
+                with self.assertRaisesRegex(RuntimeError, '冲突'):
+                    self.module.Gateway(self.adapter)
+
+    def test_recovery_checks_every_new_task_and_inherits_neutral_tasks(self):
+        context = self.recovery_web_ui_context()
+        context['tasks'].append({'id': 'old-neutral', 'sha': 'd' * 40, 'validation': {}})
+        self.assertTrue(self.module.Gateway(self.adapter).web_ui)
+        context['newTaskIds'].append('old-neutral')
+        with self.assertRaisesRegex(RuntimeError, '冲突'):
+            self.module.Gateway(self.adapter)
+
+    def test_recovery_cannot_bypass_existing_scope_sha_and_boolean_validation(self):
+        for index in range(3):
+            for key, value in [('sourceCommit', 'wrong'), ('scope', 'mobile'), ('webUi', 1)]:
+                with self.subTest(index=index, key=key):
+                    context = self.recovery_web_ui_context()
+                    context['tasks'][index]['validation'][key] = value
+                    with self.assertRaisesRegex(RuntimeError, '布尔值并绑定'):
+                        self.module.Gateway(self.adapter)
+
+    def test_duplicate_task_id_cannot_hide_conflicting_web_choices(self):
+        self.enable_web_ui()
+        task = self.adapter.context['tasks'][0]
+        self.adapter.context['tasks'].append({**task, 'validation': {
+            **task['validation'], 'webUi': False}})
+        with self.assertRaisesRegex(RuntimeError, '冲突'):
+            self.module.Gateway(self.adapter)
+
     def test_web_ui_build_failure_does_not_snapshot_install_or_restart(self):
         gateway = self.enable_web_ui()
         self.adapter.web_build_exit_code = 2
