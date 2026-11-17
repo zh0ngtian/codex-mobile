@@ -690,6 +690,21 @@ it('旧Remote网关无快照入口时仍通过原RPC完成导航', async () => {
   await transport.send(JSON.stringify({ id: 4, method: 'thread/read', params: { threadId: 't' } }));
   expect(paths).toEqual(['/api/read-snapshot', '/api/rpc']); expect(messages).toContainEqual({ id: 4, result: { thread: { id: 't' } } });
 });
+it('后台通知重新投影列表只读取快照，不再次发起上游更新或覆盖同步状态', async () => {
+  vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
+  const paths: string[] = [];
+  const transport = new HttpRpcTransport({ id: 'snapshot-projection', baseUrl: 'http://snapshot-projection.test', token: '', gatewayMode: 'remote', remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } }, { fetch: (async input => {
+    const url = new URL(String(input)); paths.push(url.pathname + url.searchParams.get('refresh'));
+    return new Response(JSON.stringify({ message: { result: { data: [{ id: 'fresh-row' }], nextCursor: null } }, updatedAt: 100, refreshing: true }));
+  }) as typeof fetch }); transports.push(transport);
+  await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
+  const client = new AppServerClient(transport), notifications: string[] = [];
+  client.onNotification(message => notifications.push(message.method!));
+  await expect(client.request('thread/list', { limit: 5 }, { refreshSnapshot: false })).resolves.toMatchObject({ data: [{ id: 'fresh-row' }] });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(paths).toEqual(['/api/read-snapshotnull']);
+  expect(notifications).toEqual([]);
+});
 it('后台快照失败保留已交付内容并通知失败，不发伪造更新', async () => {
   vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
   const transport = new HttpRpcTransport({ id: 'failed-snapshot-gateway', baseUrl: 'http://failed-snapshot.test', token: '', gatewayMode: 'remote', remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } }, { fetch: (async (input) => new URL(String(input)).searchParams.has('refresh') ? new Response('{}', { status: 503 }) : new Response(JSON.stringify({ message: { result: { thread: { id: 't' } } }, updatedAt: 100, refreshing: true }))) as typeof fetch }); transports.push(transport);

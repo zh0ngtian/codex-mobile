@@ -38,6 +38,7 @@ interface ThreadListLoaderCallbacks {
 
 interface ThreadListLoadOptions {
   silent?: boolean;
+  refreshSnapshot?: boolean;
   pinnedThreadIds?: string[];
   prioritizedThreadIds?: string[];
   includeRunningThreads?: boolean;
@@ -415,10 +416,11 @@ export function createLatestThreadListLoader(
           if (sequence !== latestSequence) return Promise.reject(new DOMException("Refresh superseded", "AbortError"));
           const id = method === "thread/read" && (params as any)?.includeTurns === false
             ? String((params as any).threadId) : null;
-          if (!id) return client.request(method, params, { priority });
+          const requestOptions = { priority, ...(options.refreshSnapshot === false ? { refreshSnapshot: false } : {}) };
+          if (!id) return client.request(method, params, requestOptions);
           let request = reads.get(id);
           if (!request) {
-            request = client.request(method, params, { priority });
+            request = client.request(method, params, requestOptions);
             reads.set(id, request);
           }
           return request;
