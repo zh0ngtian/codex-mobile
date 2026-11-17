@@ -699,3 +699,28 @@ it('后台快照失败保留已交付内容并通知失败，不发伪造更新'
   await vi.waitFor(() => expect(messages).toContainEqual({ method: 'mobile/readSnapshot/status', params: { request: { id: 5, method: 'thread/read', params: { threadId: 't' } }, updatedAt: 100, refreshing: false, failed: true } }));
   expect(messages.filter(value => value.id === 5)).toEqual([{ id: 5, result: { thread: { id: 't' } } }]); expect(messages.some(value => value.method === 'mobile/readSnapshot/updated')).toBe(false);
 });
+
+
+it('Remote已有导航快照不等待前台慢RPC释放浏览器调度队列', async () => {
+  vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
+  let release!: () => void;
+  let started!: () => void;
+  const startedRpc = new Promise<void>(resolve => { started = resolve; });
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const messages: any[] = [];
+  const paths: string[] = [];
+  const transport = new HttpRpcTransport({ id: 'snapshot-lane', baseUrl: 'http://snapshot-lane.test', token: 'test', gatewayMode: 'remote', remoteTarget: { mode: 'remote', gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } }, { fetch: (async (input) => {
+    const path = new URL(String(input)).pathname; paths.push(path);
+    if (path === '/api/rpc') { started(); await held; return new Response(JSON.stringify({ result: {} })); }
+    return new Response(JSON.stringify({ message: { result: { data: [{ id: 'cached' }], nextCursor: null } }, updatedAt: Date.now(), refreshing: false }));
+  }) as typeof fetch }); transports.push(transport);
+  transport.addEventListener('message', event => messages.push(JSON.parse((event as MessageEvent).data)));
+  await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
+  const slow = transport.send(JSON.stringify({ id: 1, method: 'model/list', params: {} }));
+  await startedRpc;
+  const navigation = transport.send(JSON.stringify({ id: 2, method: 'thread/list', params: { limit: 5 } }), 10000, 'background');
+  try {
+    await vi.waitFor(() => expect(messages).toContainEqual({ id: 2, result: { data: [{ id: 'cached' }], nextCursor: null } }), { timeout: 200 });
+    expect(paths).toEqual(['/api/rpc', '/api/read-snapshot']);
+  } finally { release(); await Promise.allSettled([slow, navigation]); }
+});

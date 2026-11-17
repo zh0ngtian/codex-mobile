@@ -215,8 +215,24 @@ export class HttpRpcTransport extends EventTarget {
 
   async send(raw: string, timeoutMs = 10_000, priority: HttpRequestPriority = "foreground", operationKey?: string): Promise<void> {
     if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
+    const deadline = Date.now() + timeoutMs;
+    let remainingTimeoutMs = timeoutMs;
+    if (this.config.gatewayMode === 'remote') {
+      const original = JSON.parse(raw) as RpcMessage;
+      const params = original.params as Record<string, unknown> | undefined;
+      const message = !this.detailsUnsupported && original.method === "thread/turns/list" && params?.itemsView === "full"
+        ? { ...original, method: "mobile/turns/details", params: { ...params, itemsView: undefined, limit: Math.min(5, Math.max(1, Number(params.limit) || 5)), sortDirection: "desc" } }
+        : original;
+      if (original.id != null && snapshotRead(message)) {
+        await this.restored;
+        if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
+        // 已有快照无需等待慢RPC占用的浏览器名额；未命中及后台刷新仍走原调度。
+        if (await this.readSnapshot(message, original, Math.max(1, deadline - Date.now()))) return;
+        remainingTimeoutMs = Math.max(1, deadline - Date.now());
+      }
+    }
     return httpRequestScheduler.run(new URL(this.config.baseUrl).origin, priority, this.requestLifetime.signal,
-      () => this.sendNow(raw, timeoutMs, operationKey));
+      () => this.sendNow(raw, remainingTimeoutMs, operationKey));
   }
 
   private async sendNow(raw: string, timeoutMs: number, operationKey?: string): Promise<void> {
@@ -280,7 +296,6 @@ export class HttpRpcTransport extends EventTarget {
       response = undefined;
       response = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wireOperation) }, {}, remainingReadBudget());
     };
-    if (!signature && message.id != null && await this.readSnapshot(wireMessage, message, remainingReadBudget())) return;
     if (signature) this.inflightWrites.add(requestId);
     if (signature && message.method && message.id != null) this.inflightRpcWrites.set(message.id, operation);
     try {
