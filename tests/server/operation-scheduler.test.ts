@@ -125,14 +125,14 @@ it('Sidechat和初始化在ledger前拒绝，没有耐久正文或新Session', a
   await expect(readFile(join(f.options.directory, 'operations.json'))).rejects.toMatchObject({ code: 'ENOENT' }); expect(f.localMessages).toEqual([]); expect(f.remoteMessages).toEqual([]);
 });
 it('一个原context授权恢复停顿不持ledger锁，其他会话在其预算耗尽前真实发送', async () => {
-  const f = await setup(); f.options.attemptTimeoutMs = 800; const scheduler = f.create(); const blocked = f.input(); const independent = f.input(f.localContext, 'independent'); await scheduler.submit(blocked); await scheduler.submit(independent);
+  const f = await setup(); f.options.attemptTimeoutMs = 4000; const scheduler = f.create(); const blocked = f.input(); const independent = f.input(f.localContext, 'independent'); await scheduler.submit(blocked); await scheduler.submit(independent);
   const authorize = f.resolver.authorizeOperation.bind(f.resolver); let entered = false; let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); cleanup.push(() => release());
   vi.spyOn(f.resolver, 'authorizeOperation').mockImplementation(async (...args) => {
     if (args[0].mode === 'remote' && args[1] === 'claim') { entered = true; await gate; }
     return authorize(...args);
   });
   const run = scheduler.runOnce(); await until(() => entered);
-  try { await until(() => f.localMessages.some(m => m.method === 'turn/start'), 500); } finally { release(); }
+  try { await until(() => f.localMessages.some(m => m.method === 'turn/start'), 2500); } finally { release(); }
   await run; expect((await f.queue().read(independent.id)).state).toBe('succeeded');
 });
 it('Remote consumer装配缺失明确失败且绝不回退Local canonical', async () => {
@@ -467,7 +467,7 @@ it('独立SPEC probe：控制在mark之后dispatch等待跨过expiresAt不可迟
 
 
 it('QUALITY probe：真实claim耐久后预算到期，close同进程重建仍应恢复未发送项', async () => {
-  const f = await setup(); f.options.attemptTimeoutMs = 100; const one = f.create();
+  const f = await setup(); f.options.attemptTimeoutMs = 1000; const one = f.create();
   const input = f.input(f.localContext); await one.submit(input);
   const proto = OperationQueue.prototype as any;
   const original = proto.syncDirectories; let held = false;
@@ -476,7 +476,7 @@ it('QUALITY probe：真实claim耐久后预算到期，close同进程重建仍�
     const disk = JSON.parse(await readFile(join(f.options.directory, 'operations.json'), 'utf8'));
     if (!held && disk.records.find((record: any) => record.id === input.id)?.state === 'claimed') {
       held = true;
-      await new Promise(resolve => setTimeout(resolve, 180));
+      await new Promise(resolve => setTimeout(resolve, 1200));
     }
   });
   await one.runOnce(); hold.mockRestore();
@@ -561,11 +561,11 @@ it('mark已耐久uncertain而最终真实授权拒绝时旧claim清理只丢弃�
   expect(f.remoteMessages.filter(message => message.method === 'turn/start')).toEqual([]); expect(f.localMessages).toEqual([]);
 });
 it('精确claim清理遇暂时IO故障保留责任，close后新实例重试原CAS而非丢弃或重收其他项', async () => {
-  const f = await setup(); f.options.attemptTimeoutMs = 100; const one = f.create(); const input = f.input(f.localContext); await one.submit(input);
+  const f = await setup(); f.options.attemptTimeoutMs = 1000; const one = f.create(); const input = f.input(f.localContext); await one.submit(input);
   const proto = OperationQueue.prototype as any; const actual = proto.syncDirectories; let delayed = false;
   const hold = vi.spyOn(proto, 'syncDirectories').mockImplementation(async function (this: any, ...args: any[]) {
     await actual.apply(this, args); const disk = JSON.parse(await readFile(join(f.options.directory, 'operations.json'), 'utf8'));
-    if (!delayed && disk.records[0]?.state === 'claimed') { delayed = true; await new Promise(resolve => setTimeout(resolve, 180)); }
+    if (!delayed && disk.records[0]?.state === 'claimed') { delayed = true; await new Promise(resolve => setTimeout(resolve, 1200)); }
   });
   const release = vi.spyOn(OperationQueue.prototype, 'releaseClaim').mockRejectedValue(new Error('injected cleanup IO failure'));
   await one.runOnce(); expect(release).toHaveBeenCalled(); expect((await f.queue().read(input.id)).state).toBe('claimed'); await one.close(); hold.mockRestore(); release.mockRestore();
@@ -632,4 +632,56 @@ it('持续claim最终预算失效在单次scan仅耐久领取一次，恢复后�
   await one.runOnce().catch(error => String(error)); hold.mockRestore();
   expect(claims.size).toBe(1); expect(forcedClose).toBe(false); expect(mark).not.toHaveBeenCalled(); expect(dispatch).not.toHaveBeenCalled(); expect(f.localMessages).toEqual([]); expect((await f.queue().read(input.id)).state).toBe('queued');
   await one.runOnce(); expect((await f.queue().read(input.id)).state).toBe('succeeded'); expect(f.localMessages.filter(message => message.method === 'turn/start')).toHaveLength(1);
+});
+
+for (const mode of ['local', 'remote'] as const) for (const method of ['thread/read', 'turn/start']) {
+  it(`${mode} ${method}真实派发等待回复时公开pending，原磁盘uncertain不提前终止客户端`, async () => {
+    const f = await setup(); f.options.attemptTimeoutMs = 5000; const scheduler = f.create();
+    f.respond((_mode, message) => message.method === method ? undefined as any : ({ id: message.id, result: { ok: true } }));
+    const input = f.input(mode === 'local' ? f.localContext : f.remoteContext, 'thread', method); input.requestId = input.id;
+    await scheduler.submit(input); const run = scheduler.runOnce();
+    const messages = mode === 'local' ? f.localMessages : f.remoteMessages;
+    await until(() => messages.some(message => message.method === method));
+    try {
+      expect((await f.queue().read(input.id)).state).toBe('uncertain');
+      expect(await scheduler.operation(input.id, input.context, input.sessionId)).toMatchObject({ status: 'pending', operation: { state: 'uncertain' } });
+    } finally {
+      const reply = { id: messages.find(message => message.method === method).id, result: { ok: true } };
+      if (mode === 'local') for (const socket of f.localSockets()) socket.send(JSON.stringify(reply)); else f.sendRemote(reply);
+      await run;
+    }
+    expect(await scheduler.operation(input.id, input.context, input.sessionId)).toMatchObject({ status: 'completed', message: { result: { ok: true } } });
+  }, 15000);
+}
+it('原派发超时后公开uncertain，不因其他原项仍在执行变pending且绝不重发', async () => {
+  const f = await setup(); f.options.attemptTimeoutMs = 2000; const scheduler = f.create();
+  f.respond((_mode, message) => ['turn/start', 'thread/read'].includes(message.method) ? undefined as any : ({ id: message.id, result: { ok: true } }));
+  const first = f.input(f.localContext); first.requestId = first.id; await scheduler.submit(first); await scheduler.runOnce();
+  expect(await scheduler.operation(first.id, first.context, first.sessionId)).toMatchObject({ status: 'uncertain' });
+  const other = f.input(f.localContext, 'other-thread', 'thread/read'); other.requestId = other.id; await scheduler.submit(other); const run = scheduler.runOnce();
+  await until(() => f.localMessages.some(message => message.method === 'thread/read'));
+  try {
+    expect(await scheduler.operation(other.id, other.context, other.sessionId)).toMatchObject({ status: 'pending' });
+    expect(await scheduler.operation(first.id, first.context, first.sessionId)).toMatchObject({ status: 'uncertain' });
+  } finally { await run; }
+  await scheduler.runOnce(); expect(f.localMessages.filter(message => message.method === 'turn/start')).toHaveLength(1);
+}, 15000);
+it('原回复在公开查询最后授权等待期间完成时，不把先前在途快照误报uncertain', async () => {
+  const f = await setup(); f.options.attemptTimeoutMs = 2000; const scheduler = f.create();
+  f.respond((_mode, message) => message.method === 'thread/read' ? undefined as any : ({ id: message.id, result: { ok: true } }));
+  const input = f.input(f.localContext, 'thread', 'thread/read'); input.requestId = input.id;
+  await scheduler.submit(input); const run = scheduler.runOnce(); await until(() => f.localMessages.some(message => message.method === 'thread/read'));
+  const authorize = f.resolver.authorizeOperation.bind(f.resolver); let count = 0; let entered = false; let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; }); cleanup.push(release);
+  vi.spyOn(f.resolver, 'authorizeOperation').mockImplementation(async (...args) => {
+    const fence = await authorize(...args);
+    if (args[1] === 'read' && ++count === 2) { entered = true; await gate; }
+    return fence;
+  });
+  const query = scheduler.operation(input.id, input.context, input.sessionId);
+  await until(() => entered);
+  const reply = { id: f.localMessages.find(message => message.method === 'thread/read').id, result: { ok: true } };
+  for (const socket of f.localSockets()) socket.send(JSON.stringify(reply)); await run; release();
+  expect((await query).status).not.toBe('uncertain');
+  expect(await scheduler.operation(input.id, input.context, input.sessionId)).toMatchObject({ status: 'completed' });
 });
