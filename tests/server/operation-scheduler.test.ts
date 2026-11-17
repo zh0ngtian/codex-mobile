@@ -719,3 +719,19 @@ it('历史未知只读按原revision限频查账，未知写每轮仍查且新�
     expect(reads.mock.calls.filter(([id]) => id === staleRead.id)).toHaveLength(1);
   } finally { clock.mockRestore(); }
 });
+
+it('托管读取等待上游期间不反复查账，完成时立即唤醒原UUID等待者', async () => {
+  const f = await setup(); f.options.attemptTimeoutMs = 6000; const scheduler = f.create();
+  f.respond((_mode, message) => message.method === 'thread/read' ? undefined as any : ({ id: message.id, result: { ok: true } }));
+  const pending = scheduler.hostedRpc(f.remoteContext, { id: 'caller-id', method: 'thread/read', params: { threadId: 'wake-thread', includeTurns: false } });
+  await until(() => f.remoteMessages.some(m => m.method === 'thread/read'));
+  const sent = f.remoteMessages.find(m => m.method === 'thread/read');
+  const reads = vi.spyOn(OperationQueue.prototype, 'read');
+  await new Promise(resolve => setTimeout(resolve, 750));
+  const waitingReads = reads.mock.calls.length;
+  f.sendRemote({ id: sent.id, result: { thread: { id: 'wake-thread' } } });
+  const started = performance.now();
+  expect(await pending).toMatchObject({ result: { thread: { id: 'wake-thread' } } });
+  expect(waitingReads).toBeLessThanOrEqual(1);
+  expect(performance.now() - started).toBeLessThan(700);
+});

@@ -71,6 +71,7 @@ export class OperationScheduler {
   readonly #resumed = new Map<string, string>();
   readonly #resuming = new Map<string, { epoch: string; promise: Promise<void> }>();
   readonly #hostedReads = new Map<string, Promise<RpcMessage>>();
+  readonly #operationWaiters = new Map<string, Set<() => void>>();
   readonly #hostedQueued = new Map<string, string>();
   #closed = false;
   #running?: Promise<void>;
@@ -184,11 +185,14 @@ export class OperationScheduler {
       let lastState: string | undefined;
       try {
       for (;;) {
-        const state = await this.operation(id, context, HOSTED_SESSION_ID, call);
-        lastState = state.status;
-        if (state.status === 'completed') { this.#hostedQueued.delete(binding); return state.message!; }
-        if (call.signal?.aborted || performance.now() >= call.deadline) throw new Error('后台读取待恢复');
-        await new Promise<void>(resolve => setTimeout(resolve, 50));
+        const waiting = this.waitForOperation(id, call);
+        try {
+          const state = await this.operation(id, context, HOSTED_SESSION_ID, call);
+          lastState = state.status;
+          if (state.status === 'completed') { this.#hostedQueued.delete(binding); return state.message!; }
+          if (call.signal?.aborted || performance.now() >= call.deadline) throw new Error('后台读取待恢复');
+          await waiting.promise;
+        } finally { waiting.dispose(); }
       }
       } finally {
         // 仅在原等待预算结束后允许下一次独立只读查询；未知写入从不重放。
@@ -199,6 +203,22 @@ export class OperationScheduler {
     void work.finally(() => { if (this.#hostedReads.get(binding) === work) this.#hostedReads.delete(binding); }).catch(() => {});
     return work;
   }
+  private waitForOperation(id: string, call: SessionCallOptions) {
+    let wake!: () => void;
+    const promise = new Promise<void>(resolve => { wake = resolve; });
+    let waiters = this.#operationWaiters.get(id);
+    if (!waiters) { waiters = new Set(); this.#operationWaiters.set(id, waiters); }
+    waiters.add(wake);
+    // 先注册再查原账本，避免完成发生在查询与开始等待之间；跨进程仍有界复查。
+    const timer = setTimeout(wake, Math.min(1000, Math.max(0, call.deadline - performance.now()))); timer.unref();
+    call.signal?.addEventListener('abort', wake, { once: true });
+    if (call.signal?.aborted) wake();
+    return { promise, dispose: () => {
+      clearTimeout(timer); call.signal?.removeEventListener('abort', wake); waiters.delete(wake);
+      if (!waiters.size && this.#operationWaiters.get(id) === waiters) this.#operationWaiters.delete(id);
+    } };
+  }
+  private wakeOperation(id: string) { for (const wake of this.#operationWaiters.get(id) ?? []) wake(); }
   hasPending(context: OperationContext, threadId: string, original?: SessionCallOptions): Promise<boolean> {
     return this.own(() => this.budget(async call => {
       const groups = await this.#queue.inventory();
@@ -528,7 +548,7 @@ export class OperationScheduler {
             const previousRead = this.#readReconciliations.get(receipt.id);
             const sameRead = previousRead?.revision === receipt.revision;
             if (sameRead && performance.now() < previousRead.after) continue;
-            if (['uncertain', 'failed'].includes(receipt.state) && !dispatching.has(receipt.id) && !seen.has(binding)) jobs.push({ binding, control: false, background: sameRead, work: () => this.reconcile(group.context, receipt) });
+            if (['uncertain', 'failed'].includes(receipt.state) && !dispatching.has(receipt.id) && !seen.has(binding)) jobs.push({ binding, control: false, background: sameRead, work: () => this.reconcile(group.context, receipt).finally(() => this.wakeOperation(receipt.id)) });
           }
           if (!group.operations.some(receipt => receipt.state === 'queued' || receipt.state === 'claimed')) continue;
           for (const kind of ['control', 'foreground', 'background'] as const) {
@@ -545,7 +565,7 @@ export class OperationScheduler {
               finally { authorizing.delete(key(group.context)); }
               if (!record) return;
               attempted.add(record.id); dispatching.add(record.id);
-              try { await this.execute(record); } finally { dispatching.delete(record.id); }
+              try { await this.execute(record); } finally { dispatching.delete(record.id); this.wakeOperation(record.id); }
             } });
           }
         }
