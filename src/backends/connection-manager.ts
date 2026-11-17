@@ -95,10 +95,10 @@ export class BackendConnectionManager {
   > &
     BackendConnectionManagerOptions;
   private disposed = false;
-  private readonly initializeTimeoutMs: number;
+  private readonly initializeTimeoutMs: number | undefined;
 
   constructor(options: BackendConnectionManagerOptions = {}) {
-    this.initializeTimeoutMs = options.initializeTimeoutMs ?? 10_000;
+    this.initializeTimeoutMs = options.initializeTimeoutMs;
     this.options = {
       ...options,
       createSocket:
@@ -109,7 +109,8 @@ export class BackendConnectionManager {
           : new HttpRpcTransport(backend)),
       createClient:
         options.createClient ??
-        ((socket) => new AppServerClient(socket as unknown as WebSocket)),
+        ((socket, backend) => new AppServerClient(socket as unknown as WebSocket,
+          backend.gatewayMode === 'remote' ? { requestTimeoutMs: 60_000 } : {})),
     };
   }
 
@@ -253,7 +254,7 @@ export class BackendConnectionManager {
           new Promise<never>((_, reject) => {
             timeout = setTimeout(
               () => reject(new Error(t("设备 initialize 超时"))),
-              this.initializeTimeoutMs,
+              this.initializeTimeoutMs ?? (entry.config.gatewayMode === 'remote' ? 60_000 : 10_000),
             );
           }),
         ]);
