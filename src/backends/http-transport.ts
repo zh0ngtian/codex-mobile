@@ -184,16 +184,16 @@ export class HttpRpcTransport extends EventTarget {
     }
   }
 
-  private async readSnapshot(message: RpcMessage, original: RpcMessage, timeoutMs: number): Promise<boolean> {
+  private async readSnapshot(message: RpcMessage, original: RpcMessage, timeoutMs: number, refreshSnapshot: boolean): Promise<boolean> {
     if (this.config.gatewayMode !== 'remote' || !snapshotRead(message)) return false;
     const body = JSON.stringify({ requestId: transportUuid(), message });
     let cached: any;
     try { cached = await this.fetchJson('/api/read-snapshot', { method: 'POST', headers: { 'content-type': 'application/json' }, body }, {}, Math.min(timeoutMs, 5000)); }
     catch (error) { if ([401, 403, 409].includes((error as any)?.status)) throw error; return false; }
     if (!cached?.message || cached.message.error || cached.message.result == null || !Number.isFinite(cached.updatedAt)) return false;
-    this.emit({ method: 'mobile/readSnapshot/status', params: { request: original, updatedAt: cached.updatedAt, refreshing: cached.refreshing === true } });
+    if (refreshSnapshot) this.emit({ method: 'mobile/readSnapshot/status', params: { request: original, updatedAt: cached.updatedAt, refreshing: cached.refreshing === true } });
     this.emit({ ...cached.message, id: original.id });
-    if (cached.refreshing === true) {
+    if (refreshSnapshot && cached.refreshing === true) {
       const binding = JSON.stringify({ method: message.method, params: message.params });
       if (!this.snapshotRefreshes.has(binding)) {
         const work = httpRequestScheduler.run(new URL(this.config.baseUrl).origin, 'background', this.requestLifetime.signal, async () => {
@@ -213,7 +213,7 @@ export class HttpRpcTransport extends EventTarget {
     return true;
   }
 
-  async send(raw: string, timeoutMs = 10_000, priority: HttpRequestPriority = "foreground", operationKey?: string): Promise<void> {
+  async send(raw: string, timeoutMs = 10_000, priority: HttpRequestPriority = "foreground", operationKey?: string, refreshSnapshot = true): Promise<void> {
     if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     const deadline = Date.now() + timeoutMs;
     let remainingTimeoutMs = timeoutMs;
@@ -227,7 +227,7 @@ export class HttpRpcTransport extends EventTarget {
         await this.restored;
         if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
         // 已有快照无需等待慢RPC占用的浏览器名额；未命中及后台刷新仍走原调度。
-        if (await this.readSnapshot(message, original, Math.max(1, deadline - Date.now()))) return;
+        if (await this.readSnapshot(message, original, Math.max(1, deadline - Date.now()), refreshSnapshot)) return;
         remainingTimeoutMs = Math.max(1, deadline - Date.now());
       }
     }

@@ -2,6 +2,7 @@
 export function createLatestClientRefresh<Client>() {
   let pending: { client: Client; promise: Promise<void> } | undefined;
   return {
+    pending(client: Client) { return pending?.client === client ? pending.promise : undefined; },
     run(client: Client, operation: () => Promise<void>) {
       if (pending?.client === client) return pending.promise;
       let resolve!: () => void;
