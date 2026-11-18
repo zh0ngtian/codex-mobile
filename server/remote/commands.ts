@@ -16,10 +16,11 @@ export interface RemoteCommandOptions {
 export interface RemoteCommandResult { exitCode: number; stdout: Buffer; stderr: Buffer }
 export interface RemoteCommandMetadata { codexHome: string; platformFamily: string; platformOs: string; userAgent: string }
 export type RemoteCommandFailure = 'binding' | 'metadata' | 'python3-required' | 'capability' | 'invalid-input' | 'capacity' | 'output-limit' | 'protocol' | 'encoding' | 'timeout' | 'cancelled' | 'disconnected' | 'closed';
+type RemoteCommandStage = "ready" | "stdin" | "output" | "terminate" | "exit" | "validate";
 /** 失败不包含原始上游payload/错误。取消已执行的写入不代表回滚；未知结果不得自动重放。 */
 export class RemoteCommandError extends Error {
   readonly outcome: 'not-sent' | 'unknown';
-  constructor(readonly code: RemoteCommandFailure, readonly mayHaveBeenSent: boolean) {
+  constructor(readonly code: RemoteCommandFailure, readonly mayHaveBeenSent: boolean, readonly stage?: RemoteCommandStage) {
     super(code === 'python3-required' ? '目标需要支持 Python3 隔离执行' : 'Remote 目标命令未完成');
     this.name = 'RemoteCommandError'; this.outcome = mayHaveBeenSent ? 'unknown' : 'not-sent';
   }
@@ -110,7 +111,8 @@ def fail(code):
 sys.stdout.write('CMDC1_READY:'+nonce+'\n');sys.stdout.flush()
 try:
     if length<1 or length>131072: fail('protocol')
-    raw=sys.stdin.buffer.read(length+1)
+    # 按签名中的长度取完整帧，目标可能保留 stdin 管道。
+    raw=sys.stdin.buffer.read(length)
     if len(raw)!=length or hashlib.sha256(raw).hexdigest()!=expected: fail('protocol')
     request=json.loads(raw.decode('utf-8','strict'))
     if time.monotonic()>=deadline: fail('timeout')
@@ -271,6 +273,7 @@ export class RemoteCommands {
     let resolveDone!: () => void; const done = new Promise<void>(resolve => { resolveDone = resolve; });
     let completion: { size: number; sha256: string } | undefined; let control = Buffer.alloc(0);
     let termination: Promise<unknown> | undefined;
+    let stage: RemoteCommandStage = "ready";
     const notification = (message: RpcMessage) => {
       if (message.method !== 'command/exec/outputDelta' || !object(message.params) || message.params.processId !== processId || op.error) return;
       try {
@@ -335,19 +338,24 @@ export class RemoteCommands {
           }
         }); void earlyExit.catch(() => undefined);
         await Promise.race([readiness, failure, earlyExit.then(() => { throw new RemoteCommandError('protocol', true); })]);
+        stage = "stdin";
         for (let offset = 0; offset < input.length; offset += 16384) {
           const part = input.subarray(offset, offset + 16384);
           await Promise.race([this.session.call('command/exec/write', { processId, deltaBase64: part.toString('base64'), closeStdin: offset + part.length === input.length }, { timeoutMs: remaining(), signal: abort.signal }), failure]);
         }
         if (!probe) {
+          stage = "output";
           // DONE只证明目标已完成输出；两路通知可重排，全部字节在原exec终结后才作最终证明。
           await Promise.race([done, failure, result.then(() => { throw new RemoteCommandError('protocol', true); })]);
+          stage = "terminate";
           const budget = remaining();
           termination = runRemoteCleanup(() => this.session.call('command/exec/terminate', { processId }, { timeoutMs: budget, signal: terminationAbort.signal }));
           const ack = await Promise.race([termination, failure]); remaining();
           if (!object(ack) || Object.keys(ack).length !== 0) throw new RemoteCommandError('protocol', true);
         }
+        stage = "exit";
         const response = await Promise.race([result, failure]); remaining();
+        stage = "validate";
         // 正常执行的外层包装器由自有terminate结束，业务退出码仅来自完整证明中的exitCode。
         if (!object(response) || Object.keys(response).sort().join(',') !== 'exitCode,stderr,stdout' || !Number.isSafeInteger(response.exitCode) || (response.exitCode as number) < -2147483648 || (response.exitCode as number) > 2147483647 || (probe && response.exitCode !== 0) || response.stdout !== '' || response.stderr !== '') throw new RemoteCommandError('protocol', true);
         let record: unknown;
@@ -380,10 +388,10 @@ export class RemoteCommands {
       });
     } catch (error) {
       let classified: RemoteCommandError;
-      if (op.error) classified = new RemoteCommandError(op.error.code, op.sent);
-      else if (error instanceof RemoteCommandError) classified = new RemoteCommandError(error.code, op.sent || error.mayHaveBeenSent);
-      else if (error instanceof RemoteRpcError) classified = new RemoteCommandError(error.code === 'network' || error.code === 'closed' ? 'disconnected' : error.code === 'response' ? 'capability' : error.code === 'cancelled' ? 'cancelled' : error.code === 'timeout' ? 'timeout' : error.code === 'capacity' ? 'capacity' : 'protocol', op.sent || error.mayHaveBeenSent);
-      else classified = new RemoteCommandError('protocol', op.sent);
+      if (op.error) classified = new RemoteCommandError(op.error.code, op.sent, stage);
+      else if (error instanceof RemoteCommandError) classified = new RemoteCommandError(error.code, op.sent || error.mayHaveBeenSent, stage);
+      else if (error instanceof RemoteRpcError) classified = new RemoteCommandError(error.code === 'network' || error.code === 'closed' ? 'disconnected' : error.code === 'response' ? 'capability' : error.code === 'cancelled' ? 'cancelled' : error.code === 'timeout' ? 'timeout' : error.code === 'capacity' ? 'capacity' : 'protocol', op.sent || error.mayHaveBeenSent, stage);
+      else classified = new RemoteCommandError('protocol', op.sent, stage);
       op.error = classified; abort.abort();
       // cleanup独立于已结束业务期限，只允许本适配器自己生成的processId。不关闭共享session。
       if (op.sent && this.session.ready && !termination) termination = runRemoteCleanup(() => this.session.call('command/exec/terminate', { processId }, { timeoutMs: 1000, signal: terminationAbort.signal }));

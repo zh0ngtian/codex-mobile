@@ -280,9 +280,11 @@ async function remoteWorktrees(source: RemoteProjectSource, roots: string[]) {
 
 export class RemoteProjectReadError extends Error {
   readonly code: string;
+  readonly commandStage?: RemoteCommandError["stage"];
   constructor(readonly stage: "project-file" | "worktrees", cause: unknown) {
     super("Remote 项目目录读取失败", { cause });
     this.code = cause instanceof RemoteCommandError ? cause.code : "invalid-result";
+    this.commandStage = cause instanceof RemoteCommandError ? cause.stage : undefined;
   }
 }
 

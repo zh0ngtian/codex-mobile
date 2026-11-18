@@ -80,7 +80,7 @@ describe("HTTP前台会话优先于后台刷新", () => {
         await client.request("thread/list", { cwd: "/first", limit: 5 }, { priority: "background" });
         await client.request("thread/list", { cwd: "/next", limit: 5 }, { priority: "background" });
       },
-      loadSettings: () => client.request("config/read", { includeLayers: false }),
+      loadSettings: (options) => client.request("config/read", { includeLayers: false }, options),
       loadRateLimits: async (options?: AppServerRequestOptions) => {
         await client.request("account/rateLimits/read", undefined, options);
         rateLimitsSettled = true;
@@ -105,6 +105,31 @@ describe("HTTP前台会话优先于后台刷新", () => {
       await vi.advanceTimersByTimeAsync(0);
       calls.forEach((call) => call.finish());
       await bootstrap;
+    }
+  });
+
+  it("慢设备读取启动设置时同网关另一设备仍能读取项目目录", async () => {
+    const { calls, create, fetcher } = harness();
+    vi.stubGlobal("fetch", fetcher);
+    const origin = "http://bootstrap-device-isolation.test";
+    const a = create("slow", origin), b = create("fast", origin);
+    await vi.advanceTimersByTimeAsync(0);
+    const bootstrap = runWorkspaceBootstrap({
+      loadThreads: async () => undefined,
+      loadSettings: (options) => a.client.request("config/read", {}, options),
+      loadRateLimits: async () => undefined,
+    });
+    const projects = fetchBackendProjectState({ id: "fast", name: "Mac", baseUrl: origin, token: "test", enabled: true, order: 0 }, "background", b.client.signal);
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls.map(call => call.method)).toEqual(["config/read", "projects"]);
+      calls[1].finish();
+      expect(await projects).toMatchObject({ projects: ["/project"] });
+    } finally {
+      calls.forEach(call => call.finish());
+      await vi.advanceTimersByTimeAsync(0);
+      calls.forEach(call => call.finish());
+      await Promise.all([bootstrap, projects]);
     }
   });
 

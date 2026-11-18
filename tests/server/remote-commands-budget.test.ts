@@ -21,6 +21,7 @@ async function fixture() {
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 }); await new Promise<void>(resolve => wss.once('listening', resolve));
   cleanup.push(() => new Promise<void>(resolve => { for (const socket of wss.clients) socket.terminate(); wss.close(() => resolve()); }));
   const children = new Map<string, ChildProcessWithoutNullStreams>(); const frames: RpcMessage[] = [];
+  let leaveStdinOpen = false;
   const endings = new Map<string, () => void>(); const executions = new Map<string, string>(); const deadlines = new Map<string, number>(); const uncertainDeadlines: number[] = [];
   let ignoreTerminate = false; let holdEnd = false; let rejectEnd = false; let invalidEnd = false; let sequence = 0; let socket: WebSocket; let streamId = '';
   const send = (message: RpcMessage) => socket.send(JSON.stringify({ type: 'server_message', client_id: 'budget', stream_id: streamId, env_id: 'environment', seq_id: ++sequence, message }));
@@ -38,7 +39,7 @@ async function fixture() {
         for (const [name, pipe] of [['stdout', child.stdout], ['stderr', child.stderr]] as const) pipe.on('data', (data: Buffer) => send({ method: 'command/exec/outputDelta', params: { processId: id, stream: name, deltaBase64: data.toString('base64'), capReached: false } }));
         child.on('close', code => { children.delete(id); const finish = () => respond({ exitCode: code ?? -1, stdout: '', stderr: '' }); if (holdEnd) endings.set(id, finish); else finish(); });
       } else if (message.method === 'command/exec/write') {
-        const child = children.get(p.processId as string); if (child) { child.stdin.write(Buffer.from(p.deltaBase64 as string, 'base64')); if (p.closeStdin) child.stdin.end(); } respond({});
+        const child = children.get(p.processId as string); if (child) { child.stdin.write(Buffer.from(p.deltaBase64 as string, 'base64')); if (p.closeStdin && !leaveStdinOpen) child.stdin.end(); } respond({});
       } else if (message.method === 'command/exec/terminate') {
         const id = p.processId as string; if (!ignoreTerminate) kill(id); respond({});
         if (rejectEnd || invalidEnd) uncertainDeadlines.push(deadlines.get(id)!);
@@ -66,6 +67,7 @@ async function fixture() {
     ignore() { ignoreTerminate = true; }, normal() { ignoreTerminate = false; }, hold() { holdEnd = true; }, reject() { rejectEnd = true; }, invalid() { invalidEnd = true; },
     release(id: string) { const finish = endings.get(id); endings.delete(id); finish?.(); },
     execs: () => frames.filter(m => m.method === 'command/exec').length,
+    holdStdin: () => { leaveStdinOpen = true; },
     terminates: () => frames.filter(m => m.method === 'command/exec/terminate'),
   };
 }
@@ -91,6 +93,23 @@ it('取消后四个实际wrapper仍活且空ACK，跨adapter的第五条零物�
   expect((await other.execute({ argv: ['python3', '-c', 'print("available")'], cwd: f.directory })).stdout.toString()).toBe('available\n');
   expect(cancelled.every(value => value.error.code === 'cancelled')).toBe(true);
   for (const { id } of cancelled) expect(f.terminates().filter(m => (m.params as Record<string, JsonValue>).processId === id)).toHaveLength(1);
+});
+
+it('收到完整且校验正确的输入后执行，无需等目标关闭 stdin', async () => {
+  const f = await fixture();
+  f.holdStdin();
+  const result = await f.commands.execute({ argv: ['python3', '-c', 'print("framed")'], cwd: f.directory, timeoutMs: 600 });
+  expect(result.stdout.toString()).toBe('framed\n');
+  expect(f.terminates()).toHaveLength(1);
+});
+
+it('真实包装器输出完成但迟迟不退出时报告退出阶段超时', async () => {
+  const f = await fixture();
+  f.ignore();
+  const pending = f.commands.execute({ argv: ['python3', '-c', 'print("done")'], cwd: f.directory, timeoutMs: 500 });
+  const failed = expect(pending).rejects.toMatchObject({ code: 'timeout', stage: 'exit' });
+  await until(() => f.terminates().length === 1);
+  await failed;
 });
 
 it('两个最大捕获的保守内存预留在业务取消后跨adapter保留，实际终结才归还', async () => {

@@ -77,7 +77,10 @@ export class GatewayRemoteServices {
           if (!this.lifetime.signal.aborted) {
             const stage = error instanceof RemoteProjectReadError ? error.stage : "publish";
             const code = error instanceof RemoteProjectReadError || error instanceof TargetResolutionError ? error.code : "unavailable";
-            console.warn("Remote 项目目录读取失败", { stage, code, elapsedMs: Math.round(performance.now() - start) });
+            const commandStage = error instanceof RemoteProjectReadError ? error.commandStage : undefined;
+            console.warn("Remote 项目目录读取失败", {
+              stage, code, ...(commandStage ? { commandStage } : {}), elapsedMs: Math.round(performance.now() - start),
+            });
           }
           throw error;
         }
