@@ -23,6 +23,14 @@
 
 - [x] 在 `tests/server/gateway-remote-services.test.ts` 注入目录阶段的已分类错误，确认后台刷新只记录固定阶段、错误分类和耗时，不记录错误正文或目录；运行同文件确认旧实现无相应记录。
 - [x] 在 `server/codex-projects.ts` 保留目标文件和 worktree 两阶段的失败分类，`server/gateway-remote-services.ts` 在每轮共同读取失败处写一条脱敏诊断，包含后置授权阶段。保留原 500、已授权快照及读取失败边界。
-- [ ] 通过目录、网关集成、Remote 命令及协调门禁并部署服务端。抓取生产分类后继续修复真实触发原因。
+- [x] 通过目录、网关集成、Remote 命令及协调门禁并部署服务端。抓取生产分类后继续修复真实触发原因。
 
 - [x] 对比 `server/operation-scheduler.ts` 的 Local 与 Remote 导航分支。使用真实 Remote fixture 和暂不放行的观察登记，在 `tests/server/gateway-remote-integration.test.ts` 证明当前 Remote 的只读 `thread/resume` 被登记任务阻塞。修复采用与 Local 相同的异步持有方式，关闭时等待既有任务，其他写请求继续原时序。相关回归及服务端构建通过后与第二轮同批部署。
+
+## 第三轮限制项目文件的传输块
+
+第二轮成功批次 `1bbd4fdf-6008-47ee-8f57-de365204e7b8`，冻结 `94933391`。生产双目标探测中，网关本机的四次项目目录读取在约 20～21 秒返回 500。日志固定分类为 `project-file/timeout`，同文件投影在目标主机本地约 62ms。该文件投影约 76 KB，要经过项目页、命令包装和 Relay 的多层编码。配对桌面后续 3 个目录样本为 162～197ms。
+
+- [x] 在 `tests/server/project-git-remote.test.ts` 写超过 64 KiB 的多页项目投影，通过真实 Remote Commands 捕获每页结果，验证线上协议所需的大小上界和完整解析。旧实现的首个输出超过上界。
+- [x] 在 `server/codex-projects.ts` 令项目文件每页压缩后控制在 32 KiB 内，按需划分原始数据并限制解压大小，调整 stdout 捕获上限，保留同一文件签名、顺序、完整性和 20 秒期限。完整回归发现固定 32 KiB 原始页会把 3 MiB 的常见可压缩数据从 3 次读请求增加到 93 次，改用有界压缩分页保留原用例的 3 次读取。
+- [ ] 验证并部署。以同一线上两台目标对比目录请求、手动侧栏刷新和打开会话，复查短期 500 及其他剩余长尾。
