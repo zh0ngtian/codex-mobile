@@ -30,8 +30,8 @@ async function file(f: { root: string }, content: string, date = '2026/10/10', t
   const path = join(directory, `rollout-2026-10-10T13-44-22-${thread}${suffix}.jsonl`); await writeFile(path, content); return path;
 }
 
-it('目标 rollout 只回传指定历史回合的 commentary 正文和顺序锚点', async () => {
-  const f = await target(); const s = await source(f);
+it.each([false, true])('目标 rollout 同帧读取历史 commentary 正文和顺序锚点，受控Windows=%s', async windows => {
+  const f = await target({ windows }); const s = await source(f);
   const row = (type: string, payload: object) => JSON.stringify({ type, timestamp: time, payload }) + '\n';
   const start = (turn: string) => row('event_msg', { type: 'task_started', turn_id: turn });
   const item = (id: string, role: string, phase: string | null, text: string) => row('response_item', {
@@ -41,7 +41,10 @@ it('目标 rollout 只回传指定历史回合的 commentary 正文和顺序锚�
     output(['tool leaks must stay on target', 'x'.repeat(500000)]) +
     item('progress', 'assistant', 'commentary', '进度') + item('final', 'assistant', 'final_answer', 'private final') +
     start('other') + item('different', 'assistant', 'commentary', 'other turn'));
-  const data = await Reflect.get(s, 'commentary').call(s, id, ['wanted']);
+  const startFrame = f.frames.length;
+  const data = await s.commentary(id, ['wanted']);
+  expect(f.frames.slice(startFrame).map(frame => frame.method)).toEqual(['command/exec', 'command/exec']);
+  expect(f.frames.slice(startFrame).every(frame => (frame.params as any)?.streamStdin === false)).toBe(true);
   expect(data.get('wanted')).toEqual({ items: [{ id: 'progress', type: 'agentMessage', phase: 'commentary', text: '进度', timestamp: seconds }],
     messageOrder: ['prompt', 'progress', 'final'] });
   expect(data.has('other')).toBe(false);
