@@ -17,8 +17,8 @@ export interface ManagedAuthCanonical {
   close?(): unknown;
   settled?(): Promise<void>;
 }
-interface CanonicalConnection { session: ManagedAuthCanonical; home: string; refreshed: boolean; generation: number }
-interface CanonicalRefresh { connection: CanonicalConnection; promise: Promise<void> }
+interface CanonicalConnection { session: ManagedAuthCanonical; home: string; accountVerified: boolean; generation: number }
+interface CanonicalAccountCheck { connection: CanonicalConnection; promise: Promise<void> }
 export interface ManagedAuthIdentity { codexHome: string; accountId: string; accountUserId: string; userId?: string }
 export interface ManagedAuthLoaderOptions {
   assertOwnership?: () => void;
@@ -93,7 +93,7 @@ export class ManagedAuthLoader {
   private readonly resources = new ResourceSettlement();
   private canonical?: CanonicalConnection;
   private connecting?: Promise<CanonicalConnection>;
-  private refreshing?: CanonicalRefresh;
+  private checkingAccount?: CanonicalAccountCheck;
   private binding?: Readonly<ManagedAuthIdentity>;
   constructor(private readonly options: ManagedAuthLoaderOptions) {
     if ((options.canonicalUrl === undefined) === (options.canonicalFactory === undefined) || (options.canonicalUrl !== undefined && !options.canonicalUrl)) throw authFailure();
@@ -152,7 +152,7 @@ export class ManagedAuthLoader {
         const home = homePath(metadata.codexHome);
         if (this.binding && this.binding.codexHome !== home) throw authFailure();
         if (this.abort.signal.aborted) throw new RemoteNetworkError();
-        this.canonical = { session, home, refreshed: false, generation: 0 }; return this.canonical;
+        this.canonical = { session, home, accountVerified: false, generation: 0 }; return this.canonical;
       } catch (error) { abandoned = true; void this.resources.close(session); void this.resources.close(unclaimed); unclaimed = undefined; assertRemoteOperation(); throw error instanceof RemoteNetworkError ? new RemoteNetworkError() : authFailure(); }
       finally { this.connecting = undefined; }
     })());
@@ -179,33 +179,42 @@ export class ManagedAuthLoader {
     if (this.binding && !sameIdentity(this.binding, identity)) throw authFailure();
     this.binding ??= Object.freeze(identity); return auth;
   }
-  private refresh(connection: CanonicalConnection): Promise<void> {
+  private checkAccount(connection: CanonicalConnection, refreshToken: boolean): Promise<void> {
     this.assertCurrent(connection);
-    if (this.refreshing?.connection === connection) return this.refreshing.promise;
-    let refreshing!: CanonicalRefresh;
+    if (this.checkingAccount?.connection === connection) return this.checkingAccount.promise;
+    let check!: CanonicalAccountCheck;
     const promise = (async () => {
       try {
-        const result = await this.external(() => connection.session.call('account/read', { refreshToken: true }), true);
+        const result = await this.external(() => connection.session.call('account/read', { refreshToken }), true);
         this.assertCurrent(connection);
         if (!object(result) || !object(result.account) || result.account.type !== 'chatgpt') throw authFailure();
         this.assertCurrent(connection);
-        connection.refreshed = true; connection.generation++;
+        connection.accountVerified = true;
+        if (refreshToken) connection.generation++;
       } catch (error) {
         if (error instanceof RemoteNetworkError) this.invalidate(connection);
         assertRemoteOperation();
         throw error instanceof RemoteNetworkError ? new RemoteNetworkError() : authFailure();
-      } finally { if (this.refreshing === refreshing) this.refreshing = undefined; }
+      } finally { if (this.checkingAccount === check) this.checkingAccount = undefined; }
     })();
-    refreshing = { connection, promise }; this.refreshing = refreshing; return promise;
+    check = { connection, promise }; this.checkingAccount = check; return promise;
   }
   async load(): Promise<ManagedAuth> {
     const connection = await this.connection(); const generation = connection.generation;
-    let auth = await this.read(connection); const expiresAt = expiration(auth);
-    const refreshing = this.refreshing?.connection === connection ? this.refreshing.promise : undefined;
-    if (refreshing || generation !== connection.generation || !connection.refreshed || expiresAt === undefined || expiresAt <= this.now() + this.refreshMarginMs) {
-      if (refreshing) await refreshing;
-      else if (generation === connection.generation) await this.refresh(connection);
+    let auth = await this.read(connection);
+    for (;;) {
+      const check = this.checkingAccount?.connection === connection ? this.checkingAccount.promise : undefined;
+      if (check) await check;
+      else if (generation === connection.generation) {
+        const expiresAt = expiration(auth);
+        if (expiresAt === undefined) throw authFailure();
+        const refreshToken = expiresAt <= this.now() + this.refreshMarginMs;
+        if (connection.accountVerified && !refreshToken) break;
+        await this.checkAccount(connection, refreshToken);
+      }
       auth = await this.read(connection);
+      // 只重试普通核验后进入临期的情况；本轮已续期则只验收写回凭据。
+      if (generation !== connection.generation) break;
     }
     const currentExpiry = expiration(auth);
     if (currentExpiry === undefined || currentExpiry <= this.now()) throw authFailure();
