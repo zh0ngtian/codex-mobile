@@ -28,6 +28,7 @@ export class RemoteCommandError extends Error {
 const MAX_CAPTURE = 2 * 1024 * 1024;
 const DEFAULT_CAPTURE = 512 * 1024;
 const MAX_INPUT = 128 * 1024;
+const MAX_INLINE_INPUT = 12 * 1024;
 const MAX_CONCURRENT = 4;
 const GLOBAL_MEMORY = 64 * 1024 * 1024;
 let activeCommands = 0;
@@ -87,7 +88,7 @@ export function decodeRemoteCommandText(bytes: Uint8Array): string {
   catch { throw new RemoteCommandError('encoding', true); }
 }
 
-// 固定源码只接收小型长度/摘要参数；用户argv/cwd/env均经stdin JSON传入，不参与代码求值。
+// 固定源码校验参数帧长度和摘要，默认经 stdin 读取。可信的小型只读任务可随命令附带帧。
 // -I排除cwd及PYTHONPATH对包装器stdlib的劫持；业务进程仍使用明确的env继承/取消规则。
 const PYTHON = String.raw`import base64,hashlib,json,os,subprocess,sys,threading,time
 nonce,length,expected=sys.argv[1],int(sys.argv[2]),sys.argv[3]
@@ -112,7 +113,7 @@ sys.stdout.write('CMDC1_READY:'+nonce+'\n');sys.stdout.flush()
 try:
     if length<1 or length>131072: fail('protocol')
     # 按签名中的长度取完整帧，目标可能保留 stdin 管道。
-    raw=sys.stdin.buffer.read(length)
+    raw=base64.b64decode(sys.argv[5],validate=True) if len(sys.argv)>5 else sys.stdin.buffer.read(length)
     if len(raw)!=length or hashlib.sha256(raw).hexdigest()!=expected: fail('protocol')
     request=json.loads(raw.decode('utf-8','strict'))
     if time.monotonic()>=deadline: fail('timeout')
@@ -128,7 +129,7 @@ try:
         if len(subprocess.list2cmdline(argv))>24000 or sum(len(k)+len(v)+2 for k,v in env.items())>30000: fail('capability')
     elif sum(len(os.fsencode(x))+1 for x in argv)+sum(len(os.fsencode(k))+len(os.fsencode(v))+2 for k,v in env.items())>131072:
         fail('capability')
-    try: child=subprocess.Popen(argv,cwd=request['cwd'],env=env,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=False)
+    try: child=subprocess.Popen(argv,cwd=request.get('cwd'),env=env,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=False)
     except (OSError,ValueError): fail('capability')
     caphit=threading.Event();readerror=threading.Event();outputs=[bytearray(),bytearray()];done=[threading.Event(),threading.Event()]
     def capture(index,pipe,cap):
@@ -192,8 +193,8 @@ export class RemoteCommands {
       return adapter;
     } catch (error) { await adapter.close(); throw error; }
   }
-  execute(value: RemoteCommandOptions): Promise<RemoteCommandResult> {
-    return this.executeInternal(value);
+  execute(value: RemoteCommandOptions, input?: 'inline'): Promise<RemoteCommandResult> {
+    return this.executeInternal(value, input === 'inline');
   }
   /** 文件协议专用：只能取得本实例已探测的同一ready session，不能借此改绑目标或权限。 */
   fileTransportBinding(session: RemoteRpcSession): Readonly<{ python: string; scope: RemoteCommandScope; metadata: Readonly<RemoteCommandMetadata> }> {
@@ -202,7 +203,7 @@ export class RemoteCommands {
     if (session !== this.session) throw new RemoteCommandError('binding', false);
     return Object.freeze({ python: this.python, scope: this.scope, metadata: this.metadata });
   }
-  private async executeInternal(value: RemoteCommandOptions): Promise<RemoteCommandResult> {
+  private async executeInternal(value: RemoteCommandOptions, inline: boolean): Promise<RemoteCommandResult> {
     const started = performance.now();
     const raw = data(value, ['argv', 'cwd', 'env', 'timeoutMs', 'stdoutBytesCap', 'stderrBytesCap', 'signal'], 'invalid-input');
     const cwd = string(raw.cwd, 16384, 'invalid-input'); if (!absolute(cwd, this.metadata.platformFamily)) throw new RemoteCommandError('invalid-input', false);
@@ -230,7 +231,7 @@ export class RemoteCommands {
     const timeout = limit(raw.timeoutMs, 20000, 180000);
     const stdoutCap = limit(raw.stdoutBytesCap, DEFAULT_CAPTURE, MAX_CAPTURE); const stderrCap = limit(raw.stderrBytesCap, DEFAULT_CAPTURE, MAX_CAPTURE);
     if (raw.signal !== undefined && !(raw.signal instanceof AbortSignal)) throw new RemoteCommandError('invalid-input', false);
-    const response = await this.run({ mode: 'execute', argv, cwd, env, stdoutCap, stderrCap }, cwd, env, timeout, stdoutCap, stderrCap, raw.signal as AbortSignal | undefined, false, started + timeout);
+    const response = await this.run({ mode: 'execute', argv, ...(inline ? {} : { cwd }), env, stdoutCap, stderrCap }, cwd, env, timeout, stdoutCap, stderrCap, raw.signal as AbortSignal | undefined, false, started + timeout, inline);
     return { exitCode: response.exitCode as number, stdout: response.stdout as Buffer, stderr: response.stderr as Buffer };
   }
   private assert(op: Operation): void {
@@ -239,16 +240,16 @@ export class RemoteCommands {
     if (performance.now() >= op.deadline) throw new RemoteCommandError('timeout', op.sent);
     if (op.abort.signal.aborted) throw new RemoteCommandError('cancelled', op.sent);
   }
-  private run(payload: Record<string, JsonValue>, cwd: string, env: Record<string, string | null> | undefined, timeout: number, stdoutCap: number, stderrCap: number, signal?: AbortSignal, probe = false, deadline = performance.now() + timeout): Promise<Record<string, unknown>> {
-    const flight = this.perform(payload, cwd, env, timeout, stdoutCap, stderrCap, signal, probe, deadline);
+  private run(payload: Record<string, JsonValue>, cwd: string, env: Record<string, string | null> | undefined, timeout: number, stdoutCap: number, stderrCap: number, signal?: AbortSignal, probe = false, deadline = performance.now() + timeout, inline = false): Promise<Record<string, unknown>> {
+    const flight = this.perform(payload, cwd, env, timeout, stdoutCap, stderrCap, signal, probe, deadline, inline);
     this.flights.add(flight); void flight.then(() => this.flights.delete(flight), () => this.flights.delete(flight)); return flight;
   }
-  private async perform(payload: Record<string, JsonValue>, cwd: string, env: Record<string, string | null> | undefined, timeout: number, stdoutCap: number, stderrCap: number, signal: AbortSignal | undefined, probe: boolean, deadline: number): Promise<Record<string, unknown>> {
+  private async perform(payload: Record<string, JsonValue>, cwd: string, env: Record<string, string | null> | undefined, timeout: number, stdoutCap: number, stderrCap: number, signal: AbortSignal | undefined, probe: boolean, deadline: number, inline: boolean): Promise<Record<string, unknown>> {
     if (performance.now() >= deadline) throw new RemoteCommandError('timeout', false);
     if (this.closed || !this.session.ready) throw new RemoteCommandError('closed', false);
     if (signal?.aborted) throw new RemoteCommandError('cancelled', false);
     assertRemoteOperation();
-    const input = Buffer.from(JSON.stringify(payload)); if (input.length > MAX_INPUT) throw new RemoteCommandError('capacity', false);
+    const input = Buffer.from(JSON.stringify(payload)); if (input.length > (inline ? MAX_INLINE_INPUT : MAX_INPUT)) throw new RemoteCommandError('capacity', false);
     const wireCap = Math.ceil((stdoutCap + stderrCap) / 3) * 4 + 65536;
     // 包括累计块、合并Buffer、UTF8文本、JSON/base64及解码结果的保守峰值与输入。
     const reservation = wireCap * 5 + input.length * 4 + 65536;
@@ -321,7 +322,9 @@ export class RemoteCommands {
     signal?.addEventListener('abort', cancelled, { once: true }); if (signal?.aborted) cancelled(); this.session.on('notification', notification); this.session.on('disconnect', disconnected); this.session.on('close', closed);
     try {
       return await withRemoteOperation(() => this.assert(op), async () => {
-        const params: Record<string, JsonValue> = { command: [this.python, '-I', '-u', '-c', PYTHON, nonce, String(input.length), digest(input), String(remaining())], processId, streamStdin: true, streamStdoutStderr: true, outputBytesCap: wireCap, timeoutMs: remaining(), cwd, ...(env === undefined ? {} : { env }) };
+        const command = [this.python, '-I', '-u', '-c', PYTHON, nonce, String(input.length), digest(input), String(remaining())];
+        if (inline) command.push(input.toString('base64'));
+        const params: Record<string, JsonValue> = { command, processId, streamStdin: !inline, streamStdoutStderr: true, outputBytesCap: wireCap, timeoutMs: remaining(), cwd, ...(env === undefined ? {} : { env }) };
         // 调用开始后保守视为可能发送；RPC明确未发送的拒绝会恢复准确边界。
         // 业务取消只停止后续写入；实际exec观察保留至终结证明或原绝对期限。
         const execution = this.session.call('command/exec', params, { timeoutMs: remaining(), deadline, signal: executionAbort.signal }); op.sent = true;
@@ -338,10 +341,12 @@ export class RemoteCommands {
           }
         }); void earlyExit.catch(() => undefined);
         await Promise.race([readiness, failure, earlyExit.then(() => { throw new RemoteCommandError('protocol', true); })]);
-        stage = "stdin";
-        for (let offset = 0; offset < input.length; offset += 16384) {
-          const part = input.subarray(offset, offset + 16384);
-          await Promise.race([this.session.call('command/exec/write', { processId, deltaBase64: part.toString('base64'), closeStdin: offset + part.length === input.length }, { timeoutMs: remaining(), signal: abort.signal }), failure]);
+        if (!inline) {
+          stage = "stdin";
+          for (let offset = 0; offset < input.length; offset += 16384) {
+            const part = input.subarray(offset, offset + 16384);
+            await Promise.race([this.session.call('command/exec/write', { processId, deltaBase64: part.toString('base64'), closeStdin: offset + part.length === input.length }, { timeoutMs: remaining(), signal: abort.signal }), failure]);
+          }
         }
         if (!probe) {
           stage = "output";

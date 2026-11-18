@@ -39,6 +39,23 @@ it('项目实际坏UTF8字节按原Local readFile替换语义解析，投影不�
   await writeFile(join(f.root, '.codex-global-state.json'), bytes);
   expect(await readCodexProjectState('/gateway', { session: f.session, commands: f.commands })).toEqual(parseCodexProjectState(bytes.toString('utf8'), f.home));
 });
+it('Remote 项目文件在命令写入不可用时仍通过首次请求取得完整投影', async () => {
+  const f = await target(false);
+  await writeFile(join(f.root, '.codex-global-state.json'), JSON.stringify({ 'projectless-thread-ids': ['thread'] }));
+  const call = f.session.call.bind(f.session);
+  const intercepted = vi.spyOn(f.session, 'call').mockImplementation((method, params, options) => {
+    if (method === 'command/exec/write') return Promise.reject(new Error('目标输入通道不可用'));
+    return call(method, params, options);
+  });
+  try {
+    const result = await readCodexProjectState('/gateway', { session: f.session, commands: f.commands });
+    expect(result.projectlessThreadIds).toEqual(['thread']);
+    expect(intercepted.mock.calls.map(([method]) => method)).toEqual(['command/exec', 'command/exec/terminate']);
+    expect(f.active).toBe(0);
+  } finally {
+    intercepted.mockRestore();
+  }
+});
 it('大项目目录分成有界的 Remote 命令输出且保持全部会话归属', async () => {
   const f = await target();
   const ids = Array.from({ length: 3000 }, (_, index) => createHash('sha256').update(String(index)).digest('hex'));
@@ -46,8 +63,8 @@ it('大项目目录分成有界的 Remote 命令输出且保持全部会话归�
   await writeFile(join(f.root, '.codex-global-state.json'), raw);
   const execute = f.commands.execute.bind(f.commands);
   const sizes: number[] = [];
-  const commands = vi.spyOn(f.commands, 'execute').mockImplementation(async options => {
-    const result = await execute(options);
+  const commands = vi.spyOn(f.commands, 'execute').mockImplementation(async (options, input) => {
+    const result = await execute(options, input);
     if (options.argv[3]?.includes('projectless-thread-ids')) sizes.push(result.stdout.length);
     return result;
   });
@@ -172,7 +189,14 @@ it('项目必要数据超过2MiB仍完整分页，真实worktree归属与已注�
   await writeFile(join(f.root, '.codex-global-state.json'), JSON.stringify({ 'local-projects': { a: { id: 'a', rootPaths: [p] }, b: { id: 'b', rootPaths: [registered] }, c: { id: 'c', rootPaths: [plain] } }, 'projectless-thread-ids': projectless }));
   const state = await readCodexProjectState('/gateway', { session: f.session, commands: f.commands });
   expect(state.projectlessThreadIds).toEqual(projectless); expect(state.projectWorktrees).toEqual({ [p]: [linked] });
-  expect(f.requests.filter(x => Object.hasOwn(x, 'home')).map(x => x.offset)).toEqual([0, 1048576, 2097152]);
+  const offsets = f.frames.flatMap(frame => {
+    if (frame.method !== 'command/exec') return [];
+    const params = frame.params as { command: string[]; streamStdin: boolean };
+    if (params.streamStdin) return [];
+    const request = JSON.parse(Buffer.from(params.command.at(-1)!, 'base64').toString());
+    return [JSON.parse(request.argv.at(-1)).offset];
+  });
+  expect(offsets).toEqual([0, 1048576, 2097152]);
   await writeFile(join(p, '.git/config'), '[invalid');
   await expect(readCodexProjectState('/gateway', { session: f.session, commands: f.commands })).rejects.toThrow();
 }, 30000);
