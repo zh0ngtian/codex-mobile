@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { promisify } from "node:util";
 import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
+import { inflateSync } from 'node:zlib';
 import { RemoteCommandError, RemoteCommands, decodeRemoteCommandText } from './remote/commands.js';
 import { RemoteRpcSession } from './remote/rpc-session.js';
 
@@ -139,8 +140,11 @@ export async function readCodexProjectDirectories(globalStatePath: string) {
 }
 
 export interface RemoteProjectSource { session: RemoteRpcSession; commands: RemoteCommands; signal?: AbortSignal }
+// 命令结果还会多次 base64 编码，32 KiB 压缩页可在单条 Relay 消息内交付。
+const PROJECT_STATE_WIRE_PAGE_BYTES = 32 * 1024;
+const PROJECT_STATE_RAW_PAGE_BYTES = 1024 * 1024;
 // 只投影既有解析器需要的字段；无关的大型全局状态不会进入Commands捕获。
-const PROJECT_STATE_PYTHON = String.raw`import base64,hashlib,json,os,sys
+const PROJECT_STATE_PYTHON = String.raw`import base64,hashlib,json,os,sys,zlib
 q=json.loads(sys.argv[1])
 def invalid(value):raise ValueError()
 # 原子由标准decoder解码；容器仅用显式栈定位并完整验证，避免Python递归深度成为产品限制。
@@ -192,7 +196,12 @@ if text[start]=='{':
         if text[i]=='}':break
         i=space(i+1)
 raw=('{'+','.join(json.dumps(k)+':'+v for k,v in selected.items())+'}').encode('utf-8')
-print(json.dumps(dict(total=len(raw),sha256=hashlib.sha256(raw).hexdigest(),offset=q['offset'],base64=base64.b64encode(raw[q['offset']:q['offset']+1048576]).decode('ascii'))))
+page=raw[q['offset']:q['offset']+${PROJECT_STATE_RAW_PAGE_BYTES}]
+compressed=zlib.compress(page,1)
+while len(compressed)>${PROJECT_STATE_WIRE_PAGE_BYTES}:
+    page=page[:len(page)//2]
+    compressed=zlib.compress(page,1)
+print(json.dumps(dict(total=len(raw),sha256=hashlib.sha256(raw).hexdigest(),offset=q['offset'],size=len(page),base64=base64.b64encode(compressed).decode('ascii'))))
 `;
 async function remoteProjectState(source: RemoteProjectSource): Promise<CodexProjectState> {
   if (!(source.session instanceof RemoteRpcSession) || !(source.commands instanceof RemoteCommands)) throw new Error('Remote项目来源无效');
@@ -201,12 +210,16 @@ async function remoteProjectState(source: RemoteProjectSource): Promise<CodexPro
   for (;;) {
     const remaining = Math.floor(deadline - performance.now()); if (remaining < 1) throw new Error('Remote项目读取超时');
     const result = await source.commands.execute({ argv: [binding.python, '-I', '-c', PROJECT_STATE_PYTHON, JSON.stringify({ home: binding.metadata.codexHome, offset })],
-      cwd: binding.metadata.codexHome, timeoutMs: remaining, stdoutBytesCap: 2 * 1024 * 1024, stderrBytesCap: 16384, signal: source.signal });
+      cwd: binding.metadata.codexHome, timeoutMs: remaining, stdoutBytesCap: 48 * 1024, stderrBytesCap: 16384, signal: source.signal });
     if (result.exitCode !== 0 || result.stderr.length) throw new Error('Remote项目状态读取失败');
     const value = JSON.parse(decodeRemoteCommandText(result.stdout));
     if (!Number.isSafeInteger(value.total) || value.total < offset || value.offset !== offset || typeof value.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.sha256) || typeof value.base64 !== 'string') throw new Error('Remote项目状态响应无效');
     const current = JSON.stringify([value.total, value.sha256]); if (signature !== undefined && current !== signature) throw new Error('Remote项目状态读取期间已变化'); signature = current;
-    const part = Buffer.from(value.base64, 'base64'); if (part.length !== Math.min(1048576, value.total - offset) || part.toString('base64') !== value.base64) throw new Error('Remote项目状态响应无效');
+    const compressed = Buffer.from(value.base64, 'base64');
+    if (!Number.isSafeInteger(value.size) || value.size < 1 || value.size > Math.min(PROJECT_STATE_RAW_PAGE_BYTES, value.total - offset) ||
+      compressed.length > PROJECT_STATE_WIRE_PAGE_BYTES || compressed.toString('base64') !== value.base64) throw new Error('Remote项目状态响应无效');
+    const part = inflateSync(compressed, { maxOutputLength: value.size });
+    if (part.length !== value.size) throw new Error('Remote项目状态响应无效');
     parts.push(part); digest.update(part); offset += part.length;
     if (offset === value.total) { if (digest.digest('hex') !== value.sha256) throw new Error('Remote项目状态校验失败'); break; }
   }

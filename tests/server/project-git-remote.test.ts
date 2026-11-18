@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -38,6 +39,28 @@ it('项目实际坏UTF8字节按原Local readFile替换语义解析，投影不�
   await writeFile(join(f.root, '.codex-global-state.json'), bytes);
   expect(await readCodexProjectState('/gateway', { session: f.session, commands: f.commands })).toEqual(parseCodexProjectState(bytes.toString('utf8'), f.home));
 });
+it('大项目目录分成有界的 Remote 命令输出且保持全部会话归属', async () => {
+  const f = await target();
+  const ids = Array.from({ length: 3000 }, (_, index) => createHash('sha256').update(String(index)).digest('hex'));
+  const raw = JSON.stringify({ 'projectless-thread-ids': ids });
+  await writeFile(join(f.root, '.codex-global-state.json'), raw);
+  const execute = f.commands.execute.bind(f.commands);
+  const sizes: number[] = [];
+  const commands = vi.spyOn(f.commands, 'execute').mockImplementation(async options => {
+    const result = await execute(options);
+    if (options.argv[3]?.includes('projectless-thread-ids')) sizes.push(result.stdout.length);
+    return result;
+  });
+  try {
+    const state = await readCodexProjectState('/gateway', { session: f.session, commands: f.commands });
+    expect(state.projectlessThreadIds).toEqual(ids);
+    expect(Math.max(...sizes)).toBeLessThan(45_000);
+    expect(sizes.length).toBeGreaterThan(1);
+  } finally {
+    commands.mockRestore();
+  }
+}, 15000);
+
 it('Remote项目worktree读取允许超过本地3秒的协议往返，仍执行真实只读git', async () => {
   const f = await target(true); const p = await repo(f);
   const linked = join(await realpath(f.root), 'linked');
