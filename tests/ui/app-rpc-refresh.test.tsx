@@ -2,10 +2,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, expect, it, vi } from 'vitest';
 import { AppBootstrap } from '../../src/App';
 
-const boundary = vi.hoisted(() => ({ options: null as any, client: null as any, rows: [] as any[], reads: [] as any[], pageBarrier: null as Promise<void> | null, snapshotWaits: 0 }));
+const boundary = vi.hoisted(() => ({ options: null as any, client: null as any, rows: [] as any[], reads: [] as any[], pageBarrier: null as Promise<void> | null, snapshotWaits: 0, closeSocket: vi.fn(), summary: null as Promise<any> | null }));
 vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class {
   constructor(options: any) { boundary.options = options; }
-  client() { return boundary.client; } socket() { return null; } close() {} reconnect() {}
+  client() { return boundary.client; } socket() { return { close: boundary.closeSocket }; } close() {} reconnect() {}
   sync(backends: any[]) {
     if (!backends.length) return;
     boundary.client = { sidebarIndex: true, waitForListSnapshotRefresh: async () => { boundary.snapshotWaits++; }, onNotification() { return () => {}; }, onThreadMetadata() { return () => {}; }, request: async (method: string, params: any, options: any) => {
@@ -13,7 +13,7 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
       if (method === 'threadSection/list') return { data: [{ id: '01984de2-8f74-7c91-a3b2-5c5e937cf318' }], nextCursor: null };
       if (method === 'thread/list' && params.sectionId) return { data: [], nextCursor: null };
       if (method === 'thread/list') { const data = boundary.rows; await boundary.pageBarrier; return { data, nextCursor: null }; }
-      if (method === 'mobile/sidebar/summaries') return { data: [], nextCursor: null };
+      if (method === 'mobile/sidebar/summaries') return boundary.summary ?? { data: [], nextCursor: null };
       if (method === 'model/list') return { data: [{ model: 'test', isDefault: true, supportedReasoningEfforts: [] }] };
       if (method === 'permissionProfile/list') return { data: [{ id: ':workspace', allowed: true }] };
       if (method === 'config/read') return { config: { model: 'test', sandbox_mode: 'workspace-write' } };
@@ -22,7 +22,7 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
     queueMicrotask(() => { boundary.options.onConnection(backends[0].id, 'online'); boundary.options.onReady(backends[0].id, boundary.client); });
   }
 } }));
-afterEach(() => { cleanup(); vi.useRealTimers(); boundary.reads = []; boundary.rows = []; boundary.client = null; boundary.pageBarrier = null; boundary.snapshotWaits = 0; vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); boundary.reads = []; boundary.rows = []; boundary.client = null; boundary.pageBarrier = null; boundary.snapshotWaits = 0; boundary.closeSocket.mockClear(); boundary.summary = null; vi.unstubAllGlobals(); });
 
 async function setup(gatewayMode: "local" | "remote" = "local") {
   const values = new Map<string, string>([['codex-mobile:collapsed-projects', '[]']]);
@@ -55,6 +55,22 @@ it.each(['local', 'remote'] as const)('%s手动刷新复用连接并等待本轮
   expect(boundary.snapshotWaits).toBe(0);
   expect(boundary.reads.filter(read => read.method === 'thread/list' && read.params.cwd)).toHaveLength(1);
   expect(fetcher.mock.calls.filter(([url]) => String(url).includes('/api/projects'))).toHaveLength(directoriesBefore + 1);
+});
+
+it('冷启动摘要超时保留已连接工作区与成功项目，手动刷新可重试', async () => {
+  let failSummary!: (reason: unknown) => void;
+  boundary.summary = new Promise((_, reject) => { failSummary = reject; });
+  await setup('remote');
+  await act(async () => failSummary(new Error('侧栏摘要读取超时')));
+  await screen.findByText('侧栏摘要读取超时');
+  expect(boundary.closeSocket).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: /旧会话/ })).toBeVisible();
+
+  boundary.summary = null;
+  boundary.rows = [{ id: 'recovered', name: '重试后的会话', cwd: '/project' }];
+  fireEvent.click(screen.getByRole('button', { name: '刷新会话列表' }));
+  await screen.findByRole('button', { name: /重试后的会话/ });
+  expect(boundary.closeSocket).not.toHaveBeenCalled();
 });
 
 it('前台桌面置顶每30秒自动同步，手动刷新即时同步', async () => {
