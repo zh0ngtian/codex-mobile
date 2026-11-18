@@ -57,7 +57,7 @@ export class RemoteRolloutSource {
     const expected = createHash('sha256').update(JSON.stringify(['remote-rollout-v1', gatewayId, binding.scope, binding.metadata])).digest('hex');
     if (session !== this.session || commands !== this.commands || expected !== this.namespace) throw new RolloutSourceError('binding');
   }
-  begin(signal?: AbortSignal): RolloutRead {
+  begin(signal?: AbortSignal, projection?: 'commentary'): RolloutRead {
     // 整次目录+文件读取共享原绝对期限，翻页/文件变化不会续期。
     const deadline = performance.now() + this.timeoutMs;
     const combined = AbortSignal.any([this.abort.signal, ...(this.options.signal ? [this.options.signal] : []), ...(signal ? [signal] : [])]);
@@ -74,7 +74,7 @@ export class RemoteRolloutSource {
         const wireRequest = { ...request, unicodeLines: await runtimeUnicodeLines() };
         const script = request.mode === 'locate' ? ROLLOUT_LOCATOR_PYTHON : request.projection === 'commentary' ? ROLLOUT_COMMENTARY_PYTHON : ROLLOUT_PYTHON;
         const flight = this.commands.execute({ argv: [this.binding.python, '-I', '-c', script, JSON.stringify(wireRequest)], cwd: this.binding.metadata.codexHome,
-          timeoutMs: remaining(), stdoutBytesCap: 131072, stderrBytesCap: 16384, signal: combined }, request.projection === 'commentary' ? 'read-only' : undefined);
+          timeoutMs: remaining(), stdoutBytesCap: 131072, stderrBytesCap: 16384, signal: combined }, projection === 'commentary' ? 'prefer-inline-read-only' : undefined);
         this.flights.add(flight); let result;
         try { result = await flight; } finally { this.flights.delete(flight); }
         remaining();
@@ -89,6 +89,9 @@ export class RemoteRolloutSource {
       } catch (error) {
         if (this.closed) throw new RolloutSourceError('closed');
         if (combined.aborted) throw new RolloutSourceError('cancelled');
+        if (projection === 'commentary' && error instanceof RemoteCommandError) {
+          console.warn('Remote 历史 commentary 读取失败', { stage: request.mode === 'locate' ? 'locate' : 'scan', code: error.code, commandStage: error.stage });
+        }
         throw error instanceof RolloutSourceError ? error : new RolloutSourceError(error instanceof RemoteCommandError ? error.code : 'protocol');
       }
     };
@@ -176,7 +179,7 @@ export class RemoteRolloutSource {
     const result = new Map<string, HistoryCommentary>();
     const wanted = new Set(turnIds);
     if (!wanted.size) return result;
-    const read = this.begin(signal);
+    const read = this.begin(signal, 'commentary');
     for await (const path of read.files(threadId)) {
       const file = new Map<string, Map<string, Record<string, unknown> | undefined>>();
       for await (const row of read.project(path, threadId, 'commentary', [...wanted])) {

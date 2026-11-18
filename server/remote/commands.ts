@@ -17,7 +17,7 @@ export interface RemoteCommandResult { exitCode: number; stdout: Buffer; stderr:
 export interface RemoteCommandMetadata { codexHome: string; platformFamily: string; platformOs: string; userAgent: string }
 export type RemoteCommandFailure = 'binding' | 'metadata' | 'python3-required' | 'capability' | 'invalid-input' | 'capacity' | 'output-limit' | 'protocol' | 'encoding' | 'timeout' | 'cancelled' | 'disconnected' | 'closed';
 type RemoteCommandStage = "ready" | "stdin" | "output" | "terminate" | "exit" | "validate";
-type RemoteCommandMode = 'read-only' | 'inline-read-only';
+type RemoteCommandMode = 'read-only' | 'inline-read-only' | 'prefer-inline-read-only';
 /** 失败不包含原始上游payload/错误。取消已执行的写入不代表回滚；未知结果不得自动重放。 */
 export class RemoteCommandError extends Error {
   readonly outcome: 'not-sent' | 'unknown';
@@ -232,8 +232,10 @@ export class RemoteCommands {
     const timeout = limit(raw.timeoutMs, 20000, 180000);
     const stdoutCap = limit(raw.stdoutBytesCap, DEFAULT_CAPTURE, MAX_CAPTURE); const stderrCap = limit(raw.stderrBytesCap, DEFAULT_CAPTURE, MAX_CAPTURE);
     if (raw.signal !== undefined && !(raw.signal instanceof AbortSignal)) throw new RemoteCommandError('invalid-input', false);
-    const inline = mode === 'inline-read-only';
-    const response = await this.run({ mode: mode ? 'read' : 'execute', argv, ...(inline ? {} : { cwd }), env, stdoutCap, stderrCap }, cwd, env, timeout, stdoutCap, stderrCap, raw.signal as AbortSignal | undefined, false, started + timeout, inline);
+    const payload = { mode: mode ? 'read' : 'execute', argv, env, stdoutCap, stderrCap };
+    const inline = mode === 'inline-read-only' ||
+      (mode === 'prefer-inline-read-only' && Buffer.byteLength(JSON.stringify(payload)) <= MAX_INLINE_INPUT);
+    const response = await this.run({ ...payload, ...(inline ? {} : { cwd }) }, cwd, env, timeout, stdoutCap, stderrCap, raw.signal as AbortSignal | undefined, false, started + timeout, inline);
     return { exitCode: response.exitCode as number, stdout: response.stdout as Buffer, stderr: response.stderr as Buffer };
   }
   private assert(op: Operation): void {
