@@ -256,6 +256,7 @@ export async function loadProjectThreadRecords(
       limit,
       cwd: queryRoots.length > 1 ? queryRoots : cwd,
       sortKey: "recency_at",
+      useStateDbOnly: true,
       ...(nextCursor ? { cursor: nextCursor } : {}),
     });
     const eligible = result.data.filter((thread) => {
@@ -448,7 +449,7 @@ export function createLatestThreadListLoader(
           ? orderedProjects.map((cwd) => loadProject(preferred.has(cwd) ? visibleBackground : background, cwd, sequence, options))
           : projectlessThreadIds.length
             ? []
-            : [background.request("thread/list", { limit: 50, sortKey: "recency_at" })
+            : [background.request("thread/list", { limit: 50, sortKey: "recency_at", useStateDbOnly: true })
               .then((result: ThreadListResponse) => {
                 if (sequence === latestSequence) {
                   callbacks.onData?.(markProjectlessThreads(
