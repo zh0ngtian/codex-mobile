@@ -22,7 +22,7 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
     queueMicrotask(() => { boundary.options.onConnection(backends[0].id, 'online'); boundary.options.onReady(backends[0].id, boundary.client); });
   }
 } }));
-afterEach(() => { cleanup(); boundary.reads = []; boundary.rows = []; boundary.client = null; boundary.pageBarrier = null; boundary.snapshotWaits = 0; vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); boundary.reads = []; boundary.rows = []; boundary.client = null; boundary.pageBarrier = null; boundary.snapshotWaits = 0; vi.unstubAllGlobals(); });
 
 async function setup(gatewayMode: "local" | "remote" = "local") {
   const values = new Map<string, string>([['codex-mobile:collapsed-projects', '[]']]);
@@ -55,6 +55,21 @@ it.each(['local', 'remote'] as const)('%s手动刷新复用连接并等待本轮
   expect(boundary.snapshotWaits).toBe(0);
   expect(boundary.reads.filter(read => read.method === 'thread/list' && read.params.cwd)).toHaveLength(1);
   expect(fetcher.mock.calls.filter(([url]) => String(url).includes('/api/projects'))).toHaveLength(directoriesBefore + 1);
+});
+
+it('前台桌面置顶每30秒自动同步，手动刷新即时同步', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  await setup('remote');
+  boundary.reads = [];
+  const pinReads = () => boundary.reads.filter(read => read.method === 'thread/list' && read.params.sectionId);
+
+  await act(async () => vi.advanceTimersByTimeAsync(29_999));
+  expect(pinReads()).toHaveLength(0);
+  await act(async () => vi.advanceTimersByTimeAsync(1));
+  expect(pinReads()).toHaveLength(1);
+
+  fireEvent.click(screen.getByRole('button', { name: '刷新会话列表' }));
+  await waitFor(() => expect(pinReads()).toHaveLength(2));
 });
 
 it('旧快照通知不能启动新一轮读取、改变同步提示或延长手动刷新', async () => {

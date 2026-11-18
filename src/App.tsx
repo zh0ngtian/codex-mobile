@@ -1342,7 +1342,7 @@ function BackendWorkspace({
         if (client === clientRef.current && !client.signal?.aborted) setError(reason instanceof Error ? reason.message : String(reason));
       });
     };
-    const timer = window.setInterval(refreshPins, 3000);
+    const timer = window.setInterval(refreshPins, 30_000);
     window.addEventListener("online", refreshPins);
     document.addEventListener("visibilitychange", refreshPins);
     return () => { window.clearInterval(timer); window.removeEventListener("online", refreshPins); document.removeEventListener("visibilitychange", refreshPins); };
