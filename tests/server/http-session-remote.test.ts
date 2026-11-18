@@ -44,6 +44,33 @@ async function sessionFixture() {
   return { ...f, sessions, remote, frames, call, events, send, attach, respond(fn: typeof respond) { respond = fn; },
     init: (id: string) => call(id, { id: 1, method: 'initialize', params: { clientInfo: { name: 'controlled-session', version: '1' } } }) };
 }
+it('Remote 后台观察用摘要更新真实会话，完整回合只在显式读取时获取', async () => {
+  const f = await sessionFixture(); const id = randomUUID(); await f.init(id);
+  const threadId = 'observed'; const turn = { id: 'latest', status: 'inProgress', items: [{ type: 'agentMessage', text: '业务内容' }] };
+  f.respond(frame => {
+    const m = frame.message; if (!m?.method || m.id == null) return;
+    if (m.method === 'thread/turns/list') {
+      const items = m.params?.itemsView === 'full' ? [...turn.items, { type: 'commandExecution', aggregatedOutput: 'x'.repeat(450000) }] : turn.items;
+      f.send(frame, { id: m.id, result: { data: [{ ...turn, items }] } }); return;
+    }
+    f.send(frame, { id: m.id, result: { thread: { id: threadId } } });
+  });
+  for (let pass = 0; pass < 2; pass++) {
+    const response = await f.sessions.hostedRpc({ id: randomUUID(), method: 'mobile/thread/observe', params: { threadId } }, randomUUID(), { deadline: performance.now() + 800 });
+    expect(response.result).toEqual({ thread: { id: threadId }, data: [turn] });
+  }
+  const observed = f.frames.map(frame => frame.message).filter(message => message?.method === 'thread/turns/list');
+  expect(observed.map(message => message.params)).toEqual(Array(2).fill({ threadId, limit: 1, sortDirection: 'desc', itemsView: 'summary' }));
+  expect(f.frames.filter(frame => frame.message?.method === 'thread/resume')).toHaveLength(1);
+  expect((await f.call(id, { id: 2, method: 'model/list' })).status).toBe(200);
+  expect(f.connections).toHaveLength(1);
+  f.respond(frame => {
+    const m = frame.message; if (m?.id != null) f.send(frame, { id: m.id, result: { data: [{ ...turn, items: [...turn.items, { type: 'commandExecution', aggregatedOutput: 'details' }] }] } });
+  });
+  const detail = await f.call(id, { id: 3, method: 'thread/turns/list', params: { threadId, limit: 1, itemsView: 'full' } });
+  expect(detail.status).toBe(200);
+  expect(f.frames.at(-1)?.message?.params?.itemsView).toBe('full');
+});
 it('同次会话授权只做一次完整绑定校验，读取与通知仍分别核验', async () => {
   const f = await sessionFixture(); const id = randomUUID(); await f.init(id);
   const proof = vi.spyOn((f.runtime as any).bundle.provider, 'verifyBinding');
