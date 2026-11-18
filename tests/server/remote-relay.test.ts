@@ -37,10 +37,10 @@ function incoming(streamId: string, environmentId: string, seqId: number, messag
   return { type: 'server_message', client_id: 'client', stream_id: streamId, env_id: environmentId, seq_id: seqId, message, ...(cursor === undefined ? {} : { cursor }) };
 }
 function send(socket: WebSocket, frame: unknown) { socket.send(JSON.stringify(frame)); }
-it.each(['socket-close', 'native-pong-timeout', 'sequence-gap'] as const)('Relay 断开记录固定诊断 %s', async trigger => {
+it.each(['socket-close', 'native-pong-timeout', 'sequence-gap', 'assembly-timeout'] as const)('Relay 断开记录固定诊断 %s', async trigger => {
   const lostPong = trigger === 'native-pong-timeout';
   const upstream = await server({ autoPong: !lostPong });
-  const value = relay(upstream.url, lostPong ? { nativePingMs: 20, nativePongTimeoutMs: 100 } : {});
+  const value = relay(upstream.url, { ...(lostPong ? { nativePingMs: 20, nativePongTimeoutMs: 100 } : {}), assembly: { timeoutMs: 25 } });
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   try {
     const stream = value.createStream({ environmentId: 'mac' });
@@ -48,10 +48,13 @@ it.each(['socket-close', 'native-pong-timeout', 'sequence-gap'] as const)('Relay
     const disconnected = new Promise(resolve => value.once('disconnect', resolve));
     if (trigger === 'socket-close') upstream.connections[0]!.close(4004, '不记录远端正文');
     if (trigger === 'sequence-gap') send(upstream.connections[0], incoming(stream.streamId, 'mac', 2, { method: '不记录远端正文' }));
+    const chunk = incomingChunks(stream.streamId, { method: '不记录远端正文' }, 3)[0]!;
+    if (trigger === 'assembly-timeout') send(upstream.connections[0], chunk);
     await disconnected;
     expect(warn).toHaveBeenCalledWith('Remote Relay 断开', {
-      trigger, reason: trigger === 'sequence-gap' ? 'protocol' : 'network', onlineMs: expect.any(Number),
+      trigger, reason: trigger === 'sequence-gap' || trigger === 'assembly-timeout' ? 'protocol' : 'network', onlineMs: expect.any(Number),
       ...(trigger === 'socket-close' ? { code: 4004 } : {}),
+      ...(trigger === 'assembly-timeout' ? { assembly: { receivedSegments: 1, totalSegments: 3, receivedBytes: Buffer.from(chunk.message_chunk_base64, 'base64').length, messageBytes: chunk.message_size_bytes } } : {}),
     });
   } finally { warn.mockRestore(); }
 });

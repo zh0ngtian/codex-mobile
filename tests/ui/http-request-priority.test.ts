@@ -133,6 +133,35 @@ describe("HTTP前台会话优先于后台刷新", () => {
     }
   });
 
+  it("同网关另一设备的初始化握手不占已连接设备的前台优先级", async () => {
+    const { calls, create, fetcher } = harness();
+    vi.stubGlobal("fetch", fetcher);
+    const origin = "http://handshake-device-isolation.test";
+    const a = create("connecting", origin), b = create("connected", origin);
+    await vi.advanceTimersByTimeAsync(0);
+    const handshake = a.client.initialize();
+    void handshake.catch(() => undefined);
+    const projects = fetchBackendProjectState({ id: "connected", name: "Mac", baseUrl: origin, token: "test", enabled: true, order: 0 }, "background", b.client.signal);
+    void projects.catch(() => undefined);
+    try {
+      expect(calls.map(call => call.method)).toEqual(["initialize", "projects"]);
+      calls[1].finish();
+      await expect(projects).resolves.toMatchObject({ projects: ["/project"] });
+      calls[0].finish();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls.map(call => call.method)).toEqual(["initialize", "projects", "initialized"]);
+      const list = b.client.request("thread/list", {}, { priority: "background" });
+      void list.catch(() => undefined);
+      expect(calls.at(-1)?.method).toBe("thread/list");
+      calls.at(-1)!.finish();
+      await expect(list).resolves.toEqual({ method: "thread/list" });
+      calls[2].finish();
+      await handshake;
+    } finally {
+      a.transport.close(); b.transport.close();
+    }
+  });
+
   it("同网关不同设备共用后台名额，打开会话立即发出且刷新最终全部完成", async () => {
     const { calls, create, request } = harness();
     const a = create("device-a"), b = create("device-b");
