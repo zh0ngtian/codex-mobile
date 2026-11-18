@@ -1,0 +1,143 @@
+{
+  "date": "2026-11-18",
+  "timezone": "Asia/Shanghai",
+  "task": "remote-rpc-parity-deploy-20261118",
+  "scope": {
+    "project": "codex-mobile-gateway-production",
+    "gateway": true,
+    "webUi": true,
+    "mobilePackagesPublished": false
+  },
+  "deployment": {
+    "result": "success",
+    "batchId": "c672d87b-d5a0-46d7-8c00-23e58b5add4d",
+    "sourceCommit": "bb7db5b62ea5516d594167a98ac3d0cd07879556",
+    "runtimeFixCommit": "2521274cdd03fbcc2043105186ba89c945110034",
+    "frozenCommit": "a6c9ff0bc81206ca6473f014964d9ee3bf7a2222",
+    "completedAt": "2026-11-18T01:19:20.615941+00:00",
+    "stages": [
+      "main",
+      "gateway",
+      "verify"
+    ],
+    "persistentReceiptSha256": "4c7ccc94dc6a266eb57830a193a9df0ccdee49cee095eda044448045862aef17",
+    "developmentCI": {
+      "attempt": 1,
+      "runId": 44214754547,
+      "sourceCommit": "a6c9ff0bc81206ca6473f014964d9ee3bf7a2222"
+    },
+    "actualDigests": {
+      "serverDigest": "8ca30adc491589c8270bcbfffa24fdf500f52abc7a4e7040e3cb8d99816619e4",
+      "frontendDigest": "c131ee792985540661b48dfc6a09552cd1e352a6408f73e994b1335d86ba7a33",
+      "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+      "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+      "archiveSha256": "6be62490d09eef9e9eda1caafc34c84faea7e1af8a23860b0fff80dc9ae055e7"
+    },
+    "oldPid": 75207,
+    "newPid": 62187,
+    "receiptAndActualArtifactsMatch": true,
+    "buildCheckpointAndLogsMatch": true,
+    "authorizedHealthStatus": 200,
+    "serverRuntimeUnchangedFromPreviousDeployment": true,
+    "frontendChanged": true
+  },
+  "preservation": {
+    "privateConfigAndIdentityFilesUnchanged": 9,
+    "acceptedTargetsPreserved": 2,
+    "otherWorkspaceHeadAndIndexUnchanged": true,
+    "managedIdentityMetadataUnchanged": true,
+    "localIdentityUnchanged": true,
+    "clientIdentityUnchanged": true
+  },
+  "checks": [
+    {
+      "name": "adapter-regression",
+      "status": "passed",
+      "exitCode": 0,
+      "logSha256": "81866fa32e5efc8dcc6fa9e8a215ebc21d2ab47d2af6634d2f4407f0d70b0e1c"
+    },
+    {
+      "name": "coordinator-recovery",
+      "status": "passed",
+      "exitCode": 0,
+      "logSha256": "b3676dbae03252ffb82451a0c03e2b5e8618401a335a64113a78f7124759dbc7"
+    },
+    {
+      "name": "build-contract",
+      "status": "passed",
+      "exitCode": 0,
+      "logSha256": "3ab5674207ac5422fb3b1d499dc2c5b3af2958055ec3c3dcfe4b8dd26c742d6d"
+    },
+    {
+      "name": "typecheck",
+      "status": "passed",
+      "exitCode": 0,
+      "logSha256": "ddcbb7a08bfec0ac49a7a6d573783271de42998d75a0e124eef2e8a0e0d5c546"
+    }
+  ],
+  "checkCounts": {
+    "adapterRegression": 290,
+    "coordinatorRecovery": 59,
+    "buildContractFiles": 22,
+    "buildContractTests": 164,
+    "typecheck": "passed",
+    "sourceRelatedTests": 252
+  },
+  "productionBrowser": {
+    "browser": "Edge",
+    "loadedNewFrontendAsset": "/assets/index-DA2h2VcH.js",
+    "fetchObservation": {
+      "windowMs": 334467.7999999523,
+      "apiRequests": 796,
+      "snapshotRequests": 0,
+      "counts": {
+        "/api/follow-ups 503": 346,
+        "/api/host 200": 30,
+        "/api/rpc 503": 210,
+        "/api/operations 503": 210
+      },
+      "scope": "重载后安装临时fetch观察器开始的窗口，包含自动连接及轮询；不是一次手动刷新请求数",
+      "cdpNetworkBufferTruncated": true,
+      "countsSource": "临时fetch观察器，不使用截断的CDP事件统计"
+    },
+    "endState": {
+      "connectedTargets": 0,
+      "connectingTargets": 2,
+      "listLoading": true,
+      "visibleMessages": 0
+    },
+    "successfulFullRefreshMs": null,
+    "conversationReadyMs": null,
+    "performanceAcceptance": "blocked-by-authentication",
+    "instrumentationCleanup": "已重载并确认临时探针移除，已关闭CDP Network捕获",
+    "testConversationsCreated": 0,
+    "inferenceInvoked": false
+  },
+  "authenticationBlocker": {
+    "remoteState": "paused",
+    "runtimeReason": "identity-changed",
+    "pendingResumeCount": 2,
+    "liveManagedIdentityMatchesOriginal": true,
+    "managedAuthFileReadableAndParseable": true,
+    "managedAuthLoadResult": "RemoteAuthRequiredError",
+    "canonicalAccountRead": [
+      {
+        "refreshToken": false,
+        "hasAccount": false
+      },
+      {
+        "refreshToken": true,
+        "hasAccount": false
+      }
+    ],
+    "diagnosis": "官方本地canonical服务的account/read返回account:null，无法完成现行受管认证证明；不据通用identity-changed分类断言用户实际切换账号",
+    "recoveryState": "等待用户确认或完成原ChatGPT账号登录，再显式核验并恢复原两台完整目标；本批未执行login、recover、reauthorize或resume",
+    "notAccepted": [
+      "Remote连接功能验收",
+      "成功刷新耗时",
+      "进入对话耗时",
+      "冷读及P95"
+    ]
+  },
+  "operatorNote": "首次ready误填完整SHA，被协调器拒绝且任务保持unready；随后从Git读取并校验实际SHA提交成功，未产生失败部署批次或更改生产身份。"
+}
