@@ -210,7 +210,7 @@ async function remoteProjectState(source: RemoteProjectSource): Promise<CodexPro
   for (;;) {
     const remaining = Math.floor(deadline - performance.now()); if (remaining < 1) throw new Error('Remote项目读取超时');
     const result = await source.commands.execute({ argv: [binding.python, '-I', '-c', PROJECT_STATE_PYTHON, JSON.stringify({ offset })],
-      cwd: binding.metadata.codexHome, timeoutMs: remaining, stdoutBytesCap: 48 * 1024, stderrBytesCap: 16384, signal: source.signal }, 'inline');
+      cwd: binding.metadata.codexHome, timeoutMs: remaining, stdoutBytesCap: 48 * 1024, stderrBytesCap: 16384, signal: source.signal }, 'inline-read-only');
     if (result.exitCode !== 0 || result.stderr.length) throw new Error('Remote项目状态读取失败');
     const value = JSON.parse(decodeRemoteCommandText(result.stdout));
     if (!Number.isSafeInteger(value.total) || value.total < offset || value.offset !== offset || typeof value.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.sha256) || typeof value.base64 !== 'string') throw new Error('Remote项目状态响应无效');
@@ -261,7 +261,7 @@ async function remoteWorktrees(source: RemoteProjectSource, roots: string[]) {
     const deadline = performance.now() + 20000; const parts: Buffer[] = []; let offset = 0; let signature: string | undefined;
     for (;;) {
       const remaining = Math.floor(deadline - performance.now()); if (remaining < 1) throw new Error('Remote项目worktree读取超时');
-      const result = await source.commands.execute({ argv: [binding.python, '-I', '-c', WORKTREES_PYTHON, JSON.stringify({ offset }), ...roots], cwd: binding.metadata.codexHome, timeoutMs: remaining, stdoutBytesCap: 2 * 1024 * 1024, stderrBytesCap: 16384, signal: source.signal });
+      const result = await source.commands.execute({ argv: [binding.python, '-I', '-c', WORKTREES_PYTHON, JSON.stringify({ offset }), ...roots], cwd: binding.metadata.codexHome, timeoutMs: remaining, stdoutBytesCap: 2 * 1024 * 1024, stderrBytesCap: 16384, signal: source.signal }, 'read-only');
       if (result.exitCode !== 0 || result.stderr.length) throw new Error('Remote项目worktree读取失败');
       const value = JSON.parse(decodeRemoteCommandText(result.stdout));
       if (!Number.isSafeInteger(value.total) || value.total < offset || value.offset !== offset || typeof value.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.sha256) || typeof value.base64 !== 'string') throw new Error('Remote worktree响应无效');
