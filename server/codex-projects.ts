@@ -150,7 +150,7 @@ def invalid(value):raise ValueError()
 # 原子由标准decoder解码；容器仅用显式栈定位并完整验证，避免Python递归深度成为产品限制。
 # 必要字段保留原始JSON片段，不把数值转成Python数值再编码。
 decoder=json.JSONDecoder(parse_int=lambda value:None,parse_float=lambda value:None,parse_constant=invalid)
-with open(os.path.join(q['home'],'.codex-global-state.json'),'r',encoding='utf-8',errors='replace') as f: text=f.read()
+with open(os.path.join(os.getcwd(),'.codex-global-state.json'),'r',encoding='utf-8',errors='replace') as f: text=f.read()
 def space(i):
     while i<len(text) and text[i] in ' \t\r\n':i+=1
     return i
@@ -209,8 +209,8 @@ async function remoteProjectState(source: RemoteProjectSource): Promise<CodexPro
   const parts: Buffer[] = []; const digest = createHash('sha256'); let offset = 0; let signature: string | undefined;
   for (;;) {
     const remaining = Math.floor(deadline - performance.now()); if (remaining < 1) throw new Error('Remote项目读取超时');
-    const result = await source.commands.execute({ argv: [binding.python, '-I', '-c', PROJECT_STATE_PYTHON, JSON.stringify({ home: binding.metadata.codexHome, offset })],
-      cwd: binding.metadata.codexHome, timeoutMs: remaining, stdoutBytesCap: 48 * 1024, stderrBytesCap: 16384, signal: source.signal });
+    const result = await source.commands.execute({ argv: [binding.python, '-I', '-c', PROJECT_STATE_PYTHON, JSON.stringify({ offset })],
+      cwd: binding.metadata.codexHome, timeoutMs: remaining, stdoutBytesCap: 48 * 1024, stderrBytesCap: 16384, signal: source.signal }, 'inline');
     if (result.exitCode !== 0 || result.stderr.length) throw new Error('Remote项目状态读取失败');
     const value = JSON.parse(decodeRemoteCommandText(result.stdout));
     if (!Number.isSafeInteger(value.total) || value.total < offset || value.offset !== offset || typeof value.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.sha256) || typeof value.base64 !== 'string') throw new Error('Remote项目状态响应无效');
