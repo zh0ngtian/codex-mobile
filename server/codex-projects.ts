@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import { promisify } from "node:util";
 import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
-import { RemoteCommands, decodeRemoteCommandText } from './remote/commands.js';
+import { RemoteCommandError, RemoteCommands, decodeRemoteCommandText } from './remote/commands.js';
 import { RemoteRpcSession } from './remote/rpc-session.js';
 
 const execute = promisify(execFile);
@@ -265,11 +265,23 @@ async function remoteWorktrees(source: RemoteProjectSource, roots: string[]) {
   return outputs;
 }
 
+export class RemoteProjectReadError extends Error {
+  readonly code: string;
+  constructor(readonly stage: "project-file" | "worktrees", cause: unknown) {
+    super("Remote 项目目录读取失败", { cause });
+    this.code = cause instanceof RemoteCommandError ? cause.code : "invalid-result";
+  }
+}
+
 export async function readCodexProjectState(globalStatePath: string, source?: RemoteProjectSource) {
-  const state = source ? await remoteProjectState(source) : parseCodexProjectState(await readFile(globalStatePath, "utf8"), dirname(globalStatePath));
+  const state = source
+    ? await remoteProjectState(source).catch(cause => { throw new RemoteProjectReadError("project-file", cause); })
+    : parseCodexProjectState(await readFile(globalStatePath, "utf8"), dirname(globalStatePath));
   const projectWorktrees: Record<string, string[]> = {};
   const registered = new Set(state.projects);
-  const remoteOutputs = source ? await remoteWorktrees(source, state.projects) : undefined;
+  const remoteOutputs = source
+    ? await remoteWorktrees(source, state.projects).catch(cause => { throw new RemoteProjectReadError("worktrees", cause); })
+    : undefined;
   for (const root of state.projects) {
     let output: string;
     try {
@@ -282,7 +294,7 @@ export async function readCodexProjectState(globalStatePath: string, source?: Re
     } catch (error: any) {
       // 普通文件夹及已删除的项目没有 Git worktree；其他读取故障必须报告。
       if (error.code === 128 && /not a git repository|cannot change to .*No such file or directory/.test(error.stderr ?? "")) continue;
-      throw error;
+      throw source ? new RemoteProjectReadError("worktrees", error) : error;
     }
     const paths = output.split("\0").filter(part => part.startsWith("worktree ")).map(part => part.slice(9));
     // 以已登记的主工作区为归属；显式登记的另一个工作区仍保持独立项目。

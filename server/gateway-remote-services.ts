@@ -1,5 +1,6 @@
 import { join, posix, win32 } from 'node:path';
-import { ResolvedRemoteTarget } from './targets.js';
+import { performance } from 'node:perf_hooks';
+import { ResolvedRemoteTarget, TargetResolutionError } from './targets.js';
 import { RemoteRpcSession } from './remote/rpc-session.js';
 import { RemoteCommands } from './remote/commands.js';
 import { RemoteFiles } from './remote/files.js';
@@ -11,7 +12,7 @@ import { MessageTimestamps } from './message-timestamps.js';
 import { MessageWebCitations } from './web-citations.js';
 import { InlineImages } from './inline-images.js';
 import { TitleSummaries } from './title-summaries.js';
-import { readCodexProjectState } from './codex-projects.js';
+import { readCodexProjectState, RemoteProjectReadError } from './codex-projects.js';
 import { runRemoteCleanup, withIndependentRemoteOperation } from './remote/operation-guard.js';
 import type { HttpSessionRemoteOptions } from './http-session.js';
 
@@ -67,8 +68,19 @@ export class GatewayRemoteServices {
     if (Date.now() - this.projectSnapshotAt >= 86400000) this.projectSnapshot = undefined;
     if (!this.projectRefresh) {
       const work = withIndependentRemoteOperation(() => this.assertOpen(), async () => {
-        const result = await readCodexProjectState('', { session: this.session, commands: this.commands, signal: this.lifetime.signal });
-        await this.target.assertCurrent(this.lifetime.signal); this.assertOpen(); this.projectSnapshot = structuredClone(result); this.projectSnapshotAt = Date.now();
+        const start = performance.now();
+        try {
+          const result = await readCodexProjectState('', { session: this.session, commands: this.commands, signal: this.lifetime.signal });
+          await this.target.assertCurrent(this.lifetime.signal); this.assertOpen();
+          this.projectSnapshot = structuredClone(result); this.projectSnapshotAt = Date.now();
+        } catch (error) {
+          if (!this.lifetime.signal.aborted) {
+            const stage = error instanceof RemoteProjectReadError ? error.stage : "publish";
+            const code = error instanceof RemoteProjectReadError || error instanceof TargetResolutionError ? error.code : "unavailable";
+            console.warn("Remote 项目目录读取失败", { stage, code, elapsedMs: Math.round(performance.now() - start) });
+          }
+          throw error;
+        }
       });
       this.projectRefresh = work;
       void work.finally(() => { if (this.projectRefresh === work) this.projectRefresh = undefined; }).catch(() => {});

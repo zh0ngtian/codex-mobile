@@ -116,7 +116,10 @@ export class OperationScheduler {
       const sessions = await this.sessions(context, call);
       const response = await sessions.publicRpc(sessionId, envelope, call);
       this.snapshots.put(context, envelope.message, response);
-      if (response.error == null) await this.#options.onResponse?.(context, envelope.message, response, sessionId);
+      if (response.error == null) {
+        if (isNavigationResume(envelope.message)) this.observeNavigation(context, envelope.message, response, sessionId);
+        else await this.#options.onResponse?.(context, envelope.message, response, sessionId);
+      }
       const fence = await this.#options.resolver.authorizeOperation(context, 'read', call.signal); fence();
       return response;
     }, original));
@@ -147,14 +150,17 @@ export class OperationScheduler {
     return this.own(() => this.budget(async call => {
       const sessions = await this.sessions(context, call);
       const response = await sessions.publicRpc(sessionId, envelope, call);
-      if (envelope.message.method === 'thread/resume' && response.error == null && this.#options.onResponse) {
-        // 观察登记归网关持有，手机返回或断开不等待其磁盘写入；close 仍等待它结束。
-        void this.own(() => withIndependentRemoteOperation(() => this.assertOpen(), async () => {
-          await this.#options.onResponse!(context, envelope.message, response, sessionId);
-        })).catch(error => { this.lastError = error; });
-      }
+      if (isNavigationResume(envelope.message) && response.error == null) this.observeNavigation(context, envelope.message, response, sessionId);
       return response;
     }, original));
+  }
+  private observeNavigation(context: OperationContext, message: RpcMessage, response: RpcMessage, sessionId: string) {
+    const onResponse = this.#options.onResponse;
+    if (!onResponse) return;
+    // 观察登记归网关持有，手机返回或断开不等待其磁盘写入；close 仍等待它结束。
+    void this.own(() => withIndependentRemoteOperation(() => this.assertOpen(), async () => {
+      await onResponse(context, message, response, sessionId);
+    })).catch(error => { this.lastError = error; });
   }
   operation(id: string, routeContext: OperationContext, sessionId: string, original?: SessionCallOptions, expected?: { message: RpcMessage; epoch?: string }) {
     routeContext = structuredClone(routeContext);
