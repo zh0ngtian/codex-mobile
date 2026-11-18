@@ -1309,7 +1309,8 @@ export class HttpSessions {
     }
     const response = await this.hostedRpc({ id: randomUUID(), method: 'thread/read', params: { threadId, includeTurns: false } }, randomUUID(), call);
     if (response.error) return { id: message.id, error: response.error };
-    const turns = await this.hostedRpc({ id: randomUUID(), method: 'thread/turns/list', params: { threadId, limit: 1, sortDirection: 'desc', itemsView: 'full' } }, randomUUID(), call);
+    // 后台对账以状态及可见消息为准，避免持续通过共享 Relay 重读回合中的工具输出。
+    const turns = await this.hostedRpc({ id: randomUUID(), method: 'thread/turns/list', params: { threadId, limit: 1, sortDirection: 'desc', itemsView: this.options.remote ? 'summary' : 'full' } }, randomUUID(), call);
     if (turns.error) return { id: message.id, error: turns.error };
     if (await this.hostedReady(call) !== epoch) throw new HttpError(503, '观察连接已经变化');
     return { id: message.id, result: { thread: (response.result as any)?.thread, data: (turns.result as any)?.data } };
