@@ -41,6 +41,7 @@ export class RemoteRuntimeError extends Error {
 }
 export interface RemoteRuntimeOperation {
   epoch: number;
+  concurrentRead?: boolean;
   authorizationReadOnly: boolean;
   abort: AbortController;
   deadline: number;
@@ -60,6 +61,7 @@ export class RemoteRuntimeLifecycle {
   epoch = 0;
   operation?: RemoteRuntimeOperation;
   pending?: Promise<unknown>;
+  private readonly concurrentReads = new Set<RemoteRuntimeOperation>();
   private readonly work = new Set<Promise<unknown>>();
   /** 可信进程归属屏障使用实际Promise，不能用超时后的race代替。 */
   track<T>(promise: Promise<T>): Promise<T> {
@@ -75,7 +77,7 @@ export class RemoteRuntimeLifecycle {
   assert(op: RemoteRuntimeOperation, phaseDeadline = Infinity): void {
     if (performance.now() >= Math.min(op.deadline, phaseDeadline) && !op.abort.signal.aborted)
       op.abort.abort(new RemoteRuntimeError('timeout'));
-    if (this.closed || op.epoch !== this.epoch) throw new RemoteRuntimeError('closed');
+    if (this.closed || (!op.concurrentRead && op.epoch !== this.epoch)) throw new RemoteRuntimeError('closed');
     if (op.abort.signal.aborted)
       throw op.abort.signal.reason instanceof RemoteRuntimeError
         ? op.abort.signal.reason
@@ -136,19 +138,27 @@ export class RemoteRuntimeLifecycle {
     signal: AbortSignal | undefined,
     callback: (op: RemoteRuntimeOperation) => Promise<T>,
     interactive = false,
-    authorizationReadOnly = false,
+    mode: 'exclusive' | 'proof' | 'handshake' = 'exclusive',
   ): Promise<T> {
+    const concurrentRead = mode === 'handshake';
+    const authorizationReadOnly = mode !== 'exclusive';
     if (this.closed) return Promise.reject(new RemoteRuntimeError('closed'));
-    if (this.operation) return Promise.reject(new RemoteRuntimeError('busy'));
+    if (this.operation && (!concurrentRead || !this.operation.authorizationReadOnly))
+      return Promise.reject(new RemoteRuntimeError('busy'));
     if (signal?.aborted) return Promise.reject(new RemoteRuntimeError('cancelled'));
+    if (!authorizationReadOnly) {
+      for (const reading of this.concurrentReads) reading.abort.abort(new RemoteRuntimeError('unavailable'));
+    }
     const op: RemoteRuntimeOperation = {
-      epoch: ++this.epoch,
+      epoch: concurrentRead ? this.epoch : ++this.epoch,
+      concurrentRead,
       authorizationReadOnly,
       abort: new AbortController(),
       deadline: performance.now() + (interactive ? this.interactionTimeout : this.timeout),
       removers: [],
     };
-    this.operation = op;
+    if (concurrentRead) this.concurrentReads.add(op);
+    else this.operation = op;
     if (signal) {
       const abort = () => op.abort.abort(new RemoteRuntimeError('cancelled'));
       signal.addEventListener('abort', abort, { once: true });
@@ -177,9 +187,11 @@ export class RemoteRuntimeLifecycle {
           }
         }
         op.abort.abort();
+        if (concurrentRead) this.concurrentReads.delete(op);
         if (this.operation === op) this.operation = undefined;
       }
     })();
+    if (concurrentRead) return this.track(flight);
     this.pending = flight;
     void flight
       .finally(() => {
@@ -198,6 +210,7 @@ export class RemoteRuntimeLifecycle {
     if (this.closed) return;
     this.closed = true;
     this.epoch++;
+    for (const reading of this.concurrentReads) reading.abort.abort(new RemoteRuntimeError('closed'));
     this.operation?.abort.abort(new RemoteRuntimeError('closed'));
   }
 }

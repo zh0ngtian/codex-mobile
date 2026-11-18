@@ -597,6 +597,40 @@ it('Runtime把本次summary预算传给同Controller且不改变后续默认工�
   await f.runtime.createManagementSession(local, undefined, budget); await f.runtime.createManagementSession(local);
   expect(calls).toEqual([[local, budget], [local, undefined]]); expect(f.connections).toHaveLength(1);
 });
+it('一台目标的管理握手等待真实Relay回复时，不阻塞另一个目标的核验和逻辑流', async () => {
+  const f = await fixture();
+  await f.runtime.authorize();
+  await until(() => f.runtime.status().state === 'online');
+  await f.runtime.acceptTarget(remote);
+  const resolver = await resolverFor(f.runtime);
+  const first = await resolver.resolve(reference(f, local));
+  const second = await resolver.resolve(reference(f, remote));
+  const ws = f.connections[0]!;
+  let finishFirst: (() => void) | undefined;
+  ws.on('message', bytes => {
+    const frame = JSON.parse(bytes.toString());
+    if (frame.type !== 'client_message' || frame.message?.method !== 'initialize') return;
+    const reply = () => ws.send(JSON.stringify({ type: 'server_message', client_id: f.runtime.status().clientId,
+      env_id: frame.env_id, stream_id: frame.stream_id, seq_id: 1,
+      message: { id: frame.message.id, result: { codexHome: '/remote/mac' } } }));
+    if (frame.env_id === local.environmentId) finishFirst = reply;
+    else reply();
+  });
+  const opening = first.createManagementSession();
+  void opening.catch(() => undefined);
+  try {
+    await until(() => !!finishFirst);
+    expect((await resolver.directory()).data.targets).toHaveLength(2);
+    const session = await second.createManagementSession();
+    expect(session.ready).toBe(true);
+    await session.settled();
+    expect(f.connections).toHaveLength(1);
+  } finally {
+    finishFirst?.();
+    const session = await opening;
+    await session.settled();
+  }
+});
 it('authorize返回实际运行状态，管理session挂起被取消后迟到资源关闭', async () => {
   const f = await fixture();
   const authorized = await f.runtime.authorize();

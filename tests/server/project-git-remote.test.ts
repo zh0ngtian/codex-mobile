@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -21,7 +21,7 @@ async function metadata(f: { root: string }, cwd: string, id = thread) {
   await writeFile(join(d, `rollout-fixture-${id}.jsonl`), JSON.stringify({ type: 'session_meta', payload: { id, cwd } }) + '\nprivate body must never cross wire\n');
 }
 async function repo(f: { root: string }) {
-  const p = join(f.root, "repo 空格'[]"); await mkdir(p); await git(p, ['init']); await git(p, ['config', 'user.name', 'Fixture']); await git(p, ['config', 'user.email', 'fixture@example.invalid']); return p;
+  const p = join(await realpath(f.root), "repo 空格'[]"); await mkdir(p); await git(p, ['init']); await git(p, ['config', 'user.name', 'Fixture']); await git(p, ['config', 'user.email', 'fixture@example.invalid']); return p;
 }
 const git = async (cwd: string, args: string[]) => (await exec('git', args, { cwd, maxBuffer: 8 * 1024 * 1024 })).stdout;
 async function history(f: Awaited<ReturnType<typeof target>>, gateway = 'gateway', signal?: AbortSignal) {
@@ -40,7 +40,7 @@ it('项目实际坏UTF8字节按原Local readFile替换语义解析，投影不�
 });
 it('Remote项目worktree读取允许超过本地3秒的协议往返，仍执行真实只读git', async () => {
   const f = await target(true); const p = await repo(f);
-  const linked = join(f.root, 'linked');
+  const linked = join(await realpath(f.root), 'linked');
   await git(p, ['commit', '--allow-empty', '-m', 'base']);
   await git(p, ['worktree', 'add', '-b', 'linked', linked]);
   await writeFile(join(f.root, '.codex-global-state.json'), JSON.stringify({
@@ -68,7 +68,7 @@ it('Remote项目worktree读取允许超过本地3秒的协议往返，仍执行�
   } finally { intercepted.mockRestore(); }
 }, 15000);
 it('多个项目的worktree在目标合批，网络调用不随项目数量增长', async () => {
-  const f = await target(); const p = await repo(f); const linked = join(f.root, 'batch-linked');
+  const f = await target(); const p = await repo(f); const linked = join(await realpath(f.root), 'batch-linked');
   await git(p, ['commit', '--allow-empty', '-m', 'base']); await git(p, ['worktree', 'add', '-b', 'batch', linked]);
   const projects = [p, linked, '/missing-one', '/missing-two', '/missing-three'];
   await writeFile(join(f.root, '.codex-global-state.json'), JSON.stringify({ 'local-projects': Object.fromEntries(projects.map((root, i) => [String(i), { id: String(i), rootPaths: [root] }])), 'project-order': projects.map((_, i) => String(i)) }));
@@ -142,7 +142,8 @@ it('Remote missing metadata不负缓存，同thread与gateway的持久历史隔�
 });
 it('项目必要数据超过2MiB仍完整分页，真实worktree归属与已注册工作区独立', async () => {
   const f = await target(); const p = await repo(f); await writeFile(join(p, 'a'), 'base\n'); await git(p, ['add', '.']); await git(p, ['commit', '-m', 'base']);
-  const registered = join(f.root, 'registered'); const linked = join(f.root, 'linked'); const plain = join(f.root, 'plain'); await mkdir(plain);
+  const root = await realpath(f.root);
+  const registered = join(root, 'registered'); const linked = join(root, 'linked'); const plain = join(root, 'plain'); await mkdir(plain);
   await git(p, ['worktree', 'add', '-b', 'registered', registered]); await git(p, ['worktree', 'add', '-b', 'linked', linked]);
   const projectless = Array.from({ length: 3000 }, (_, i) => `${i}-` + 'x'.repeat(1000));
   await writeFile(join(f.root, '.codex-global-state.json'), JSON.stringify({ 'local-projects': { a: { id: 'a', rootPaths: [p] }, b: { id: 'b', rootPaths: [registered] }, c: { id: 'c', rootPaths: [plain] } }, 'projectless-thread-ids': projectless }));

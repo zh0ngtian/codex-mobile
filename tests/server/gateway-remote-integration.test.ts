@@ -10,7 +10,62 @@ import { until } from './remote-session-fixture.js';
 import WebSocket from 'ws';
 import { expect, it, vi } from 'vitest';
 import { createGateway } from '../../server/gateway.js';
+import * as projectReader from '../../server/codex-projects.js';
 import { gatewayRemote } from './fixtures/gateway-remote.js';
+
+it('另一台设备正在握手时，公开项目目录和会话初始化都返回成功', async () => {
+  const f = await gatewayRemote();
+  const other = { environmentId: 'remote-env', installationId: 'remote-install' };
+  await f.runtime.acceptTarget(other);
+  const reference = (await f.resolver.directory()).data.targets.find(target => !target.isGatewayHost)!.reference;
+  const gateway = await createGateway({ host: '127.0.0.1', port: 0, mode: 'external', upstreamUrl: 'ws://127.0.0.1:1',
+    staticDir: null, codexHome: f.gatewayHome, targetResolver: f.resolver });
+  const endpoint = new URL(`http://127.0.0.1:${gateway.port}/api/projects`);
+  endpoint.searchParams.set('mode', 'remote');
+  endpoint.searchParams.set('target', JSON.stringify(f.reference));
+  await writeFile(join(f.targetHome, '.codex-global-state.json'), JSON.stringify({ 'local-projects': { p: { id: 'p', rootPaths: [f.targetHome] } } }));
+  let releaseProjects!: () => void; let releaseHandshake!: () => void;
+  const projectsGate = new Promise<void>(resolve => { releaseProjects = resolve; });
+  const handshakeGate = new Promise<void>(resolve => { releaseHandshake = resolve; });
+  let reading = false; let opening = false;
+  const reader = projectReader.readCodexProjectState;
+  vi.spyOn(projectReader, 'readCodexProjectState').mockImplementation(async (...args) => {
+    const state = await reader(...args);
+    reading = true;
+    await projectsGate;
+    return state;
+  });
+  const controller = (f.runtime as any).bundle.controller;
+  const original = controller.createManagementSession.bind(controller);
+  vi.spyOn(controller, 'createManagementSession').mockImplementation(async (...args: any[]) => {
+    if (args[0].environmentId === other.environmentId) { opening = true; await handshakeGate; }
+    return original(...args);
+  });
+  let session: ReturnType<typeof f.runtime.createManagementSession> | undefined;
+  const response = fetch(endpoint);
+  void response.catch(() => undefined);
+  try {
+    await until(() => reading);
+    const target = await f.resolver.resolve(reference);
+    session = target.createManagementSession();
+    void session.catch(() => undefined);
+    await until(() => opening);
+    const rpc = new URL(endpoint);
+    rpc.pathname = '/api/rpc';
+    rpc.searchParams.set('sessionId', randomUUID());
+    const initialized = fetch(rpc, { method: 'POST', body: JSON.stringify({ requestId: randomUUID(),
+      message: { id: 1, method: 'initialize', params: { clientInfo: { name: 'test', version: '1' } } } }) });
+    releaseProjects();
+    const [returned, connected] = await Promise.all([response, initialized]);
+    expect([returned.status, connected.status]).toEqual([200, 200]);
+    expect(await returned.json()).toMatchObject({ projects: [f.targetHome] });
+    expect(await connected.json()).toMatchObject({ result: { codexHome: f.targetHome } });
+  } finally {
+    releaseProjects(); releaseHandshake();
+    await (await session?.catch(() => undefined))?.settled();
+    await gateway.close();
+  }
+}, 15000);
 
 it('公开网关目录、HTTP、WS 与附件均沿唯一 Runtime，网关本机在 Remote 模式也不使用 Local', async () => {
   const f = await gatewayRemote();

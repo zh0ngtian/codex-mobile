@@ -277,7 +277,7 @@ export class RemoteRuntime extends EventEmitter<{
           return callback(op);
         },
         interactive,
-        authorizationReadOnly || query,
+        authorizationReadOnly || query ? 'proof' : 'exclusive',
       )
       .finally(() => this.publish());
   }
@@ -1044,18 +1044,19 @@ export class RemoteRuntime extends EventEmitter<{
       true,
     );
   }
-  private executable(value: RemoteTargetIdentity): {
+  private executable(value: RemoteTargetIdentity, concurrentRead = false): {
     target: RemoteTargetIdentity;
     bundle: Bundle;
+    active: Active;
   } {
     const target = remoteTuple(value);
     if (this.closed) throw new RemoteRuntimeError('closed');
     if (!this.active) throw new RemoteRuntimeError('not-configured');
-    if (this.preparing || this.operation || this.active.state.paused || !this.bundle)
+    if (this.preparing || (this.operation && (!concurrentRead || !this.operation.authorizationReadOnly)) || this.active.state.paused || !this.bundle)
       throw new RemoteRuntimeError('unavailable');
     if (this.active.state.pending.some((value) => sameRemoteTarget(value, target)))
       throw new RemoteRuntimeError('pending-resume');
-    return { target, bundle: this.bundle };
+    return { target, bundle: this.bundle, active: this.active };
   }
   createRawStream(value: RemoteTargetIdentity): RemoteStream {
     const { target, bundle } = this.executable(value);
@@ -1066,7 +1067,9 @@ export class RemoteRuntime extends EventEmitter<{
     }
   }
   createManagementSession(value: RemoteTargetIdentity, signal?: AbortSignal, rpcOptions?: RemoteRpcSessionOptions): Promise<RemoteRpcSession> {
-    const { target, bundle } = this.executable(value);
+    const { target, bundle, active } = this.executable(value, true);
+    if (this.committing) return Promise.reject(new RemoteRuntimeError('commit-pending'));
+    const state = active.state;
     let abandoned = false;
     let unclaimedSession: RemoteRpcSession | undefined;
     const discardSession = (): Promise<void> => {
@@ -1074,7 +1077,10 @@ export class RemoteRuntime extends EventEmitter<{
       unclaimedSession = undefined;
       return dispose(session);
     };
-    const flight = this.run(signal, async (op) => {
+    // 等待目标的 initialize 回复不占用身份操作槽；身份变更仍取消握手。
+    const flight = this.lifecycle.run(signal, async (op) => {
+      await this.wait(op, () => this.storage);
+      await this.wait(op, () => this.draining);
       const pending = Promise.resolve().then(() => {
         this.assert(op);
         return bundle.controller.createManagementSession(target, rpcOptions);
@@ -1089,12 +1095,12 @@ export class RemoteRuntime extends EventEmitter<{
       const session = await this.wait(op, () => pending);
       if (
         this.bundle !== bundle ||
-        this.active?.state.paused ||
-        this.active?.state.pending.some((value) => sameRemoteTarget(value, target))
+        this.active !== active ||
+        active.state !== state
       )
         throw new RemoteRuntimeError('unavailable');
       return session;
-    }, false, false, true);
+    }, false, 'handshake');
     return flight
       .then((session) => {
         unclaimedSession = undefined;
