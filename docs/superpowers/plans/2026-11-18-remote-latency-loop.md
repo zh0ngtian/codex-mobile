@@ -98,4 +98,6 @@
 
 - [x] 扩充 `tests/ui/thread-list-loader.test.ts` 对普通项目首批、更多游标及无分组列表参数的断言。执行 `NODE_OPTIONS=--no-experimental-webstorage npm test -- tests/ui/thread-list-loader.test.ts`，确认旧实现缺少 `useStateDbOnly`。已复现 5 项预期失败，修改后 57 项通过。
 - [x] 给 `src/app-server/thread-list-loader.ts` 的两个侧栏 `thread/list` 调用添加 `useStateDbOnly: true`，保留目录过滤、游标、并发和展示语义。重跑用例，并执行关联 Web、网关路由、构建合同测试及前端构建。25 文件 743 项相关回归通过，协调门禁、类型检查、服务端及前端构建通过。
-- [ ] 按 `remote-latency-side-index-20261119` 将已推送来源提交交给生产网关协调器，私有验证声明 `webUi: true`。成功回执后验证浏览器的两个 Remote 目标、项目分页参数、刷新按钮和旧对话正文显示。
+- [x] 按 `remote-latency-side-index-20261119` 将已推送来源提交交给生产网关协调器，私有验证声明 `webUi: true`。成功回执后验证浏览器的两个 Remote 目标、项目分页参数、刷新按钮和旧对话正文显示。
+
+生产批次 `25170c34-08ca-438c-97bd-807fececda2f` 已完成，冻结 `abd5997e`，开发 CI `44366669799`。浏览器确认两台目标的项目首批及续页均传 `useStateDbOnly: true`。第一次刷新置顶 RPC 503 与网关记录的 Relay 心跳超时同次出现；恢复后整轮点击到结束 24.67 秒，54 个项目查询均 200，其中 22 个是补页，单次中位 1.11 秒、最长 1.63 秒。两台设备冷启动 13.98 秒连接；相同旧对话 1.22 秒显示五个回合，后台回填 2.93 秒。
