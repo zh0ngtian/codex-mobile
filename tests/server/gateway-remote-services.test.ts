@@ -4,6 +4,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { GatewayRemoteServices } from '../../server/gateway-remote-services.js';
+import { RemoteCommands, RemoteCommandError } from '../../server/remote/commands.js';
 import { gatewayRemote } from './fixtures/gateway-remote.js';
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
@@ -52,4 +53,23 @@ it('项目共享快照先返回旧目录，后台刷新合并，撤权后旧快�
     await vi.waitFor(async () => expect((await services.projectState()).projects).toEqual(['/fresh']));
     f.setManaged({ accountUserId: 'other' }); await expect(services.projectState()).rejects.toThrow();
   } finally { finish?.({ projects: [], projectlessThreadIds: [] }); read.mockRestore(); }
+}, 15000);
+
+it('远程目录失败记录阶段和固定分类，危险上游正文不进入日志', async () => {
+  const f = await gatewayRemote(); const target = await f.resolver.resolve(f.reference);
+  const services = await GatewayRemoteServices.create(target, f.gatewayHome); cleanups.push(() => services.close());
+  const fault = new RemoteCommandError('capacity', false);
+  fault.message = 'private path and upstream error';
+  const execute = vi.spyOn(RemoteCommands.prototype, 'execute').mockRejectedValueOnce(fault);
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  try {
+    await expect(services.projectState()).rejects.toThrow();
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith('Remote 项目目录读取失败', {
+      stage: 'project-file', code: 'capacity', elapsedMs: expect.any(Number),
+    });
+  } finally {
+    execute.mockRestore();
+    warn.mockRestore();
+  }
 }, 15000);
