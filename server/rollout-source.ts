@@ -5,9 +5,10 @@ import { createInterface } from 'node:readline';
 import { Readable } from 'node:stream';
 import { RemoteCommands, RemoteCommandError, decodeRemoteCommandText } from './remote/commands.js';
 import { RemoteRpcSession } from './remote/rpc-session.js';
-import { ROLLOUT_LOCATOR_PYTHON, ROLLOUT_PYTHON } from './remote/rollout-python.js';
+import { ROLLOUT_COMMENTARY_PYTHON, ROLLOUT_LOCATOR_PYTHON, ROLLOUT_PYTHON } from './remote/rollout-python.js';
 
-export type RolloutProjection = 'timestamps' | 'citations' | 'metadata' | 'cwd' | 'image';
+export type RolloutProjection = 'timestamps' | 'citations' | 'metadata' | 'cwd' | 'image' | 'commentary';
+export interface HistoryCommentary { items: Record<string, unknown>[]; messageOrder: string[] }
 export interface RolloutRead {
   files(threadId: string): AsyncGenerator<string>;
   project(path: string, threadId: string, projection: RolloutProjection, wanted: string[]): AsyncGenerator<{ reset: true } | { value: Record<string, any> }>;
@@ -71,8 +72,9 @@ export class RemoteRolloutSource {
       try {
         this.commands.fileTransportBinding(this.session);
         const wireRequest = { ...request, unicodeLines: await runtimeUnicodeLines() };
-        const flight = this.commands.execute({ argv: [this.binding.python, '-I', '-c', request.mode === 'locate' ? ROLLOUT_LOCATOR_PYTHON : ROLLOUT_PYTHON, JSON.stringify(wireRequest)], cwd: this.binding.metadata.codexHome,
-          timeoutMs: remaining(), stdoutBytesCap: 131072, stderrBytesCap: 16384, signal: combined });
+        const script = request.mode === 'locate' ? ROLLOUT_LOCATOR_PYTHON : request.projection === 'commentary' ? ROLLOUT_COMMENTARY_PYTHON : ROLLOUT_PYTHON;
+        const flight = this.commands.execute({ argv: [this.binding.python, '-I', '-c', script, JSON.stringify(wireRequest)], cwd: this.binding.metadata.codexHome,
+          timeoutMs: remaining(), stdoutBytesCap: 131072, stderrBytesCap: 16384, signal: combined }, request.projection === 'commentary' ? 'read-only' : undefined);
         this.flights.add(flight); let result;
         try { result = await flight; } finally { this.flights.delete(flight); }
         remaining();
@@ -133,6 +135,7 @@ export class RemoteRolloutSource {
         }
       },
       async *project(path, threadId, projection, wanted) {
+        const pageBytes = projection === 'commentary' ? 24 * 1024 : 65536;
         // 请求也按固定窗口传送；摘要保持任意长度合法引用ID的精确匹配语义。
         const batches: string[][] = [];
         for (let i = 0; i < wanted.length; i += 32) batches.push(wanted.slice(i, i + 32).map(id => createHash('sha256').update(id).digest('hex')));
@@ -149,7 +152,7 @@ export class RemoteRolloutSource {
                 const current = JSON.stringify([value.token, value.total, value.sha256]);
                 if (signature !== undefined && signature !== current) throw new RolloutSourceError('changed'); signature = current; token = value.token;
                 const bytes = Buffer.from(value.base64, 'base64');
-                if (bytes.length > 65536 || bytes.toString('base64') !== value.base64 || bytes.length !== Math.min(65536, value.total - offset)) throw new RolloutSourceError('protocol');
+                if (bytes.length > pageBytes || bytes.toString('base64') !== value.base64 || bytes.length !== Math.min(pageBytes, value.total - offset)) throw new RolloutSourceError('protocol');
                 digest.update(bytes); pending += decodeRemoteCommandText(bytes); offset += bytes.length;
                 let end: number;
                 while ((end = pending.indexOf('\n')) >= 0) {
@@ -168,6 +171,35 @@ export class RemoteRolloutSource {
         }
       },
     };
+  }
+  async commentary(threadId: string, turnIds: string[], signal?: AbortSignal): Promise<Map<string, HistoryCommentary>> {
+    const result = new Map<string, HistoryCommentary>();
+    const wanted = new Set(turnIds);
+    if (!wanted.size) return result;
+    const read = this.begin(signal);
+    for await (const path of read.files(threadId)) {
+      const file = new Map<string, Map<string, Record<string, unknown> | undefined>>();
+      for await (const row of read.project(path, threadId, 'commentary', [...wanted])) {
+        if ('reset' in row) { file.clear(); continue; }
+        const { turnId, id, text, timestamp } = row.value;
+        if (typeof turnId !== 'string' || !wanted.has(turnId) || (id !== undefined && typeof id !== 'string') ||
+          (text !== undefined && (typeof text !== 'string' || !id))) throw new RolloutSourceError('protocol');
+        let items = file.get(turnId);
+        if (!items) { items = new Map(); file.set(turnId, items); }
+        if (!id) continue;
+        if (typeof text === 'string') {
+          const time = typeof timestamp === 'string' ? Date.parse(timestamp) / 1000 : NaN;
+          items.set(id, { id, type: 'agentMessage', phase: 'commentary', text, ...(time > 0 ? { timestamp: time } : {}) });
+        } else if (!items.has(id)) items.set(id, undefined);
+      }
+      for (const [turnId, items] of file) {
+        const previous = result.get(turnId);
+        const commentary = new Map(previous?.items.map(item => [item.id, item]));
+        for (const [id, item] of items) if (item) commentary.set(id, item);
+        result.set(turnId, { items: [...commentary.values()], messageOrder: [...new Set([...(previous?.messageOrder ?? []), ...items.keys()])] });
+      }
+    }
+    return result;
   }
   close(): Promise<void> {
     if (this.closing) return this.closing; this.closed = true; this.abort.abort();

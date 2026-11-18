@@ -23,6 +23,7 @@ import { MessageTimestamps } from "./message-timestamps.js";
 import type { BarkNotifications } from "./bark-notifications.js";
 import { SidebarSummaryIndex, validSidebarParams } from "./sidebar-summary-index.js";
 import type { ModelUploadSource, ModelUploadUsage } from './model-upload-meter.js';
+import type { HistoryCommentary } from './rollout-source.js';
 
 export interface RpcMessage {
   id?: string | number;
@@ -43,6 +44,7 @@ export interface HttpSessionRemoteOptions {
     images: Pick<InlineImages, 'result' | 'notification'>;
     timestamps: Pick<MessageTimestamps, 'result' | 'notification'>;
     webCitations: Pick<MessageWebCitations, 'result' | 'notification'>;
+    commentary?: (threadId: string, turnIds: string[], signal?: AbortSignal) => Promise<Map<string, HistoryCommentary>>;
   };
   sidechatReplay: Required<Pick<SidechatReplayOptions, 'files' | 'resolveReference'>>;
   isAvailable?: () => boolean;
@@ -906,14 +908,27 @@ class Session {
             const params = message.params!;
             const upstream: RpcMessage = { id: message.id, method: "thread/turns/list", params: {
               threadId: params.threadId, ...(params.cursor !== undefined ? { cursor: params.cursor } : {}),
-              limit: Math.min(params.limit ?? 5, 5), sortDirection: "desc", itemsView: "full",
+              limit: Math.min(params.limit ?? 5, 5), sortDirection: "desc", itemsView: this.remote ? "notLoaded" : "full",
             } };
             result = await this.exchange(upstream, submittedSocket, call);
             if (this.socket === submittedSocket && this.epoch === submittedEpoch) {
               if (this.remote) upstreamObservation = { request: upstream, response: result };
               else this.observeRpcState(upstream, result);
             }
-            if (result.error == null) {
+            if (result.error == null && this.remote) {
+              const commentary = this.remote.projections.commentary;
+              if (!commentary) throw new HttpError(503, '目标 commentary 读取不可用');
+              const page = result.result as { data: Array<{ id: string }>; nextCursor?: string | null };
+              const turnIds = page.data.map(turn => turn.id);
+              assertCall(call);
+              const deadlineSignal = AbortSignal.timeout(Math.max(1, Math.ceil(call.deadline - performance.now())));
+              const signal = call.signal ? AbortSignal.any([call.signal, deadlineSignal]) : deadlineSignal;
+              const details = await commentary(params.threadId, turnIds, signal);
+              result = { ...result, result: { nextCursor: page.nextCursor, data: turnIds.map(id => ({
+                id, items: [], changeStatsUnavailable: true, commentaryItems: details.get(id)?.items ?? [],
+                messageOrder: details.get(id)?.messageOrder ?? [],
+              })) } };
+            } else if (result.error == null) {
               const full = await this.webCitations.result(params.threadId, await this.timestamps.result(params.threadId, result.result as Record<string, any>));
               const stats = Object.fromEntries(await Promise.all((full.data ?? []).map(async (turn: Record<string, any>) =>
                 [String(turn.id), await this.changeHistory.get(params.threadId, turn)],

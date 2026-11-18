@@ -71,6 +71,21 @@ it('Remote 后台观察用摘要更新真实会话，完整回合只在显式读
   expect(detail.status).toBe(200);
   expect(f.frames.at(-1)?.message?.params?.itemsView).toBe('full');
 });
+it('Remote 历史回填先读回合编号，再按目标投影读取 commentary', async () => {
+  const f = await sessionFixture(); const id = randomUUID(); await f.init(id);
+  const items = [{ id: 'note', type: 'agentMessage', phase: 'commentary', text: '进度' }];
+  const commentary = vi.fn(async () => new Map([['old', { items, messageOrder: ['prompt', 'note', 'final'] }]]));
+  Reflect.set(f.remote.projections, 'commentary', commentary);
+  f.respond(frame => {
+    const m = frame.message; if (!m?.method || m.id == null) return;
+    f.send(frame, { id: m.id, result: { data: [{ id: 'old', status: 'completed', items: [] }], nextCursor: 'older' } });
+  });
+  const reply = await f.call(id, { id: 2, method: 'mobile/turns/details', params: { threadId: 'historical', cursor: 'page', limit: 1 } });
+  expect(reply.status).toBe(200);
+  expect(f.frames.at(-1)?.message?.params).toEqual({ threadId: 'historical', cursor: 'page', limit: 1, sortDirection: 'desc', itemsView: 'notLoaded' });
+  expect(commentary).toHaveBeenCalledWith('historical', ['old'], expect.anything());
+  expect(reply.body.result).toMatchObject({ data: [{ id: 'old', items: [], commentaryItems: items, messageOrder: ['prompt', 'note', 'final'] }], nextCursor: 'older' });
+});
 it('同次会话授权只做一次完整绑定校验，读取与通知仍分别核验', async () => {
   const f = await sessionFixture(); const id = randomUUID(); await f.init(id);
   const proof = vi.spyOn((f.runtime as any).bundle.provider, 'verifyBinding');

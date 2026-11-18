@@ -7,8 +7,7 @@ def fail(code):
     emit(dict(error=code));raise SystemExit(0)
 `;
 
-/** 逐条JSON解析内存由已批准A方案承担，正文不进入网关。 */
-export const ROLLOUT_PYTHON = WIRE + String.raw`import re,stat
+const SCAN_COMMON = String.raw`import re,stat
 class InvalidConstant(ValueError): pass
 def parse(value):
     exhausted=False
@@ -23,8 +22,10 @@ def parse(value):
     return result
 def obj(value): return value if isinstance(value,dict) else {}
 def identity(s): return [str(s.st_dev),str(s.st_ino)]
-def units(s): return len(s.encode('utf-16-le','surrogatepass'))//2
 def wanted_id(value,wanted): return isinstance(value,str) and hashlib.sha256(value.encode('utf-8','surrogatepass')).hexdigest() in wanted
+`;
+
+const CORE_PROJECTIONS = String.raw`def units(s): return len(s.encode('utf-16-le','surrogatepass'))//2
 def texts(value,depth=0):
     if depth>8: return
     if isinstance(value,str):
@@ -73,7 +74,39 @@ def project(entry,mode,wanted,state):
         elif entry.get('type')=='response_item' and payload.get('type')=='custom_tool_call_output':
             state['done']=True
             yield dict(matched=True,error=moderation(payload.get('output')))
-def scan():
+`;
+
+const COMMENTARY_PROJECTION = String.raw`WINDOW=24576
+def message_text(payload):
+    content=payload.get('content')
+    return ''.join(obj(part).get('text') for part in content if isinstance(obj(part).get('text'),str)) if isinstance(content,list) else ''
+def project(entry,mode,wanted,state):
+    payload=obj(entry.get('payload'))
+    if entry.get('type')=='event_msg':
+        if payload.get('type') in ('task_started','turn_started'):
+            turn=payload.get('turn_id');state['turn']=turn
+            if wanted_id(turn,wanted): yield dict(turnId=turn)
+        elif payload.get('type') in ('task_complete','turn_completed','turn_aborted') and payload.get('turn_id')==state.get('turn'):
+            state['turn']=None
+        elif payload.get('type')=='item_completed':
+            turn=payload.get('turn_id');item=obj(payload.get('item'));item_id=item.get('id')
+            if wanted_id(turn,wanted) and isinstance(item_id,str) and item.get('type') in ('UserMessage','AgentMessage','ImageView','ImageGeneration','VideoGeneration'):
+                value=dict(turnId=turn,id=item_id)
+                if item.get('type')=='AgentMessage' and item.get('phase')=='commentary':
+                    text=message_text(item)
+                    if text: value.update(text=text,timestamp=entry.get('timestamp'))
+                yield value
+        return
+    turn=state.get('turn');item_id=payload.get('id');role=payload.get('role')
+    if wanted_id(turn,wanted) and isinstance(item_id,str) and entry.get('type')=='response_item' and payload.get('type')=='message' and role in ('user','assistant'):
+        value=dict(turnId=turn,id=item_id)
+        if role=='assistant' and payload.get('phase')=='commentary':
+            text=message_text(payload)
+            if text: value.update(text=text,timestamp=entry.get('timestamp'))
+        yield value
+`;
+
+const SCAN_FILE = String.raw`def scan():
     mode=q['projection'];previous=q.get('token');wanted=set(q['wanted']);offset=q['offset']
     with open(q['path'],'rb') as f:
         initial=os.fstat(f.fileno())
@@ -144,6 +177,9 @@ except (FileNotFoundError,NotADirectoryError): fail('missing')
 except PermissionError: fail('permission')
 except (OSError,ValueError,TypeError,KeyError,OverflowError,RecursionError): fail('capability')
 `;
+
+export const ROLLOUT_PYTHON = WIRE + SCAN_COMMON + CORE_PROJECTIONS + SCAN_FILE;
+export const ROLLOUT_COMMENTARY_PYTHON = WIRE + SCAN_COMMON + COMMENTARY_PROJECTION + SCAN_FILE;
 
 export const ROLLOUT_LOCATOR_PYTHON = WIRE + String.raw`import datetime,ntpath,posixpath,re
 def locate():
