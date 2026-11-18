@@ -7,7 +7,7 @@ import { TextDecoder } from 'node:util';
 import WebSocket, { type RawData } from 'ws';
 import {
   DEFAULT_REMOTE_MESSAGE_BYTES, REMOTE_CHUNK_FRAME_BYTES, RemoteChunkAssembler, RemoteProtocolError,
-  decodeServerFrame, encodeClientMessage, type ChunkAssemblerOptions, type RpcMessage, type ServerAck, type ServerPong,
+  decodeServerFrame, encodeClientMessage, type ChunkAssemblerOptions, type RemoteAssemblyProgress, type RpcMessage, type ServerAck, type ServerPong,
 } from './envelope.js';
 
 export type RemoteRelayState = 'connecting' | 'online' | 'offline' | 'auth-required' | 'closed';
@@ -161,7 +161,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     this.maxBufferedBytes = positive(options.maxBufferedBytes, 96 * 1024 * 1024);
     this.maxStreams = positive(options.maxStreams, 4096);
     this.assembler = new RemoteChunkAssembler({ maxMessageBytes: this.maxMessageBytes, ...options.assembly });
-    this.assembler.on('discard', () => this.failProtocol(new RemoteProtocolError('Remote 分块接收超时'), 'assembly-timeout'));
+    this.assembler.on('discard', (_event, progress: RemoteAssemblyProgress) => this.failProtocol(new RemoteProtocolError('Remote 分块接收超时'), 'assembly-timeout', progress));
     queueMicrotask(() => { void this.connect(); });
   }
   get state(): RemoteRelayState { return this.currentState; }
@@ -210,11 +210,12 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       let challengeStarted = false;
       this.handshakeTimer = setTimeout(() => this.disconnect('network', 'handshake-timeout'), this.handshakeTimeoutMs); this.handshakeTimer.unref();
       socket.on('error', () => { if (this.socket === socket) this.disconnect('network', 'socket-error'); });
-      socket.on('close', code => { if (this.socket === socket) this.disconnect('network', 'socket-close', undefined, code); });
+      socket.on('close', code => { if (this.socket === socket) this.disconnect('network', 'socket-close', undefined, { code }); });
       socket.on('unexpected-response', (_request, response) => {
         if (this.socket === socket) {
-          if (response.statusCode === 401 || response.statusCode === 403) this.disconnect('auth-required', 'handshake-http', new RemoteAuthRequiredError('Remote 握手鉴权失败'), response.statusCode);
-          else this.disconnect('network', 'handshake-http', undefined, response.statusCode);
+          const details = { code: response.statusCode };
+          if (response.statusCode === 401 || response.statusCode === 403) this.disconnect('auth-required', 'handshake-http', new RemoteAuthRequiredError('Remote 握手鉴权失败'), details);
+          else this.disconnect('network', 'handshake-http', undefined, details);
         }
         response.resume(); response.destroy();
       });
@@ -419,10 +420,10 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       catch { this.disconnect('network', 'native-ping'); }
     }, this.nativePingMs); this.nativeTimer.unref();
   }
-  private failProtocol(error: unknown, trigger: RelayDisconnectTrigger = 'frame-invalid'): void {
+  private failProtocol(error: unknown, trigger: RelayDisconnectTrigger = 'frame-invalid', assembly?: RemoteAssemblyProgress): void {
     if (this.state === 'closed' || this.state === 'auth-required') return;
     this.emit('protocolError', error instanceof RemoteProtocolError ? error : new RemoteProtocolError());
-    this.disconnect('protocol', trigger);
+    this.disconnect('protocol', trigger, undefined, assembly ? { assembly } : undefined);
   }
   private clearConnection(): void {
     ++this.epoch; this.attempting = false;
@@ -446,11 +447,11 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     }
     notify(() => this.emit('disconnect', { reason, mayHaveBeenSent }));
   }
-  private disconnect(reason: Exclude<RemoteDisconnect['reason'], 'closed'>, trigger: RelayDisconnectTrigger, error?: RemoteAuthRequiredError, code?: number): void {
+  private disconnect(reason: Exclude<RemoteDisconnect['reason'], 'closed'>, trigger: RelayDisconnectTrigger, error?: RemoteAuthRequiredError, details?: { code?: number; assembly?: RemoteAssemblyProgress }): void {
     if (this.state === 'closed' || this.state === 'auth-required') return;
     const onlineMs = this.onlineSince === undefined ? 0 : Math.max(0, Math.round(performance.now() - this.onlineSince));
     this.onlineSince = undefined;
-    console.warn('Remote Relay 断开', { trigger, reason, onlineMs, ...(code === undefined ? {} : { code }) });
+    console.warn('Remote Relay 断开', { trigger, reason, onlineMs, ...details });
     this.clearConnection();
     if (reason === 'auth-required') {
       this.setState('auth-required'); this.notifyDisconnect(reason); this.emit('authRequired', error ?? new RemoteAuthRequiredError()); return;

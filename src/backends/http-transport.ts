@@ -186,24 +186,26 @@ export class HttpRpcTransport extends EventTarget {
 
   async send(raw: string, timeoutMs = 10_000, priority: HttpRequestPriority = "foreground", operationKey?: string): Promise<void> {
     if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
+    const message = JSON.parse(raw) as RpcMessage;
     const deadline = Date.now() + timeoutMs;
+    // 同一网关的另一个设备可能正在恢复，握手不能阻断已连接设备的读取。
+    if (message.method === "initialize" || message.method === "initialized") return this.sendNow(message, deadline, operationKey);
     return httpRequestScheduler.run(new URL(this.config.baseUrl).origin, priority, this.requestLifetime.signal,
       () => {
         const remaining = deadline - Date.now();
-        if (remaining <= 0) throw new Error(t('{method} 请求超时', { method: JSON.parse(raw).method ?? 'HTTP' }));
-        return this.sendNow(raw, deadline, operationKey);
+        if (remaining <= 0) throw new Error(t('{method} 请求超时', { method: message.method ?? 'HTTP' }));
+        return this.sendNow(message, deadline, operationKey);
       });
   }
 
-  private async sendNow(raw: string, deadline: number, operationKey?: string): Promise<void> {
+  private async sendNow(message: RpcMessage, deadline: number, operationKey?: string): Promise<void> {
     if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     if (this.config.gatewayMode === 'remote') await this.restored;
     if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
-    const message = JSON.parse(raw) as RpcMessage;
     if (message.method?.startsWith("thread/realtime/")) {
       if (this.realtime?.readyState !== 1) throw new Error(t("实时会话连接不可用"));
       if (message.method === "thread/realtime/start") this.realtimeThreadId = String((message.params as { threadId?: string })?.threadId ?? "");
-      this.realtime.send(raw);
+      this.realtime.send(JSON.stringify(message));
       return;
     }
     // 审批必须绑定从首个事件页读取的 epoch，不能在握手完成时猜测。

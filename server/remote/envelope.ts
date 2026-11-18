@@ -125,6 +125,7 @@ export function encodeClientMessage(route: RemoteRoute, message: RpcMessage, opt
 }
 
 export interface ChunkAssemblerOptions { maxMessageBytes?: number; maxTotalBytes?: number; maxAssemblies?: number; timeoutMs?: number }
+export interface RemoteAssemblyProgress { receivedSegments: number; totalSegments: number; receivedBytes: number; messageBytes: number }
 interface Assembly { count: number; size: number; bytes: number; reserved: number; segments: Map<number, Buffer>; timer: NodeJS.Timeout }
 export function remoteAssemblyKey(frame: RoutedFrame): string { return JSON.stringify([frame.client_id, frame.stream_id, frame.env_id, frame.seq_id]); }
 
@@ -166,7 +167,13 @@ export class RemoteChunkAssembler extends EventEmitter {
       if (this.reservedBytes + reservation > this.maxTotalBytes || (pending?.bytes ?? 0) + bytes.length > frame.message_size_bytes) throw new RemoteProtocolError('Remote 分块内存超限');
       if (!pending) {
         if (this.assemblies.size >= this.maxAssemblies) throw new RemoteProtocolError('Remote 并发分块超限');
-        const timer = setTimeout(() => { this.remove(key); this.emit('discard', { key, reason: 'timeout' }); }, this.timeoutMs);
+        const timer = setTimeout(() => {
+          const assembly = this.assemblies.get(key);
+          if (!assembly) return;
+          this.remove(key);
+          const progress: RemoteAssemblyProgress = { receivedSegments: assembly.segments.size, totalSegments: assembly.count, receivedBytes: assembly.bytes, messageBytes: assembly.size };
+          this.emit('discard', { key, reason: 'timeout' }, progress);
+        }, this.timeoutMs);
         timer.unref();
         pending = { count: frame.segment_count, size: frame.message_size_bytes, bytes: 0, reserved: 0, segments: new Map(), timer };
         this.assemblies.set(key, pending);
