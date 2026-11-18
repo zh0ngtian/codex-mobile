@@ -17,6 +17,7 @@ export interface RemoteCommandResult { exitCode: number; stdout: Buffer; stderr:
 export interface RemoteCommandMetadata { codexHome: string; platformFamily: string; platformOs: string; userAgent: string }
 export type RemoteCommandFailure = 'binding' | 'metadata' | 'python3-required' | 'capability' | 'invalid-input' | 'capacity' | 'output-limit' | 'protocol' | 'encoding' | 'timeout' | 'cancelled' | 'disconnected' | 'closed';
 type RemoteCommandStage = "ready" | "stdin" | "output" | "terminate" | "exit" | "validate";
+type RemoteCommandMode = 'read-only' | 'inline-read-only';
 /** 失败不包含原始上游payload/错误。取消已执行的写入不代表回滚；未知结果不得自动重放。 */
 export class RemoteCommandError extends Error {
   readonly outcome: 'not-sent' | 'unknown';
@@ -154,8 +155,8 @@ try:
     def captured(value):
         return dict(base64=base64.b64encode(value).decode('ascii'),size=len(value),sha256=hashlib.sha256(value).hexdigest())
     emit(dict(kind='result',exitCode=child.returncode,stdout=captured(outputs[0]),stderr=captured(outputs[1])),done=True)
-    # 完成输出后保留本次官方命令，调用方立即terminate自有命令组并确认实际终结后才交付。
-    time.sleep(max(0,deadline-time.monotonic())+1)
+    # 已知的只读程序写完结果后自然退出，其余命令继续等待调用方清理自有命令组。
+    if request['mode']=='execute': time.sleep(max(0,deadline-time.monotonic())+1)
 except SystemExit: raise
 except BaseException: fail('protocol')
 `;
@@ -193,8 +194,8 @@ export class RemoteCommands {
       return adapter;
     } catch (error) { await adapter.close(); throw error; }
   }
-  execute(value: RemoteCommandOptions, input?: 'inline'): Promise<RemoteCommandResult> {
-    return this.executeInternal(value, input === 'inline');
+  execute(value: RemoteCommandOptions, mode?: RemoteCommandMode): Promise<RemoteCommandResult> {
+    return this.executeInternal(value, mode);
   }
   /** 文件协议专用：只能取得本实例已探测的同一ready session，不能借此改绑目标或权限。 */
   fileTransportBinding(session: RemoteRpcSession): Readonly<{ python: string; scope: RemoteCommandScope; metadata: Readonly<RemoteCommandMetadata> }> {
@@ -203,7 +204,7 @@ export class RemoteCommands {
     if (session !== this.session) throw new RemoteCommandError('binding', false);
     return Object.freeze({ python: this.python, scope: this.scope, metadata: this.metadata });
   }
-  private async executeInternal(value: RemoteCommandOptions, inline: boolean): Promise<RemoteCommandResult> {
+  private async executeInternal(value: RemoteCommandOptions, mode?: RemoteCommandMode): Promise<RemoteCommandResult> {
     const started = performance.now();
     const raw = data(value, ['argv', 'cwd', 'env', 'timeoutMs', 'stdoutBytesCap', 'stderrBytesCap', 'signal'], 'invalid-input');
     const cwd = string(raw.cwd, 16384, 'invalid-input'); if (!absolute(cwd, this.metadata.platformFamily)) throw new RemoteCommandError('invalid-input', false);
@@ -231,7 +232,8 @@ export class RemoteCommands {
     const timeout = limit(raw.timeoutMs, 20000, 180000);
     const stdoutCap = limit(raw.stdoutBytesCap, DEFAULT_CAPTURE, MAX_CAPTURE); const stderrCap = limit(raw.stderrBytesCap, DEFAULT_CAPTURE, MAX_CAPTURE);
     if (raw.signal !== undefined && !(raw.signal instanceof AbortSignal)) throw new RemoteCommandError('invalid-input', false);
-    const response = await this.run({ mode: 'execute', argv, ...(inline ? {} : { cwd }), env, stdoutCap, stderrCap }, cwd, env, timeout, stdoutCap, stderrCap, raw.signal as AbortSignal | undefined, false, started + timeout, inline);
+    const inline = mode === 'inline-read-only';
+    const response = await this.run({ mode: mode ? 'read' : 'execute', argv, ...(inline ? {} : { cwd }), env, stdoutCap, stderrCap }, cwd, env, timeout, stdoutCap, stderrCap, raw.signal as AbortSignal | undefined, false, started + timeout, inline);
     return { exitCode: response.exitCode as number, stdout: response.stdout as Buffer, stderr: response.stderr as Buffer };
   }
   private assert(op: Operation): void {
@@ -348,7 +350,8 @@ export class RemoteCommands {
             await Promise.race([this.session.call('command/exec/write', { processId, deltaBase64: part.toString('base64'), closeStdin: offset + part.length === input.length }, { timeoutMs: remaining(), signal: abort.signal }), failure]);
           }
         }
-        if (!probe) {
+        const readOnly = payload.mode === 'read';
+        if (!probe && !readOnly) {
           stage = "output";
           // DONE只证明目标已完成输出；两路通知可重排，全部字节在原exec终结后才作最终证明。
           await Promise.race([done, failure, result.then(() => { throw new RemoteCommandError('protocol', true); })]);
@@ -361,8 +364,8 @@ export class RemoteCommands {
         stage = "exit";
         const response = await Promise.race([result, failure]); remaining();
         stage = "validate";
-        // 正常执行的外层包装器由自有terminate结束，业务退出码仅来自完整证明中的exitCode。
-        if (!object(response) || Object.keys(response).sort().join(',') !== 'exitCode,stderr,stdout' || !Number.isSafeInteger(response.exitCode) || (response.exitCode as number) < -2147483648 || (response.exitCode as number) > 2147483647 || (probe && response.exitCode !== 0) || response.stdout !== '' || response.stderr !== '') throw new RemoteCommandError('protocol', true);
+        // 只读包装器必须正常退出，其他命令由自有 terminate 收尾。业务退出码来自完整输出证明。
+        if (!object(response) || Object.keys(response).sort().join(',') !== 'exitCode,stderr,stdout' || !Number.isSafeInteger(response.exitCode) || (response.exitCode as number) < -2147483648 || (response.exitCode as number) > 2147483647 || ((probe || readOnly) && response.exitCode !== 0) || response.stdout !== '' || response.stderr !== '') throw new RemoteCommandError('protocol', true);
         let record: unknown;
         try {
           const rawOutput = Buffer.concat(output);
@@ -399,7 +402,7 @@ export class RemoteCommands {
       else classified = new RemoteCommandError('protocol', op.sent, stage);
       op.error = classified; abort.abort();
       // cleanup独立于已结束业务期限，只允许本适配器自己生成的processId。不关闭共享session。
-      if (op.sent && this.session.ready && !termination) termination = runRemoteCleanup(() => this.session.call('command/exec/terminate', { processId }, { timeoutMs: 1000, signal: terminationAbort.signal }));
+      if (op.sent && (payload.mode !== 'read' || !executionEnded) && this.session.ready && !termination) termination = runRemoteCleanup(() => this.session.call('command/exec/terminate', { processId }, { timeoutMs: 1000, signal: terminationAbort.signal }));
       let cleanupTimer: NodeJS.Timeout | undefined;
       try {
         if (termination) await Promise.race([termination.catch(() => undefined), new Promise<void>(resolve => { cleanupTimer = setTimeout(() => { terminationAbort.abort(); resolve(); }, 1000); })]);

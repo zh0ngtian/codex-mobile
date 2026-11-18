@@ -39,18 +39,18 @@ it('项目实际坏UTF8字节按原Local readFile替换语义解析，投影不�
   await writeFile(join(f.root, '.codex-global-state.json'), bytes);
   expect(await readCodexProjectState('/gateway', { session: f.session, commands: f.commands })).toEqual(parseCodexProjectState(bytes.toString('utf8'), f.home));
 });
-it('Remote 项目文件在命令写入不可用时仍通过首次请求取得完整投影', async () => {
+it('Remote 项目文件在命令写入和终止不可用时仍通过首次请求取得完整投影', async () => {
   const f = await target(false);
   await writeFile(join(f.root, '.codex-global-state.json'), JSON.stringify({ 'projectless-thread-ids': ['thread'] }));
   const call = f.session.call.bind(f.session);
   const intercepted = vi.spyOn(f.session, 'call').mockImplementation((method, params, options) => {
-    if (method === 'command/exec/write') return Promise.reject(new Error('目标输入通道不可用'));
+    if (method === 'command/exec/write' || method === 'command/exec/terminate') return Promise.reject(new Error('目标命令控制通道不可用'));
     return call(method, params, options);
   });
   try {
     const result = await readCodexProjectState('/gateway', { session: f.session, commands: f.commands });
     expect(result.projectlessThreadIds).toEqual(['thread']);
-    expect(intercepted.mock.calls.map(([method]) => method)).toEqual(['command/exec', 'command/exec/terminate']);
+    expect(intercepted.mock.calls.map(([method]) => method)).toEqual(['command/exec']);
     expect(f.active).toBe(0);
   } finally {
     intercepted.mockRestore();
@@ -88,9 +88,10 @@ it('Remote项目worktree读取允许超过本地3秒的协议往返，仍执行�
   }));
   const call = f.session.call.bind(f.session); let held = false;
   const intercepted = vi.spyOn(f.session, 'call').mockImplementation(async (method, params, options) => {
+    if (method === 'command/exec/terminate') throw new Error('目标终止通道不可用');
     if (method === 'command/exec/write') {
       const payload = JSON.parse(Buffer.from((params as any).deltaBase64, 'base64').toString());
-      if (payload.mode === 'execute' && (payload.argv?.[0] === 'git' || payload.argv?.[3]?.includes('worktree output too large'))) {
+      if (payload.argv?.[3]?.includes('worktree output too large')) {
         held = true;
         await new Promise(resolve => setTimeout(resolve, 3500));
       }
@@ -100,6 +101,7 @@ it('Remote项目worktree读取允许超过本地3秒的协议往返，仍执行�
   try {
     const state = await readCodexProjectState('/never/gateway', { session: f.session, commands: f.commands });
     expect(held).toBe(true);
+    expect(intercepted.mock.calls.some(([method]) => method === 'command/exec/terminate')).toBe(false);
     expect(state.projectWorktrees).toEqual({ [p]: [linked] });
     expect(f.frames.filter(frame => frame.method === 'command/exec').length).toBe(3);
     expect(f.frames.filter(frame => frame.method === 'command/exec').every(frame =>

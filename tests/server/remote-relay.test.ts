@@ -37,6 +37,24 @@ function incoming(streamId: string, environmentId: string, seqId: number, messag
   return { type: 'server_message', client_id: 'client', stream_id: streamId, env_id: environmentId, seq_id: seqId, message, ...(cursor === undefined ? {} : { cursor }) };
 }
 function send(socket: WebSocket, frame: unknown) { socket.send(JSON.stringify(frame)); }
+it.each(['socket-close', 'native-pong-timeout', 'sequence-gap'] as const)('Relay 断开记录固定诊断 %s', async trigger => {
+  const lostPong = trigger === 'native-pong-timeout';
+  const upstream = await server({ autoPong: !lostPong });
+  const value = relay(upstream.url, lostPong ? { nativePingMs: 20, nativePongTimeoutMs: 100 } : {});
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  try {
+    const stream = value.createStream({ environmentId: 'mac' });
+    await until(() => value.state === 'online');
+    const disconnected = new Promise(resolve => value.once('disconnect', resolve));
+    if (trigger === 'socket-close') upstream.connections[0]!.close(4004, '不记录远端正文');
+    if (trigger === 'sequence-gap') send(upstream.connections[0], incoming(stream.streamId, 'mac', 2, { method: '不记录远端正文' }));
+    await disconnected;
+    expect(warn).toHaveBeenCalledWith('Remote Relay 断开', {
+      trigger, reason: trigger === 'sequence-gap' ? 'protocol' : 'network', onlineMs: expect.any(Number),
+      ...(trigger === 'socket-close' ? { code: 4004 } : {}),
+    });
+  } finally { warn.mockRestore(); }
+});
 function incomingChunks(streamId: string, message: RpcMessage, count: number): ServerMessageChunk[] {
   const bytes = Buffer.from(JSON.stringify(message));
   return Array.from({ length: count }, (_, index) => ({

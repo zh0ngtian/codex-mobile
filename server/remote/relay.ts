@@ -100,6 +100,9 @@ export class RemoteStream extends EventEmitter<StreamEvents> {
   setPartialMessage(pending: boolean): void { this.pendingServerMessage = pending; }
 }
 interface PendingWrite { socket: WebSocket; bytes: number; reject: (error: RemoteSendError) => void; seqId?: number }
+type RelayDisconnectTrigger = 'assembly-timeout' | 'handshake-timeout' | 'socket-error' | 'socket-close' |
+  'handshake-http' | 'client-binding' | 'prepare' | 'proof' | 'native-pong-timeout' | 'backpressure' |
+  'native-ping' | 'sequence-gap' | 'frame-invalid';
 function positive(value: number | undefined, fallback: number): number {
   const result = value ?? fallback;
   if (!Number.isSafeInteger(result) || result < 1 || result > 2 ** 31 - 1) throw new Error('Remote 配置无效');
@@ -136,6 +139,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
   private pongTimer?: NodeJS.Timeout;
   private awaitingNativePong = false;
   private nativePongRound = 0;
+  private onlineSince?: number;
   private safeCursor: string | null = null;
   private latestCursor: string | null = null;
   private readonly socketClosures = new Set<Promise<void>>();
@@ -157,7 +161,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     this.maxBufferedBytes = positive(options.maxBufferedBytes, 96 * 1024 * 1024);
     this.maxStreams = positive(options.maxStreams, 4096);
     this.assembler = new RemoteChunkAssembler({ maxMessageBytes: this.maxMessageBytes, ...options.assembly });
-    this.assembler.on('discard', () => this.failProtocol(new RemoteProtocolError('Remote 分块接收超时')));
+    this.assembler.on('discard', () => this.failProtocol(new RemoteProtocolError('Remote 分块接收超时'), 'assembly-timeout'));
     queueMicrotask(() => { void this.connect(); });
   }
   get state(): RemoteRelayState { return this.currentState; }
@@ -204,13 +208,13 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       void closed.then(() => this.socketClosures.delete(closed));
       this.socket = socket;
       let challengeStarted = false;
-      this.handshakeTimer = setTimeout(() => this.disconnect('network'), this.handshakeTimeoutMs); this.handshakeTimer.unref();
-      socket.on('error', () => { if (this.socket === socket) this.disconnect('network'); });
-      socket.on('close', () => { if (this.socket === socket) this.disconnect('network'); });
+      this.handshakeTimer = setTimeout(() => this.disconnect('network', 'handshake-timeout'), this.handshakeTimeoutMs); this.handshakeTimer.unref();
+      socket.on('error', () => { if (this.socket === socket) this.disconnect('network', 'socket-error'); });
+      socket.on('close', code => { if (this.socket === socket) this.disconnect('network', 'socket-close', undefined, code); });
       socket.on('unexpected-response', (_request, response) => {
         if (this.socket === socket) {
-          if (response.statusCode === 401 || response.statusCode === 403) this.disconnect('auth-required', new RemoteAuthRequiredError('Remote 握手鉴权失败'));
-          else this.disconnect('network');
+          if (response.statusCode === 401 || response.statusCode === 403) this.disconnect('auth-required', 'handshake-http', new RemoteAuthRequiredError('Remote 握手鉴权失败'), response.statusCode);
+          else this.disconnect('network', 'handshake-http', undefined, response.statusCode);
         }
         response.resume(); response.destroy();
       });
@@ -229,7 +233,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
             challengeStarted = true;
             void this.prove(auth, value, socket, epoch);
           } else if (value.type === 'device_key_authenticated') {
-            if (value.clientId !== this.clientId) this.disconnect('auth-required', new RemoteAuthRequiredError('Remote clientId 不匹配'));
+            if (value.clientId !== this.clientId) this.disconnect('auth-required', 'client-binding', new RemoteAuthRequiredError('Remote clientId 不匹配'));
           } else {
             if (this.state !== 'online') throw new RemoteProtocolError('Remote 认证阶段收到未知帧');
             this.receive(raw, socket, epoch);
@@ -238,8 +242,8 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       });
     } catch (error) {
       if (!this.isCurrent(epoch)) return;
-      if (error instanceof RemoteAuthRequiredError) this.disconnect('auth-required', error);
-      else this.disconnect('network');
+      if (error instanceof RemoteAuthRequiredError) this.disconnect('auth-required', 'prepare', error);
+      else this.disconnect('network', 'prepare');
     } finally {
       this.authenticationPending = false;
       this.scheduleReconnect();
@@ -278,6 +282,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       if (!this.isCurrent(epoch) || this.socket !== socket) return;
       clearTimeout(this.handshakeTimer); this.handshakeTimer = undefined;
       this.attempting = false;
+      this.onlineSince = performance.now();
       this.setState('online');
       if (this.state === 'online' && this.isCurrent(epoch) && this.socket === socket) {
         this.stableTimer = setTimeout(() => {
@@ -288,8 +293,8 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       }
     } catch (error) {
       if (!this.isCurrent(epoch) || this.socket !== socket) return;
-      if (error instanceof RemoteAuthRequiredError) this.disconnect('auth-required', error);
-      else this.disconnect('network');
+      if (error instanceof RemoteAuthRequiredError) this.disconnect('auth-required', 'proof', error);
+      else this.disconnect('network', 'proof');
     } finally {
       this.authenticationPending = false;
       this.scheduleReconnect();
@@ -314,7 +319,9 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       if (!duplicate) {
         // 序列缺口只通过恢复历史补齐，绝不重发出站请求；高序号不会标为已交付，
         // 因而恢复时较低的缺失序号仍可正常交付。
-        if (frame.seq_id !== stream.lastServerSeqId + 1) throw new RemoteProtocolError('Remote 服务端序列存在缺口');
+        if (frame.seq_id !== stream.lastServerSeqId + 1) {
+          this.failProtocol(new RemoteProtocolError('Remote 服务端序列存在缺口'), 'sequence-gap'); return;
+        }
         if (frame.type === 'server_message_chunk') {
           const accepted = this.assembler.accept(frame);
           message = accepted.message; progressed = accepted.progressed;
@@ -391,7 +398,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     if (!this.isCurrent(epoch) || this.socket !== socket || this.state !== 'online' || !this.awaitingNativePong) return;
     clearTimeout(this.pongTimer);
     const timer = setTimeout(() => {
-      if (this.isCurrent(epoch) && this.socket === socket && this.pongTimer === timer && this.awaitingNativePong) this.disconnect('network');
+      if (this.isCurrent(epoch) && this.socket === socket && this.pongTimer === timer && this.awaitingNativePong) this.disconnect('network', 'native-pong-timeout');
     }, this.nativePongTimeoutMs);
     this.pongTimer = timer; timer.unref();
   }
@@ -402,20 +409,20 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     }, this.streamPingMs); this.streamTimer.unref();
     this.nativeTimer = setInterval(() => {
       if (!this.isCurrent(epoch) || this.socket !== socket || this.state !== 'online') return;
-      if (socket.bufferedAmount >= this.maxBufferedBytes) { this.disconnect('network'); return; }
+      if (socket.bufferedAmount >= this.maxBufferedBytes) { this.disconnect('network', 'backpressure'); return; }
       // 重复发出的 ping 不续期；只有原生 pong 或校验通过的新增入站进度证明连接存活。
       if (!this.awaitingNativePong) { this.awaitingNativePong = true; ++this.nativePongRound; this.renewNativeLiveness(socket, epoch); }
       const round = this.nativePongRound;
       try { this.assertOwnership(); socket.ping(undefined, true, error => {
-        if (error && this.isCurrent(epoch) && this.socket === socket && this.awaitingNativePong && this.nativePongRound === round) this.disconnect('network');
+        if (error && this.isCurrent(epoch) && this.socket === socket && this.awaitingNativePong && this.nativePongRound === round) this.disconnect('network', 'native-ping');
       }); }
-      catch { this.disconnect('network'); }
+      catch { this.disconnect('network', 'native-ping'); }
     }, this.nativePingMs); this.nativeTimer.unref();
   }
-  private failProtocol(error: unknown): void {
+  private failProtocol(error: unknown, trigger: RelayDisconnectTrigger = 'frame-invalid'): void {
     if (this.state === 'closed' || this.state === 'auth-required') return;
     this.emit('protocolError', error instanceof RemoteProtocolError ? error : new RemoteProtocolError());
-    this.disconnect('protocol');
+    this.disconnect('protocol', trigger);
   }
   private clearConnection(): void {
     ++this.epoch; this.attempting = false;
@@ -439,8 +446,11 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     }
     notify(() => this.emit('disconnect', { reason, mayHaveBeenSent }));
   }
-  private disconnect(reason: Exclude<RemoteDisconnect['reason'], 'closed'>, error?: RemoteAuthRequiredError): void {
+  private disconnect(reason: Exclude<RemoteDisconnect['reason'], 'closed'>, trigger: RelayDisconnectTrigger, error?: RemoteAuthRequiredError, code?: number): void {
     if (this.state === 'closed' || this.state === 'auth-required') return;
+    const onlineMs = this.onlineSince === undefined ? 0 : Math.max(0, Math.round(performance.now() - this.onlineSince));
+    this.onlineSince = undefined;
+    console.warn('Remote Relay 断开', { trigger, reason, onlineMs, ...(code === undefined ? {} : { code }) });
     this.clearConnection();
     if (reason === 'auth-required') {
       this.setState('auth-required'); this.notifyDisconnect(reason); this.emit('authRequired', error ?? new RemoteAuthRequiredError()); return;
