@@ -3,6 +3,8 @@ import { randomUUID, createHash } from 'node:crypto';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { OperationQueue } from '../../server/operation-queue.js';
+import { OperationScheduler } from '../../server/operation-scheduler.js';
+import { GatewayRemoteServices } from '../../server/gateway-remote-services.js';
 import { HOSTED_SESSION_ID } from '../../server/http-session.js';
 import { rpcSignatureInput } from '../../server/rpc-replay.js';
 import { canonical } from '../../server/follow-ups.js';
@@ -209,4 +211,45 @@ it('一次迁移保留追问终态和原UUID，缺WAL的已领取项不重发，
     expect(f.frames.filter(message => message.method === 'turn/start')).toHaveLength(0);
     expect(await readFile(join(directory, 'operations.json'), 'utf8')).toBe(original);
   } finally { await gateway.close(); }
+}, 15000);
+
+it('Remote 只读导航不等待观察登记，关闭仍等待后台登记收尾', async () => {
+  const f = await gatewayRemote();
+  const context = await f.resolver.operationContext(f.reference);
+  const services = await GatewayRemoteServices.create(await f.resolver.resolve(f.reference), f.gatewayHome);
+  let done!: () => void;
+  const observation = new Promise<void>(resolve => { done = resolve; });
+  const onResponse = vi.fn(() => observation);
+  const scheduler = new OperationScheduler({
+    directRequests: true, directory: join(f.gatewayHome, 'ledger'), gatewayId: 'gateway',
+    gatewayCodexHome: f.gatewayHome, resolver: f.resolver, upstreamUrl: 'ws://127.0.0.1:1',
+    remoteConsumers: async () => ({ projections: services.projections, sidechatReplay: services.sidechatReplay }),
+    onResponse,
+  });
+  const sessionId = randomUUID();
+  const call = () => ({ deadline: performance.now() + 10000 });
+  let navigation: Promise<unknown> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await scheduler.protocol({ context, sessionId, requestId: randomUUID(), message: { id: 1, method: 'initialize', params: {} } }, call());
+    navigation = scheduler.directRpc(context, sessionId, {
+      requestId: randomUUID(),
+      message: { id: 2, method: 'thread/resume', params: { threadId: 'test', excludeTurns: true, initialTurnsPage: { limit: 5, itemsView: 'summary' } } },
+    }, call());
+    await until(() => onResponse.mock.calls.length === 1);
+    const timeout = new Promise(resolve => { timer = setTimeout(() => resolve('观察登记阻塞导航'), 300); });
+    await expect(Promise.race([navigation, timeout])).resolves.toMatchObject({ id: 2 });
+    let closed = false;
+    const closing = scheduler.close().then(() => { closed = true; });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(closed).toBe(false);
+    done();
+    await closing;
+  } finally {
+    clearTimeout(timer);
+    done();
+    await navigation?.catch(() => undefined);
+    await scheduler.close();
+    await services.close();
+  }
 }, 15000);
