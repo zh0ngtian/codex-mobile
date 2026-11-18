@@ -11,11 +11,10 @@ export async function runWorkspaceBootstrap<Settings>({
   loadSettings,
   loadRateLimits,
 }: WorkspaceBootstrapTasks<Settings>) {
-  const threads = loadThreads();
+  void loadThreads().catch(() => undefined);
   const settings = loadSettings();
   void loadRateLimits({ priority: "background" }).catch(() => undefined);
-  const [result] = await Promise.all([settings, threads]);
-  return result;
+  return settings;
 }
 
 export interface WorkspaceResumeSnapshot {

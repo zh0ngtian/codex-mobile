@@ -56,6 +56,16 @@ describe("会话列表轮询加载器", () => {
     expect(request.mock.calls.filter(([method]: any) => method === "thread/list").map(([, params]: any) => params.cwd)).toEqual(["/b"]);
     expect(request.mock.calls.filter(([method]: any) => method === "mobile/sidebar/projectless")).toHaveLength(1);
   });
+  it("全局摘要与展开项目同优先级并进入首批后台读取", async () => {
+    const request = vi.fn(async (_method: string, _params: unknown, _options: unknown) => ({ data: [], nextCursor: null }));
+    const projects = Array.from({ length: 8 }, (_, i) => `/project-${i}`);
+    await createLatestThreadListLoader({}).load({ request, sidebarIndex: true }, projects, [], {
+      expandedProjectCwds: projects, preferredProjectCwds: projects, includeRunningThreads: true,
+    });
+    const firstReads = request.mock.calls.slice(0, 4);
+    expect(firstReads).toContainEqual(["mobile/sidebar/summaries", { threadIds: [], includeRunning: true }, { priority: "background-visible" }]);
+    expect(firstReads.filter(([method]) => method === "thread/list")).toHaveLength(3);
+  });
   it("批量摘要失败仍等待项目任务收尾，不提前解除整轮在途状态", async () => {
     const project = deferred<any>(), onSettled = vi.fn();
     const client = { sidebarIndex: true, request: vi.fn((method: string) => method === "thread/list"
@@ -82,7 +92,7 @@ describe("会话列表轮询加载器", () => {
     expect(onProjectData).toHaveBeenCalledWith(PROJECTLESS_GROUP_ID, expect.any(Array), true, "next");
     const more = await loadProjectlessThreadRecords(client, ["known"], 10, new Set(), new Set(), "next");
     expect(more.threads).toHaveLength(5); expect(more.hasMore).toBe(false);
-    expect(request.mock.calls.map(([m]) => m)).toEqual(["thread/list", "mobile/sidebar/projectless", "mobile/sidebar/summaries", "mobile/sidebar/projectless"]);
+    expect(request.mock.calls.map(([m]) => m)).toEqual(["mobile/sidebar/summaries", "thread/list", "mobile/sidebar/projectless", "mobile/sidebar/projectless"]);
   });
   it("旧运行摘要变为空闲时仍更新状态，但不再从五条分页中排除", async () => {
     const records = [{ id: "ended", status: { type: "idle" } }, ...Array.from({ length: 4 }, (_, i) => ({ id: `row-${i}` }))];

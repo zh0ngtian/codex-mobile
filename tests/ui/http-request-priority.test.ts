@@ -69,7 +69,7 @@ describe("HTTP前台会话优先于后台刷新", () => {
     await Promise.all([first, second, collapsed, visible, foreground]);
   });
 
-  it("冷启动额度查询未结束时，后续后台列表仍完成关键初始化", async () => {
+  it("冷启动基础设置独立就绪，额度查询未结束时仍继续后台列表", async () => {
     const { calls, create } = harness();
     const { client } = create("bootstrap-rate-limits", "http://bootstrap-rate-limits.test");
     await vi.advanceTimersByTimeAsync(0);
@@ -89,6 +89,7 @@ describe("HTTP前台会话优先于后台刷新", () => {
     try {
       calls.find((call) => call.method === "config/read")!.finish();
       await vi.advanceTimersByTimeAsync(0);
+      expect(initialized).toBe(true);
       expect(calls.some((call) => call.method === "account/rateLimits/read")).toBe(true);
       calls.find((call) => call.method === "thread/list")!.finish();
       await vi.advanceTimersByTimeAsync(0);

@@ -461,12 +461,14 @@ export function createLatestThreadListLoader(
         }
         return Promise.all(projectRequests).then(() => undefined);
       };
-      // 运行会话也占首批五条名额，首屏不再等待全局摘要。
-      const projectRequest = loadProjects();
+      // 旧网关会逐条读取摘要，继续让展开项目先派发。
+      const legacyProjectRequest = client.sidebarIndex ? undefined : loadProjects();
       const summaryIds = new Set([...explicitIds, ...(options.rememberedRunningThreadIds ?? [])]);
       const priorityRequest = summaryIds.size || options.includeRunningThreads
-        ? loadPrioritizedThreadRecords(background, summaryIds, options.includeRunningThreads === true, publishPrioritized)
+        ? loadPrioritizedThreadRecords(client.sidebarIndex ? visibleBackground : background,
+          summaryIds, options.includeRunningThreads === true, publishPrioritized)
         : Promise.resolve();
+      const projectRequest = legacyProjectRequest ?? loadProjects();
       const promise = Promise.allSettled([priorityRequest, projectRequest])
         .then((results) => {
           if (sequence !== latestSequence) return;
