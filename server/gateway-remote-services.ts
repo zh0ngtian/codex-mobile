@@ -40,6 +40,7 @@ export class GatewayRemoteServices {
       changeHistory: new TurnChangeHistory(home, { session, commands, rollouts: this.rollouts, gatewayId: target.descriptor.gatewayId }),
       timestamps: new MessageTimestamps(home, this.rollouts),
       webCitations: new MessageWebCitations(home, this.rollouts),
+      commentary: (threadId, turnIds, signal) => this.rollouts.commentary(threadId, turnIds, signal),
       images: new InlineImages(this.cacheRoot, undefined, { files: this.media, reference: value => this.reference(value) }),
     };
     this.sidechatReplay = { files: this.media, resolveReference: value => this.resolveReference(value) };
