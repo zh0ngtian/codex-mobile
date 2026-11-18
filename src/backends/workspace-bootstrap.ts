@@ -2,7 +2,7 @@ import type { AppServerRequestOptions } from "../app-server/client";
 
 export interface WorkspaceBootstrapTasks<Settings> {
   loadThreads: () => Promise<void>;
-  loadSettings: () => Promise<Settings>;
+  loadSettings: (options: AppServerRequestOptions) => Promise<Settings>;
   loadRateLimits: (options: AppServerRequestOptions) => Promise<void>;
 }
 
@@ -12,7 +12,7 @@ export async function runWorkspaceBootstrap<Settings>({
   loadRateLimits,
 }: WorkspaceBootstrapTasks<Settings>) {
   void loadThreads().catch(() => undefined);
-  const settings = loadSettings();
+  const settings = loadSettings({ priority: "background-visible" });
   void loadRateLimits({ priority: "background" }).catch(() => undefined);
   return settings;
 }

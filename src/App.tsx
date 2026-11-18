@@ -1936,23 +1936,24 @@ function BackendWorkspace({
             const [modelResult, permissionResult, configResult] =
               await runWorkspaceBootstrap({
                 loadThreads: () => loadThreads(client),
-                loadSettings: () => Promise.all([
+                loadSettings: (options) => Promise.all([
                   client.request<{ data: AnyRecord[] }>("model/list", {
                     limit: 100,
                     includeHidden: false,
-                  }),
+                  }, options),
                   client.request<{ data: AnyRecord[] }>(
                     "permissionProfile/list",
                     {
                       limit: 100,
                       cwd: null,
                     },
+                    options,
                   ),
                   client
                     .request<{ config: AnyRecord }>("config/read", {
                       cwd: null,
                       includeLayers: false,
-                    })
+                    }, options)
                     .catch(() => ({ config: {} })),
                 ]),
                 loadRateLimits: async (options) => {
