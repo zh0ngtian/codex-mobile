@@ -1335,27 +1335,11 @@ function BackendWorkspace({
   ]);
 
   useEffect(() => {
-    const refreshPins = () => {
-      const client = clientRef.current;
-      if (!client || !isClientForeground()) return;
-      void syncDesktopPinned(client).catch(reason => {
-        if (client === clientRef.current && !client.signal?.aborted) setError(reason instanceof Error ? reason.message : String(reason));
-      });
-    };
-    const timer = window.setInterval(refreshPins, 30_000);
-    window.addEventListener("online", refreshPins);
-    document.addEventListener("visibilitychange", refreshPins);
-    return () => { window.clearInterval(timer); window.removeEventListener("online", refreshPins); document.removeEventListener("visibilitychange", refreshPins); };
-  }, [backend.id]);
-
-  useEffect(() => {
     if (!refreshVersion) return;
     setError("");
     const sequence = ++refreshSequenceRef.current;
     fullyLoadedProjectCwdsRef.current.clear();
-    setThreadListState((current) =>
-      projects.length || projectlessThreadIds.length ? current : "loading",
-    );
+    setThreadListState((current) => current === "error" ? "loading" : current);
     setRefreshing(true);
     if (!clientRef.current) {
       connectionManagerRef.current?.reconnect(backend.id);

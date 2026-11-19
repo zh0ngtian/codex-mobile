@@ -108,6 +108,21 @@ it('全部设备首次加载允许先展示A内容，切换设备范围及后续
 });
 
 
+it('原生手动刷新无项目目录的已有会话时保留行及打开命令', async () => {
+ boundary.threads.a = [{ id: 'existing-a', name: 'A已有会话', cwd: '/a', turns: [] }];
+ await setup();
+ const page = deferred(); boundary.pageBarriers.a = page.promise;
+ const before = boundary.requests.filter(request => request.backendId === 'a' && request.method === 'thread/list').length;
+ await act(async () => command('refresh-existing', 'navigation.refresh', {}));
+ await waitFor(() => expect(boundary.requests.filter(request => request.backendId === 'a' && request.method === 'thread/list').length).toBeGreaterThan(before));
+ expect(posts.at(-1).navigationLoading).toBe(false);
+ const item = posts.at(-1).groups.flatMap((group: any) => group.items).find((item: any) => item.threadId === 'existing-a');
+ expect(item.command).toMatchObject({ name: 'thread.open', params: { backendId: 'a', threadId: 'existing-a' } });
+ await act(async () => command('open-during-refresh', item.command.name, item.command.params));
+ await waitFor(() => expect(boundary.requests.some(request => request.backendId === 'a' && ['thread/read', 'thread/resume'].includes(request.method))).toBe(true));
+ await act(async () => page.resolve());
+});
+
 it('A成功空而范围内B业务快照尚未到达时导航继续加载，全部完成或离开B范围后才结束', () => {
  const input = { loading: false, hasContent: false, backendIds: ['a', 'b'], backendSnapshots: { a: { threadListState: 'ready' as const } } };
  expect(projectNavigationLoading(input)).toBe(true);

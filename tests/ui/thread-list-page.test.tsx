@@ -52,6 +52,7 @@ function renderList(
     collapsedProjectKeys = new Set<string>(),
     loadingBackendIds = new Set<string>(),
     refreshing = false,
+    threadListState = "ready",
     visibleThreads = threads,
     hasProjectlessThreads = false,
     projectDirectories = ["/tmp/project-a", "/tmp/project-b"],
@@ -68,6 +69,7 @@ function renderList(
     collapsedProjectKeys?: Set<string>;
     loadingBackendIds?: Set<string>;
     refreshing?: boolean;
+    threadListState?: "loading" | "ready" | "error";
     visibleThreads?: typeof threads;
     hasProjectlessThreads?: boolean;
     projectDirectories?: string[];
@@ -90,7 +92,7 @@ function renderList(
       backends={[backend]}
       summaries={summaries}
       selectedBackendId={selectedBackendId}
-      threadListState="ready"
+      threadListState={threadListState}
       visibleThreads={visibleThreads}
       totalThreadCount={visibleThreads.length}
       projectDirectories={projectDirectories}
@@ -127,6 +129,17 @@ function renderList(
 }
 
 describe("会话侧边栏列表", () => {
+  it("整轮仍在读取时，可点已返回的项目及置顶会话", () => {
+    const onOpenThread = vi.fn();
+    const onToggleProjectCollapsed = vi.fn();
+    const view = renderList("mini", { threadListState: "loading", onOpenThread, onToggleProjectCollapsed });
+    expect(view.queryByRole("status", { name: "正在加载会话" })).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: /project-a/ }));
+    expect(onToggleProjectCollapsed).toHaveBeenCalledWith("mini", "/tmp/project-a");
+    fireEvent.click(view.getByRole("button", { name: /置顶会话/ }));
+    expect(onOpenThread).toHaveBeenCalledOnce();
+  });
+
   it("搜索更多不沿用普通项目首批的加载状态", () => {
     const onToggleProject = vi.fn();
     const { container } = renderList("mini", { query: "最近", projectDirectories: ["/tmp/project-b"],

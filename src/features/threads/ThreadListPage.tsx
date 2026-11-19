@@ -143,6 +143,10 @@ export function ThreadListPage({
     ...(hasProjectlessThreads ? [PROJECTLESS_GROUP_ID] : []),
     ...projectDirectories,
   ]);
+  const listedProjects = projectGroups.filter(group => !query.trim() || group.threads.length > 0);
+  const hasListContent = allGroups.pinned.length > 0 || (selectedBackendId === "all"
+    ? allGroups.recent.length > 0 : listedProjects.length > 0);
+  const showListSkeleton = threadListState === "loading" && !hasListContent;
   const renderNow = Math.floor(Date.now() / 1000);
   const clearLongPress = () => {
     if (longPressRef.current) {
@@ -383,7 +387,7 @@ export function ThreadListPage({
             {t("正在搜索会话")}
           </div>
         )}
-        {threadListState === "loading" && (
+        {showListSkeleton && (
           <div
             className="thread-list-skeleton"
             aria-label={t("正在加载会话")}
@@ -397,7 +401,7 @@ export function ThreadListPage({
             ))}
           </div>
         )}
-        {threadListState !== "loading" && selectedBackendId === "all" && (
+        {selectedBackendId === "all" && (
           <>
             {!!allGroups.pinned.length && (
               <section className="thread-section">
@@ -413,7 +417,7 @@ export function ThreadListPage({
             )}
           </>
         )}
-        {threadListState !== "loading" && selectedBackendId !== "all" && (
+        {selectedBackendId !== "all" && (
           <>
             {!!allGroups.pinned.length && (
               <section className="thread-section">
@@ -421,12 +425,7 @@ export function ThreadListPage({
                 {allGroups.pinned.map((thread) => renderRow(thread, false))}
               </section>
             )}
-            {projectGroups
-              .filter(
-                (group) =>
-                  !query.trim() ||
-                  group.threads.length > 0,
-              )
+            {listedProjects
               .map((group) => {
                 const projectKey = projectCollapseKey(
                   selectedBackendId,

@@ -24,10 +24,10 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
 } }));
 afterEach(() => { cleanup(); vi.useRealTimers(); boundary.reads = []; boundary.rows = []; boundary.client = null; boundary.pageBarrier = null; boundary.snapshotWaits = 0; boundary.closeSocket.mockClear(); boundary.summary = null; vi.unstubAllGlobals(); });
 
-async function setup(gatewayMode: "local" | "remote" = "local") {
+async function setup(gatewayMode: "local" | "remote" = "local", projects: string[] = ["/project"]) {
   const values = new Map<string, string>([['codex-mobile:collapsed-projects', '[]']]);
   vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) });
-  const fetcher = vi.fn(async (_url: string) => new Response(JSON.stringify({ projects: ['/project'], projectlessThreadIds: [], items: [] })));
+  const fetcher = vi.fn(async (_url: string) => new Response(JSON.stringify({ projects, projectlessThreadIds: [], items: [] })));
   vi.stubGlobal('fetch', fetcher);
   boundary.rows = [{ id: 'old', name: '旧会话', cwd: '/project' }];
   render(<AppBootstrap initialRegistry={{ version: 1, selectedBackendId: 'a', backends: [{ id: 'a', name: 'Mac', enabled: true, order: 0, baseUrl: 'http://app-rpc.test', token: '', gatewayMode, ...(gatewayMode === 'remote' ? { remoteTarget: { mode: 'remote' as const, gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' } } } : {}) }] }} />);
@@ -73,19 +73,69 @@ it('冷启动摘要超时保留已连接工作区与成功项目，手动刷新�
   expect(boundary.closeSocket).not.toHaveBeenCalled();
 });
 
-it('前台桌面置顶每30秒自动同步，手动刷新即时同步', async () => {
+it('客户端前台每60秒自动刷新整轮，手动刷新共享在途读取', async () => {
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
-  await setup('remote');
+  const fetcher = await setup('remote');
   boundary.reads = [];
-  const pinReads = () => boundary.reads.filter(read => read.method === 'thread/list' && read.params.sectionId);
+  const directoryReads = () => fetcher.mock.calls.filter(([url]) => String(url).includes('/api/projects'));
+  const before = directoryReads().length;
+  let release!: () => void;
+  boundary.pageBarrier = new Promise<void>(resolve => { release = resolve; });
+  const refresh = screen.getByRole('button', { name: '刷新会话列表' });
+  const foreground = vi.spyOn(document, 'visibilityState', 'get');
+  try {
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
+    expect(boundary.reads).toHaveLength(0);
+    await act(async () => vi.advanceTimersByTimeAsync(29_999));
+    expect(directoryReads()).toHaveLength(before);
+    expect(boundary.reads).toHaveLength(0);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    await waitFor(() => expect(boundary.reads.some(read => read.method === 'thread/list' && read.params.cwd)).toBe(true));
+    expect(directoryReads()).toHaveLength(before + 1);
+    expect(boundary.reads.filter(read => read.method === 'thread/list' && read.params.sectionId)).toHaveLength(1);
+    expect(boundary.reads.filter(read => read.method === 'mobile/sidebar/summaries')).toHaveLength(1);
+    expect(refresh).toHaveAttribute('aria-busy', 'false');
+    expect(screen.getByRole('button', { name: /旧会话/ })).toBeVisible();
 
-  await act(async () => vi.advanceTimersByTimeAsync(29_999));
-  expect(pinReads()).toHaveLength(0);
-  await act(async () => vi.advanceTimersByTimeAsync(1));
-  expect(pinReads()).toHaveLength(1);
+    fireEvent.click(refresh);
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
+    expect(refresh).toHaveAttribute('aria-busy', 'true');
+    expect(directoryReads()).toHaveLength(before + 1);
+    await act(async () => release());
+    expect(refresh).toHaveAttribute('aria-busy', 'false');
 
-  fireEvent.click(screen.getByRole('button', { name: '刷新会话列表' }));
-  await waitFor(() => expect(pinReads()).toHaveLength(2));
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
+    expect(directoryReads()).toHaveLength(before + 2);
+    foreground.mockReturnValue('hidden');
+    boundary.reads = [];
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
+    expect(directoryReads()).toHaveLength(before + 2);
+    expect(boundary.reads).toHaveLength(0);
+  } finally {
+    release();
+    foreground.mockRestore();
+  }
+});
+
+it('项目目录为空时，进行中的手动刷新仍允许进入已有会话', async () => {
+  await setup('remote', []);
+  let release!: () => void;
+  boundary.pageBarrier = new Promise<void>(resolve => { release = resolve; });
+  boundary.reads = [];
+  const refresh = screen.getByRole('button', { name: '刷新会话列表' });
+  try {
+    fireEvent.click(refresh);
+    await waitFor(() => expect(boundary.reads.some(read => read.method === 'thread/list' && !read.params.sectionId)).toBe(true));
+    expect(refresh).toHaveAttribute('aria-busy', 'true');
+    const thread = screen.getByRole('button', { name: /旧会话/ });
+    expect(thread).toBeVisible();
+    fireEvent.click(thread);
+    await waitFor(() => expect(boundary.reads.some(read =>
+      ['thread/read', 'thread/resume'].includes(read.method) && read.params.threadId === 'old'
+    )).toBe(true));
+  } finally {
+    await act(async () => release());
+  }
 });
 
 it('旧快照通知不能启动新一轮读取、改变同步提示或延长手动刷新', async () => {

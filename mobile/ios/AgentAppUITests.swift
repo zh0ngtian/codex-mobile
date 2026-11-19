@@ -1236,9 +1236,9 @@ final class AgentAppUITests: XCTestCase {
         add(attachment)
     }
 
-    private func launchSidebarPolishFixture() -> XCUIApplication {
+    private func launchSidebarPolishFixture(extraArguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"] + extraArguments
         app.launch()
         XCTAssertTrue(app.staticTexts["history-request-count"].waitForExistence(timeout: 8))
         return app
@@ -1281,7 +1281,7 @@ final class AgentAppUITests: XCTestCase {
     }
 
     func testSidebarTopRefreshMatchesMoreButtonAndRunsRefresh() {
-        let app = launchSidebarPolishFixture()
+        let app = launchSidebarPolishFixture(extraArguments: ["--agent-sidebar-pagination-fixture", "--agent-sidebar-refresh-fixture"])
         app.buttons["会话列表"].tap()
         let refresh = app.buttons["sidebar.refreshTop"]
         XCTAssertTrue(refresh.waitForExistence(timeout: 5), "侧栏左上角搜索右侧直接提供刷新")
@@ -1293,8 +1293,12 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertEqual(refresh.frame.height, more.frame.height, accuracy: 1)
         XCTAssertLessThan(refresh.frame.maxY, app.frame.height / 4)
         captureConversation("侧栏-顶部刷新与更多同尺寸", app: app)
+        let probe = app.otherElements["sidebar.refresh.continuity"]
+        XCTAssertTrue(probe.exists)
         refresh.tap()
-        XCTAssertTrue(app.staticTexts["navigation-refresh-count:1"].waitForExistence(timeout: 5), "复用真实 navigation.refresh 命令")
+        XCTAssertTrue(more.isHittable, "刷新期间更多按钮可点")
+        expectation(for: NSPredicate(format: "value BEGINSWITH 'finished;'"), evaluatedWith: probe)
+        waitForExpectations(timeout: 30)
         XCTAssertTrue(more.isHittable, "刷新后保留侧栏")
     }
 
