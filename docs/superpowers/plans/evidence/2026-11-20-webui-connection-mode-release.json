@@ -1,0 +1,54 @@
+{
+  "status": "complete",
+  "taskId": "webui-connection-mode-github-only-20261120",
+  "taskSourceCommit": "ebacedc0420607a0b17c2ada85e30ca4c08e1f8b",
+  "batchId": "6bd8a4e0-5a1f-4a89-8697-0f681b94b427",
+  "frozenCommit": "972e3462409cdfadba848f36e3ca83509ed32fb5",
+  "version": "0.3.48",
+  "buildNumber": "3048",
+  "distribution": "github-only",
+  "platforms": [
+    "android",
+    "ios"
+  ],
+  "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.48",
+  "artifacts": {
+    "android": {
+      "name": "CodexMobile-v0.3.48.apk",
+      "url": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.48/CodexMobile-v0.3.48.apk",
+      "size": 4809708,
+      "sha256": "f1d79c8927cf0b4ab5af975935b025eb64c4ba03920a746bb04ed529b1f43e00"
+    },
+    "ios": {
+      "name": "CodexMobile-v0.3.48-unsigned.ipa",
+      "url": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.48/CodexMobile-v0.3.48-unsigned.ipa",
+      "size": 5045955,
+      "sha256": "ef6ba85e8a31779b711629596843d25c8f666905baa9b96c9101d81d2e98af1f"
+    }
+  },
+  "ipaSigned": false,
+  "historicalLanFilesUnchanged": true,
+  "lanApkPublished": false,
+  "fixedIpaPublished": false,
+  "otaPublished": false,
+  "signedIpaPublished": false,
+  "softwareSourceUpdated": true,
+  "developerName": "zh0ngtian",
+  "buildRun": 44579102219,
+  "developmentRun": 44579102157,
+  "receiptSha256": "f0c944fdb664ba5453155c486e8c8c9834d28b9eed911225526390bf2e4e338d",
+  "softwareSourceUrl": "https://signos-source-aggregator.305301890.workers.dev/sources/yao.json",
+  "gatewayDeployed": false,
+  "validation": {
+    "adapterRegression": 290,
+    "coordinatorRecovery": 59,
+    "buildContract": 164,
+    "clientRegression": 124,
+    "nativeSimulator": 3,
+    "typecheck": "passed",
+    "nativeDevice": "iPhone 17 Pro / iOS 27.0"
+  },
+  "limitations": [
+    "真机安装、覆盖升级及数据保留待验收"
+  ]
+}
