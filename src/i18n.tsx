@@ -31,6 +31,8 @@ const english: Record<string, string> = {
   "待提交：标题总结请求已保存在本机，请在网络恢复后重试": "Not submitted: the title summary request is saved on this phone. Try again when the network returns.",
   "标题总结已排队，连接恢复后处理，请稍后查看": "The title summary is queued until the connection returns. Check again later.",
   "连接模式": "Connection mode", "本地模式": "Local", "远程模式": "Remote",
+  "直接连接网关上的 Codex": "Connect directly to Codex on the gateway",
+  "通过 Codex Remote 连接已配对的电脑": "Connect to a paired computer through Codex Remote",
   "网关尚不支持远程模式，请先升级网关": "This gateway does not support Remote mode. Upgrade the gateway first.",
   "网关尚未完成 Remote 授权": "Remote authorization is incomplete on this gateway.",
   "网关本机尚未完成 Remote 配对": "The gateway Mac has not completed Remote pairing.",

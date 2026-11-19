@@ -127,6 +127,92 @@ button, a, summary, [role="button"] { -webkit-tap-highlight-color: transparent; 
 .backend-gateway-input button { position: absolute; top: 50%; right: 5px; width: 38px; height: 38px; padding: 0; transform: translateY(-50%); border: 0; border-radius: 12px; background: #e9e9e9; color: #222; display: grid; place-items: center; }
 .backend-gateway-input button:active { transform: translateY(-50%) scale(.96); background: #dedede; }
 .backend-gateway-input svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.backend-mode-settings {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.backend-mode-settings legend {
+  padding: 0;
+  margin-bottom: 8px;
+  color: #555;
+  font-size: 0.75rem;
+}
+.backend-mode-options { display: grid; gap: 8px; }
+.backend-form label.backend-mode-option {
+  position: relative;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 11px;
+  min-height: 66px;
+  padding: 10px 12px;
+  border: 1px solid #dedfe0;
+  border-radius: 16px;
+  background: #fff;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.backend-mode-option input[type="radio"] {
+  position: absolute;
+  top: 50%;
+  inset-inline-end: 12px;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  transform: translateY(-50%);
+  opacity: 0;
+  cursor: inherit;
+}
+.backend-mode-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #f1f2f3;
+  color: #525a5b;
+}
+.backend-mode-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.65;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.backend-mode-copy { display: grid; gap: 2px; min-width: 0; }
+.backend-mode-copy strong { color: #202523; font-size: 0.875rem; line-height: 1.25; }
+.backend-mode-copy small { color: #545e5b; font-size: 0.75rem; line-height: 1.4; }
+.backend-mode-indicator {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #8d9691;
+  border-radius: 50%;
+}
+.backend-form label.backend-mode-option:has(input:checked) {
+  border-color: #648c78;
+  background: #eff6f2;
+}
+.backend-mode-option:has(input:checked) .backend-mode-icon {
+  color: #2f634f;
+  background: #dfede5;
+}
+.backend-mode-option:has(input:checked) .backend-mode-indicator { border-color: #386c55; }
+.backend-mode-option:has(input:checked) .backend-mode-indicator::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #386c55;
+}
+.backend-mode-option:focus-within { outline: 2px solid #386c55; outline-offset: 2px; }
+.backend-form label.backend-mode-option:has(input:disabled) { opacity: .65; cursor: default; }
 .backend-form-error { margin: 0; border-radius: 13px; background: #fff0ee; color: #9c2b20; padding: 10px 12px; font-size: 0.75rem; }
 .backend-form-actions { display: grid; grid-template-columns: 1fr 1.5fr; gap: 10px; margin-top: 4px; }
 .backend-form-actions button { border: 0; border-radius: 22px; background: #111; color: #fff; padding: 13px; font-weight: min(900, calc(650 + var(--bold-text-weight-offset))); }

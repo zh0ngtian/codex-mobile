@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
 import { BackendManagerSheet } from '../../src/features/backends/BackendManagerSheet';
@@ -98,13 +98,32 @@ it.each([{ config: remote, budget: 60_000 }, { config: local, budget: 6_000 }, {
   await vi.advanceTimersByTimeAsync(1); expect(await result).toMatchObject({ message: 'HTTP initialize 超时' });
 });
 it('切换表单模式不探测；测试失败原子保留旧配置与输入', async () => {
-  const probe = vi.fn(async () => { throw new Error('网关尚不支持远程模式，请先升级网关'); }); const onChange = vi.fn();
+  let rejectProbe!: (reason: Error) => void;
+  const probe = vi.fn(() => new Promise<never>((_, reject) => { rejectProbe = reject; }));
+  const onChange = vi.fn();
   render(<BackendManagerSheet open registry={{ version: 1, selectedBackendId: local.id, backends: [local] }} summaries={{}} onChange={onChange} onClose={() => {}} probe={probe} />);
   fireEvent.click(screen.getByRole('button', { name: '编辑 Gateway' }));
-  fireEvent.change(screen.getByLabelText('连接模式'), { target: { value: 'remote' } }); expect(probe).not.toHaveBeenCalled();
+  const modes = within(screen.getByRole('group', { name: '连接模式' }));
+  const localMode = modes.getByRole('radio', { name: '本地模式' });
+  const remoteMode = modes.getByRole('radio', { name: '远程模式' });
+  expect(localMode).toBeChecked();
+  expect(remoteMode).toHaveAccessibleDescription('通过 Codex Remote 连接已配对的电脑');
+  fireEvent.click(remoteMode);
+  expect(remoteMode).toBeChecked();
+  expect(localMode).not.toBeChecked();
+  expect(probe).not.toHaveBeenCalled();
+  expect(onChange).not.toHaveBeenCalled();
+
   fireEvent.click(screen.getByRole('button', { name: '测试并保存' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('尚不支持远程模式'); expect(onChange).not.toHaveBeenCalled();
-  expect(screen.getByLabelText('连接模式')).toHaveValue('remote');
+  expect(probe).toHaveBeenCalledWith(expect.objectContaining({ gatewayMode: 'remote' }));
+  expect(localMode).toBeDisabled();
+  expect(remoteMode).toBeDisabled();
+  await act(async () => { rejectProbe(new Error('网关尚不支持远程模式，请先升级网关')); });
+  expect(screen.getByRole('alert')).toHaveTextContent('尚不支持远程模式');
+  expect(onChange).not.toHaveBeenCalled();
+  expect(remoteMode).toBeChecked();
+  expect(remoteMode).toBeEnabled();
+  expect(screen.getByRole('textbox', { name: '网关地址' })).toHaveValue('http://gateway.test/?token=secret');
 });
 it('202 ACK 只查询原 UUID，确认前后保留完整目标，不重复 POST', async () => {
   vi.stubGlobal('indexedDB', new IDBFactory()); const posts: any[] = []; let queries = 0;

@@ -6,6 +6,7 @@ import {
   type FormEvent,
   useCallback,
   useEffect,
+  useId,
   useState,
   useRef,
   useLayoutEffect,
@@ -28,6 +29,7 @@ import type {
   BackendRuntimeSummary,
 } from "../../backends/types";
 import { ActionSheet } from "../../ui/ActionSheet";
+import { AppIcon } from "../../ui/app-display";
 import { t, useI18n } from "../../i18n";
 import { GatewayQrScannerSheet } from "./GatewayQrScannerSheet";
 import type { TransportMode } from "../../backends/transport-preference";
@@ -43,6 +45,11 @@ interface BackendDraft {
   enabled: boolean;
   order: number;
 }
+
+const connectionModes = [
+  { value: "local", title: "本地模式", description: "直接连接网关上的 Codex", icon: "device" },
+  { value: "remote", title: "远程模式", description: "通过 Codex Remote 连接已配对的电脑", icon: "globe" },
+] as const;
 
 function newBackendDraft(order: number): BackendDraft {
   return {
@@ -95,6 +102,7 @@ export function BackendManagerSheet({
   probe?: (backend: BackendConfig) => Promise<GatewayHostInfo>;
   scanQrCode?: () => Promise<string>;
 }) {
+  const modeId = useId();
   const nativeSwitch = useNativeSwitch();
   const { preference, setPreference } = useI18n();
   const font = useFontSizeSettings();
@@ -405,10 +413,34 @@ export function BackendManagerSheet({
           </button>
         </div>
       </div>
-      <label><span>{t('连接模式')}</span><select aria-label={t('连接模式')} value={draft.gatewayMode} disabled={testing}
-        onChange={event => setCurrentDraft({ ...draft, gatewayMode: event.target.value as 'local' | 'remote' })}>
-        <option value="local">{t('本地模式')}</option><option value="remote">{t('远程模式')}</option>
-      </select></label>
+      <fieldset className="backend-mode-settings" disabled={testing}>
+        <legend>{t("连接模式")}</legend>
+        <div className="backend-mode-options">
+          {connectionModes.map(({ value, title, description, icon }) => {
+            const titleId = `${modeId}-${value}-title`;
+            const descriptionId = `${modeId}-${value}-description`;
+            return (
+              <label className="backend-mode-option" key={value}>
+                <input
+                  type="radio"
+                  name={`${modeId}-connection-mode`}
+                  value={value}
+                  checked={draft.gatewayMode === value}
+                  aria-labelledby={titleId}
+                  aria-describedby={descriptionId}
+                  onChange={() => setCurrentDraft({ ...draft, gatewayMode: value })}
+                />
+                <span className="backend-mode-icon"><AppIcon name={icon} /></span>
+                <span className="backend-mode-copy">
+                  <strong id={titleId}>{t(title)}</strong>
+                  <small id={descriptionId}>{t(description)}</small>
+                </span>
+                <span className="backend-mode-indicator" aria-hidden="true" />
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
       {error && <p className="backend-form-error" role="alert">{error}</p>}
       <div className="backend-form-actions">
         <button
@@ -533,11 +565,9 @@ export function BackendManagerSheet({
         className="backend-manager-sheet"
         backdropClassName="backend-manager-backdrop"
       >
-        <>
-          {nativeToggle}{transportForm}{pushForm}<FontSizeSettingsForm state={font} />
-          {deviceContent}
-          {!draft && <>{languageForm}{updateSection}</>}
-        </>
+        {draft && deviceContent}
+        {nativeToggle}{transportForm}{pushForm}<FontSizeSettingsForm state={font} />
+        {!draft && <>{deviceContent}{languageForm}{updateSection}</>}
       </ActionSheet>
       <GatewayQrScannerSheet
         open={qrScannerOpen}
