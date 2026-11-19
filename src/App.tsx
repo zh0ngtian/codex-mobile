@@ -506,6 +506,7 @@ function BackendWorkspace({
   const clientRef = useRef<AppServerClient | null>(null);
   const projectlessLoadRef = useRef<{ client: AppServerClient; pending: boolean } | null>(null);
   const readyClientRef = useRef<AppServerClient | null>(null);
+  const workspaceWriteReconnectsRef = useRef(0);
   const pinnedClientRef = useRef<AppServerClient | null>(null);
   const pinnedRevisionRef = useRef(0);
   const pinMutationRef = useRef(false);
@@ -522,9 +523,12 @@ function BackendWorkspace({
   const selectedEffortRef = useRef<string | null>(null);
   const selectedServiceTierRef = useRef<string | null>(null);
   const conversationVisibleRef = useRef(conversationVisible);
+  const releaseWorkspaceSettingsRef = useRef<(() => void) | null>(null);
+  const hasConversation = active !== null;
   const foregroundRecoveryActiveRef = useRef(foregroundRecoveryActive);
   const activeThreadTargetRef = useRef<string | null>(null);
   const openSequenceRef = useRef(0);
+  const scopedPermissionsRef = useRef<{ client: AppServerClient; sequence: number } | null>(null);
   const commentaryRecoveryRef = useRef<{ client: AppServerClient; key: string; promise: Promise<void> } | null>(null);
   const olderTurnsCursorRef = useRef<string | null>(null);
   const olderTurnsGenerationRef = useRef(0);
@@ -891,7 +895,8 @@ function BackendWorkspace({
 
   useEffect(() => {
     conversationVisibleRef.current = conversationVisible;
-  }, [conversationVisible]);
+    if (conversationVisible && hasConversation) releaseWorkspaceSettingsRef.current?.();
+  }, [conversationVisible, hasConversation]);
 
   useEffect(() => {
     foregroundRecoveryActiveRef.current = foregroundRecoveryActive;
@@ -1381,6 +1386,7 @@ function BackendWorkspace({
         setConnection(status);
         if (status === "online") setError("");
         if (status === "connecting" || status === "offline") {
+          releaseWorkspaceSettingsRef.current?.();
           invalidateUploadUsage();
           projectlessLoadRef.current = null;
           setLoadingProjectCwd((current) => current === PROJECTLESS_GROUP_ID ? "" : current);
@@ -1908,6 +1914,20 @@ function BackendWorkspace({
           restoreSidechats(client);
         }
         readyClientRef.current = null;
+        const settingsNeeded = workspaceWriteReconnectsRef.current > 0 ||
+          (conversationVisibleRef.current && activeRef.current !== null);
+        const waitForSettings = backend.gatewayMode === "remote" && !settingsNeeded
+          ? new Promise<void>(resolve => {
+              releaseWorkspaceSettingsRef.current = () => {
+                releaseWorkspaceSettingsRef.current = null;
+                resolve();
+              };
+            }).then(() => {
+              if (disposed || client !== clientRef.current || client.signal?.aborted) {
+                throw new DOMException("Workspace connection changed", "AbortError");
+              }
+            })
+          : undefined;
         const workspaceResumeSnapshot = {
           threadId: activeRef.current?.id
             ? String(activeRef.current.id)
@@ -1919,13 +1939,16 @@ function BackendWorkspace({
             if (!disposed && manager.client(backend.id) === source) {
             const [modelResult, permissionResult, configResult] =
               await runWorkspaceBootstrap({
-                loadThreads: () => loadThreads(client),
+                loadThreads: () => loadThreads(client).finally(() => {
+                  if (!disposed && client === clientRef.current && !client.signal?.aborted) setRefreshing(false);
+                }),
+                waitForSettings,
                 loadSettings: (options) => Promise.all([
                   client.request<{ data: AnyRecord[] }>("model/list", {
                     limit: 100,
                     includeHidden: false,
                   }, options),
-                  client.request<{ data: AnyRecord[] }>(
+                  client.request<{ data: Array<{ id: string; allowed?: boolean }> }>(
                     "permissionProfile/list",
                     {
                       limit: 100,
@@ -2005,9 +2028,14 @@ function BackendWorkspace({
               availableProfiles.find((profile) => profile.id === ":read-only")?.id ||
               availableProfiles[0]?.id ||
               "";
+            const firstSettingsLoad = modelsRef.current.length === 0;
             setModels(modelResult.data);
             modelsRef.current = modelResult.data;
-            setPermissionProfiles(availableProfiles);
+            const openedAnotherThread = !!activeRef.current?.id && openSequenceRef.current !== workspaceResumeSnapshot.openSequence;
+            const scopedPermissions = scopedPermissionsRef.current;
+            if (scopedPermissions?.client !== client || scopedPermissions.sequence !== openSequenceRef.current) {
+              setPermissionProfiles(availableProfiles);
+            }
             if (!activeRef.current?.id && !restoredDraftSettingsRef.current) {
               selectedModelRef.current = newChatModelSettings.model;
               selectedEffortRef.current = newChatModelSettings.effort;
@@ -2034,18 +2062,28 @@ function BackendWorkspace({
             }
             // 状态updater可能延后执行，保留本轮恢复语义，不读取随后消费的ref。
             const restoringDraftSettings = restoredDraftSettingsRef.current !== null;
-            setSelectedPermission((current) => current || configuredPermission);
-            setSelectedApprovalPolicy(
-              (current) =>
-                restoringDraftSettings ? current : config.approval_policy ||
-                (configuredPermission === ":danger-full-access"
-                  ? "never"
-                  : current),
-            );
-            setSelectedApprovalsReviewer(
-              (current) => restoringDraftSettings ? current : config.approvals_reviewer || current,
-            );
-            setRefreshing(false);
+            const deferredNewChatMode = waitForSettings && firstSettingsLoad && activeRef.current && !activeRef.current.id &&
+                !restoringDraftSettings && openSequenceRef.current !== workspaceResumeSnapshot.openSequence
+              ? defaultNewChatPermissionMode(availableProfiles)
+              : null;
+            if (deferredNewChatMode) {
+              setNewChatPermissionMode(deferredNewChatMode);
+              setSelectedPermission(deferredNewChatMode.permissions);
+              setSelectedApprovalPolicy(deferredNewChatMode.approvalPolicy);
+              setSelectedApprovalsReviewer(deferredNewChatMode.approvalsReviewer);
+            } else if (!openedAnotherThread) {
+              setSelectedPermission((current) => current || configuredPermission);
+              setSelectedApprovalPolicy(
+                (current) =>
+                  restoringDraftSettings ? current : config.approval_policy ||
+                  (configuredPermission === ":danger-full-access"
+                    ? "never"
+                    : current),
+              );
+              setSelectedApprovalsReviewer(
+                (current) => restoringDraftSettings ? current : config.approvals_reviewer || current,
+              );
+            }
             const currentThread = activeRef.current;
             if (
               currentThread?.id && !sidechats.get(String(currentThread.id)) &&
@@ -2118,9 +2156,9 @@ function BackendWorkspace({
           } catch (reason) {
             if (
               !disposed &&
+              client === clientRef.current &&
               manager.client(backend.id) === source
             ) {
-              setRefreshing(false);
               setError(
                 reason instanceof Error ? reason.message : String(reason),
               );
@@ -2156,6 +2194,7 @@ function BackendWorkspace({
     });
     return () => {
       disposed = true;
+      releaseWorkspaceSettingsRef.current?.();
       uploadUsageGenerationRef.current++;
       unbindConnectionRecovery();
       manager.close();
@@ -2654,7 +2693,8 @@ function BackendWorkspace({
             cwd: session.thread.cwd,
           })
           .then((result) => {
-            if (sequence === openSequenceRef.current) {
+            if (sequence === openSequenceRef.current && client === clientRef.current) {
+              scopedPermissionsRef.current = { client, sequence };
               setPermissionProfiles(result.data.filter((profile) => profile.allowed));
             }
           })
@@ -2801,19 +2841,28 @@ function BackendWorkspace({
     params: unknown,
     options: { operationKey?: string } = {},
   ) {
-    return requestWithUnsentReconnect({
-      client,
-      request: (candidate) => candidate.request<T>(method, params, options),
-      reconnect: () => {
-        const manager = connectionManagerRef.current;
-        if (!manager) {
-          throw new Error(t("设备尚未连接，请稍后重试"));
-        }
-        readyClientRef.current = null;
-        manager.reconnect(backend.id);
-      },
-      readyClient: () => readyClientRef.current,
-    });
+    let reconnecting = false;
+    try {
+      return await requestWithUnsentReconnect({
+        client,
+        request: (candidate) => candidate.request<T>(method, params, options),
+        reconnect: () => {
+          const manager = connectionManagerRef.current;
+          if (!manager) {
+            throw new Error(t("设备尚未连接，请稍后重试"));
+          }
+          if (!reconnecting) {
+            reconnecting = true;
+            workspaceWriteReconnectsRef.current++;
+          }
+          readyClientRef.current = null;
+          manager.reconnect(backend.id);
+        },
+        readyClient: () => readyClientRef.current,
+      });
+    } finally {
+      if (reconnecting) workspaceWriteReconnectsRef.current--;
+    }
   }
 
   function syncStartedThreadSettings(started: AnyRecord) {
@@ -3134,6 +3183,12 @@ function BackendWorkspace({
     }
     const draftContext = draftContextGenerationRef.current;
     const threadId = String(activeRef.current?.id ?? "");
+    if (!threadId && backend.gatewayMode === "remote" && readyClientRef.current !== clientRef.current) {
+      const message = t("正在加载新会话设置，请稍后发送");
+      if (throwOnFailure) throw new Error(message);
+      showNotice(message);
+      return false;
+    }
     if (sidechats.get(threadId)) {
       if (sendingDraftContextsRef.current.has(draftContext)) return false;
       sendingDraftContextsRef.current.add(draftContext);

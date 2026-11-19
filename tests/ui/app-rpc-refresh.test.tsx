@@ -1,8 +1,9 @@
+import 'fake-indexeddb/auto';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { AppBootstrap } from '../../src/App';
 
-const boundary = vi.hoisted(() => ({ options: null as any, client: null as any, rows: [] as any[], reads: [] as any[], pageBarrier: null as Promise<void> | null, snapshotWaits: 0, closeSocket: vi.fn(), summary: null as Promise<any> | null }));
+const boundary = vi.hoisted(() => ({ options: null as any, client: null as any, rows: [] as any[], reads: [] as any[], pageBarrier: null as Promise<void> | null, snapshotWaits: 0, closeSocket: vi.fn(), summary: null as Promise<any> | null, settingsBarrier: null as Promise<void> | null }));
 vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class {
   constructor(options: any) { boundary.options = options; }
   client() { return boundary.client; } socket() { return { close: boundary.closeSocket }; } close() {} reconnect() {}
@@ -14,15 +15,17 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
       if (method === 'thread/list' && params.sectionId) return { data: [], nextCursor: null };
       if (method === 'thread/list') { const data = boundary.rows; await boundary.pageBarrier; return { data, nextCursor: null }; }
       if (method === 'mobile/sidebar/summaries') return boundary.summary ?? { data: [], nextCursor: null };
-      if (method === 'model/list') return { data: [{ model: 'test', isDefault: true, supportedReasoningEfforts: [] }] };
+      if (method === 'model/list') { await boundary.settingsBarrier; return { data: [{ model: 'test', isDefault: true, supportedReasoningEfforts: [] }] }; }
       if (method === 'permissionProfile/list') return { data: [{ id: ':workspace', allowed: true }] };
       if (method === 'config/read') return { config: { model: 'test', sandbox_mode: 'workspace-write' } };
+      if (method === 'thread/start') return { thread: { id: 'created', turns: [] } };
+      if (method === 'turn/start') return { turn: { id: 'created-turn', status: 'inProgress', items: [] } };
       return { data: [], items: [], nextCursor: null };
     } };
     queueMicrotask(() => { boundary.options.onConnection(backends[0].id, 'online'); boundary.options.onReady(backends[0].id, boundary.client); });
   }
 } }));
-afterEach(() => { cleanup(); vi.useRealTimers(); boundary.reads = []; boundary.rows = []; boundary.client = null; boundary.pageBarrier = null; boundary.snapshotWaits = 0; boundary.closeSocket.mockClear(); boundary.summary = null; vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); boundary.reads = []; boundary.rows = []; boundary.client = null; boundary.pageBarrier = null; boundary.snapshotWaits = 0; boundary.closeSocket.mockClear(); boundary.summary = null; boundary.settingsBarrier = null; vi.unstubAllGlobals(); });
 
 async function setup(gatewayMode: "local" | "remote" = "local", projects: string[] = ["/project"]) {
   const values = new Map<string, string>([['codex-mobile:collapsed-projects', '[]']]);
@@ -53,8 +56,37 @@ it.each(['local', 'remote'] as const)('%s手动刷新复用连接并等待本轮
   await waitFor(() => expect(refresh()).toHaveAttribute('aria-busy', 'false'));
   expect(screen.queryByRole('button', { name: /旧会话/ })).toBeNull();
   expect(boundary.snapshotWaits).toBe(0);
+  expect(composerSetupReads()).toHaveLength(0);
   expect(boundary.reads.filter(read => read.method === 'thread/list' && read.params.cwd)).toHaveLength(1);
   expect(fetcher.mock.calls.filter(([url]) => String(url).includes('/api/projects'))).toHaveLength(directoriesBefore + 1);
+});
+
+const composerSetupMethods = ['model/list', 'permissionProfile/list', 'config/read', 'account/rateLimits/read'];
+const composerSetupReads = () => boundary.reads.filter(read => composerSetupMethods.includes(read.method));
+
+it('Remote 冷启动只看侧栏时不读取输入设置，进入新会话才读取', async () => {
+  await setup('remote');
+  expect(composerSetupReads()).toHaveLength(0);
+
+  let releaseSettings!: () => void;
+  boundary.settingsBarrier = new Promise(resolve => { releaseSettings = resolve; });
+  try {
+    fireEvent.click(screen.getByRole('button', { name: '聊天' }));
+    await waitFor(() => expect(composerSetupReads().map(read => read.method)).toEqual(composerSetupMethods));
+    const input = screen.getByRole('textbox', { name: '向 Codex 提问' });
+    fireEvent.change(input, { target: { value: '保留草稿' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    await screen.findByText('正在加载新会话设置，请稍后发送');
+    expect(input).toHaveValue('保留草稿');
+    expect(boundary.reads.some(read => read.method === 'thread/start')).toBe(false);
+  } finally {
+    await act(async () => releaseSettings());
+  }
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  await waitFor(() => expect(boundary.reads.find(read => read.method === 'thread/start')?.params).toMatchObject({
+    model: 'test',
+    permissions: ':workspace',
+  }));
 });
 
 it('冷启动摘要超时保留已连接工作区与成功项目，手动刷新可重试', async () => {
@@ -94,6 +126,7 @@ it('客户端前台每60秒自动刷新整轮，手动刷新共享在途读取',
     expect(directoryReads()).toHaveLength(before + 1);
     expect(boundary.reads.filter(read => read.method === 'thread/list' && read.params.sectionId)).toHaveLength(1);
     expect(boundary.reads.filter(read => read.method === 'mobile/sidebar/summaries')).toHaveLength(1);
+    expect(composerSetupReads()).toHaveLength(0);
     expect(refresh).toHaveAttribute('aria-busy', 'false');
     expect(screen.getByRole('button', { name: /旧会话/ })).toBeVisible();
 

@@ -496,6 +496,7 @@ const english: Record<string, string> = {
   "速度列表": "Speed options",
   "关闭错误提示": "Dismiss error",
   "正在连接": "Connecting",
+  "正在加载新会话设置，请稍后发送": "Loading new chat settings. Try sending again shortly.",
   "正在结束": "Ending",
   "已静音": "Muted",
   "Codex 正在回复": "Codex is responding",
