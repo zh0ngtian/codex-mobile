@@ -27,7 +27,9 @@ export async function downloadFile(request: IncomingMessage, response: ServerRes
     if (!source.paths.isAbsolute(path) || path.includes("\0")) {
       response.statusCode = 400; response.end("Invalid file path"); return;
     }
-    file = await source.open(path, undefined, controller.signal);
+    file = request.method === 'GET' && source.openDownload
+      ? await source.openDownload(path, controller.signal)
+      : await source.open(path, undefined, controller.signal);
     const details = file.details;
     if (details.type !== 'file') {
       response.statusCode = 404; response.end("File not found"); return;

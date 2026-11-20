@@ -116,7 +116,14 @@ export class RemoteFiles {
   read(path: string, options: RemoteReadOptions = {}): AsyncGenerator<Buffer> {
     const started = performance.now(); return this.readInternal(path, options, started);
   }
-  private async *readInternal(path: string, options: RemoteReadOptions, started: number): AsyncGenerator<Buffer> {
+  async *readDownload(path: string, options: RemoteFileOptions, onStart: (stat: RemoteFileStat) => void): AsyncGenerator<Buffer> {
+    let initial!: RemoteFileStat;
+    yield* this.readInternal(path, options, performance.now(), stat => { initial = stat; onStart(stat); });
+    for (let offset = FILE_MAX_BYTES; offset < initial.size; offset += FILE_MAX_BYTES) {
+      yield* this.read(path, { ...options, offset, length: Math.min(FILE_MAX_BYTES, initial.size - offset), version: initial.version });
+    }
+  }
+  private async *readInternal(path: string, options: RemoteReadOptions, started: number, onDownloadStart?: (stat: RemoteFileStat) => void): AsyncGenerator<Buffer> {
     let channel: RemoteFileReadChannel | undefined;
     try {
       path = this.path(path); const o = this.options(options, ['offset', 'length', 'version'], started, 600000);
@@ -126,11 +133,13 @@ export class RemoteFiles {
       channel = this.readChannel(o.deadline, o.signal);
       let total = 0; let window = 0; let rangeLength = length; let initialVersion: string | undefined; const hash = createHash('sha256');
       while (true) {
-        const batch = await channel.read({ path, offset, window, position: total, ...(rangeLength === undefined ? {} : { length: rangeLength }), ...(expected ? { expected } : {}) });
+        const downloadStart = window === 0 && onDownloadStart;
+        const batch = await channel.read({ path, offset, window, position: total, ...(downloadStart ? { download: true } : {}), ...(rangeLength === undefined ? {} : { length: rangeLength }), ...(expected ? { expected } : {}) });
         if (batch.length < 2) throw new RemoteFileError('protocol', true);
         const meta = batch.shift()!; const tail = batch.pop()!; const decoded: Buffer[] = []; channel.holdWindow(batch, decoded);
         body(meta, 'meta', ['path', 'type', 'facts', 'length', 'offset', 'window', 'position']); const initial = this.statRecord(path, meta);
         if (initial.type !== 'file' || meta.offset !== offset || meta.window !== window || meta.position !== total || !Number.isSafeInteger(meta.length) || (meta.length as number) < 0 || (meta.length as number) > FILE_MAX_BYTES || offset + (meta.length as number) > initial.size || (rangeLength !== undefined && meta.length !== rangeLength)) throw new RemoteFileError('protocol', true);
+        if (downloadStart && meta.length !== Math.min(FILE_MAX_BYTES, initial.size)) throw new RemoteFileError('protocol', true);
         if ((initialVersion !== undefined && initial.version !== initialVersion) || (expected && initial.version !== this.version(path, expected))) throw new RemoteFileError('version', true);
         initialVersion = initial.version; expected = facts(meta.facts); rangeLength = meta.length as number;
         const position = total; const validatedLength = rangeLength; const windowBytes = Math.min(FILE_CHUNK_BYTES, validatedLength - position);
@@ -147,6 +156,7 @@ export class RemoteFiles {
         if (tail.window !== window || tail.position !== position || tail.total !== total || this.version(path, tail.facts) !== initialVersion) throw new RemoteFileError('integrity', true);
         // 最后窗口只在自然退出、完整输出证明和目标独立Range总SHA均通过后交付。
         if (done && tail.sha256 !== hash.digest('hex')) throw new RemoteFileError('integrity', true);
+        if (downloadStart) { channel.assert(); downloadStart(initial); }
         for (const part of decoded) { channel.assert(); yield part; } channel.assert(); channel.clearWindow();
         if (done) return;
         window++;

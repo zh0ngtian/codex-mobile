@@ -28,6 +28,9 @@ def verify(f,path,expected):
     try: actual=facts(os.stat(path))
     except FileNotFoundError: raise Failure('version')
     if facts(os.fstat(f.fileno()))!=expected or actual!=expected: raise Failure('version')
+def open_download(path,flags):
+    if not stat.S_ISREG(os.stat(path).st_mode): raise Failure('not-found')
+    return os.open(path,flags|getattr(os,'O_NONBLOCK',0))
 def handle(request):
     if type(request)!=dict: raise Failure('protocol')
     path=request.get('path')
@@ -37,15 +40,18 @@ def handle(request):
         s=os.stat(path);mode=s.st_mode
         kind='file' if stat.S_ISREG(mode) else 'directory' if stat.S_ISDIR(mode) else 'symlink' if stat.S_ISLNK(mode) else 'other'
         emit('stat',path=path,type=kind,facts=facts(s));return
-    if set(request)-{'path','offset','length','expected','window','position'} or not {'offset','window','position'}<=set(request): raise Failure('protocol')
+    if set(request)-{'path','offset','length','expected','window','position','download'} or not {'offset','window','position'}<=set(request): raise Failure('protocol')
     offset=request['offset'];window=request['window'];position=request['position']
     if type(offset)!=int or type(window)!=int or type(position)!=int or offset<0 or window<0 or position!=window*WINDOW: raise Failure('protocol')
-    with open(path,'rb') as f:
-        initial=facts(os.fstat(f.fileno()))
-        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode): raise Failure('invalid-input')
+    download='download' in request
+    if download and (request['download'] is not True or offset!=0 or window!=0 or 'length' in request or 'expected' in request): raise Failure('protocol')
+    with open(path,'rb',opener=open_download if download else None) as f:
+        opened=os.fstat(f.fileno())
+        if not stat.S_ISREG(opened.st_mode): raise Failure('not-found' if download else 'invalid-input')
+        initial=facts(opened)
         verify(f,path,initial)
         if 'expected' in request and request['expected']!=initial: raise Failure('version')
-        length=request.get('length',int(initial['size'])-offset)
+        length=min(opened.st_size,MAX) if download else request.get('length',opened.st_size-offset)
         if type(length)!=int or length<0 or length>MAX or offset+length>int(initial['size']): raise Failure('capacity')
         if position>length or (position==length and (length!=0 or window!=0)): raise Failure('protocol')
         emit('meta',path=path,type='file',facts=initial,length=length,offset=offset,window=window,position=position)
