@@ -933,7 +933,7 @@ class Session {
               const signal = call.signal ? AbortSignal.any([call.signal, deadlineSignal]) : deadlineSignal;
               const details = await commentary(params.threadId, turnIds, signal);
               result = { ...result, result: { nextCursor: page.nextCursor, data: turnIds.map(id => ({
-                id, items: [], changeStatsUnavailable: true, commentaryItems: details.get(id)?.items ?? [],
+                id, items: details.get(id)?.images ?? [], changeStatsUnavailable: true, commentaryItems: details.get(id)?.items ?? [],
                 messageOrder: details.get(id)?.messageOrder ?? [],
               })) } };
             } else if (result.error == null) {

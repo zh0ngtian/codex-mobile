@@ -344,6 +344,19 @@ final class AgentConversationFixture {
                 NativeMessage(id: "tool-call", role: "activity", text: "不应显示的工具调用", activityKind: "tool"),
                 NativeMessage(id: "tail-commentary", role: "assistant", text: "正在整理项目。", phase: "commentary", commentaryIsLiveTail: true)]
         }
+        if ProcessInfo.processInfo.arguments.contains("--agent-process-image-fixture") {
+            let image = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 160)).image { context in
+                UIColor.systemBlue.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: 24, height: 160))
+            }
+            let block = NativePanelItem(id: "process-image", kind: "image", title: "process.png",
+                value: "data:image/png;base64," + image.pngData()!.base64EncodedString())
+            if value.busy {
+                value.messages[value.messages.count - 1].blocks = [block]
+            } else {
+                value.messages[1].commentary?[0].blocks = [block]
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("--agent-model-efforts-fixture") {
             value.models[0].efforts = value.efforts
             value.models[0].defaultEffort = "medium"

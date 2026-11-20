@@ -1,4 +1,5 @@
 import { countCompleteDiff } from "./turn-change-history.js";
+import { viewedImagePath } from "./viewed-image.js";
 type RecordValue = Record<string, any>;
 type ChangeStats = { additions: number; deletions: number };
 
@@ -33,20 +34,22 @@ function summarizeChanges(turn: RecordValue): ChangeStats | null {
 }
 
 function imageReferences(items: RecordValue[]): RecordValue[] {
-  return items.filter((item) =>
-    (item.type === "imageView" && typeof item.path === "string" && item.path) ||
-    (item.type === "imageGeneration" && [item.savedPath, item.result].some((value) =>
-      typeof value === "string" && /^(data:|\/)/i.test(value))),
-  ).map((item) => {
+  return items.flatMap((item): RecordValue[] => {
+    if (item.type === "imageView") {
+      const path = viewedImagePath(item.path);
+      return path ? [{ id: item.id, type: item.type, path, backfilled: true }] : [];
+    }
+    if (item.type !== "imageGeneration" || ![item.savedPath, item.result].some((value) =>
+      typeof value === "string" && /^(data:|\/)/i.test(value))) return [];
     const hasFileReference = [item.path, item.savedPath, item.result].some((value) =>
       typeof value === "string" && /^(https?:|\/)/i.test(value));
-    return {
+    return [{
       id: item.id, type: item.type, backfilled: true,
       ...(typeof item.path === "string" && item.path ? { path: item.path } : {}),
       ...(typeof item.savedPath === "string" && item.savedPath ? { savedPath: item.savedPath } : {}),
       ...(typeof item.result === "string" && /^(https?:|data:|\/)/i.test(item.result) &&
         !(hasFileReference && /^data:/i.test(item.result)) ? { result: item.result } : {}),
-    };
+    }];
   });
 }
 
@@ -124,6 +127,9 @@ export function compactTurnCommentary(result: RecordValue, turnId: string) {
       if (typeof item.id !== "string" || !item.id) continue;
       if (item.type === "agentMessage" && item.phase === "commentary" && typeof item.text === "string") {
         items.push({ id: item.id, type: item.type, phase: item.phase, text: item.text, ...(item.webCitations ? { webCitations: item.webCitations } : {}), ...messageTimestamp(item) });
+      } else if (item.type === "imageView") {
+        const path = viewedImagePath(item.path);
+        if (path) items.push({ id: item.id, type: item.type, path, backfilled: true });
       } else if (item.type === "userMessage") {
         items.push({ id: item.id, type: item.type,
           ...(typeof item.clientId === "string" && item.clientId ? { clientId: item.clientId } : {}),

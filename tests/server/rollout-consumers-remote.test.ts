@@ -37,16 +37,22 @@ it.each([false, true])('目标 rollout 同帧读取历史 commentary 正文和�
   const item = (id: string, role: string, phase: string | null, text: string) => row('response_item', {
     type: 'message', role, phase, id, content: [{ type: 'output_text', text }],
   });
+  const path = windows ? 'C:/Workspace/过程 #.png' : '/tmp/过程 #.png';
+  const imageURI = windows ? 'file:///C:/Workspace/%E8%BF%87%E7%A8%8B%20%23.png' : 'file:///tmp/%E8%BF%87%E7%A8%8B%20%23.png';
+  const viewed = row('event_msg', { type: 'item_completed', turn_id: 'wanted', item: {
+    id: 'screenshot', type: 'ImageView', path: imageURI, output: 'private pixel data',
+  } });
   await file(f, meta() + start('wanted') + item('prompt', 'user', null, 'private prompt') +
     output(['tool leaks must stay on target', 'x'.repeat(500000)]) +
-    item('progress', 'assistant', 'commentary', '进度') + item('final', 'assistant', 'final_answer', 'private final') +
+    item('progress', 'assistant', 'commentary', '进度') + viewed + item('final', 'assistant', 'final_answer', 'private final') +
     start('other') + item('different', 'assistant', 'commentary', 'other turn'));
   const startFrame = f.frames.length;
   const data = await s.commentary(id, ['wanted']);
   expect(f.frames.slice(startFrame).map(frame => frame.method)).toEqual(['command/exec', 'command/exec']);
   expect(f.frames.slice(startFrame).every(frame => (frame.params as any)?.streamStdin === false)).toBe(true);
   expect(data.get('wanted')).toEqual({ items: [{ id: 'progress', type: 'agentMessage', phase: 'commentary', text: '进度', timestamp: seconds }],
-    messageOrder: ['prompt', 'progress', 'final'] });
+    images: [{ id: 'screenshot', type: 'imageView', path, backfilled: true }],
+    messageOrder: ['prompt', 'progress', 'screenshot', 'final'] });
   expect(data.has('other')).toBe(false);
 });
 

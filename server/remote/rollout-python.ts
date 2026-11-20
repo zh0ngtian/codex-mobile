@@ -95,6 +95,10 @@ def project(entry,mode,wanted,state):
                 if item.get('type')=='AgentMessage' and item.get('phase')=='commentary':
                     text=message_text(item)
                     if text: value.update(text=text,timestamp=entry.get('timestamp'))
+                elif item.get('type')=='ImageView':
+                    path=item.get('path')
+                    if isinstance(path,str) and len(path)<=3*16384+8 and re.match(r'^(?:file:///|/|[A-Za-z]:[\\/]|\\\\)',path,re.I):
+                        value['imagePath']=path
                 yield value
         return
     turn=state.get('turn');item_id=payload.get('id');role=payload.get('role')

@@ -1808,6 +1808,30 @@ final class AgentAppUITests: XCTestCase {
         captureConversation("视频预览-三次关闭直接返回对话", app: app)
     }
 
+    func testProcessImageTileOpensFromItsFullWidthWhileRunningAndAfterCompletion() {
+        continueAfterFailure = false
+        for running in [true, false] {
+            let app = XCUIApplication()
+            app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-process-image-fixture",
+                                   "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+            if running { app.launchArguments.append("--agent-running-commentary-fixture") }
+            app.launch()
+            if !running { app.buttons["commentary-history-toggle"].firstMatch.tap() }
+            let tile = app.buttons["process.png"]
+            XCTAssertTrue(tile.waitForExistence(timeout: 8))
+            XCTAssertGreaterThan(tile.frame.width, 250)
+            tile.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.5)).tap()
+            let preview = app.navigationBars["process.png"]
+            XCTAssertTrue(preview.waitForExistence(timeout: 5))
+            let download = preview.buttons["下载"]
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: download)
+            XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 8), .completed)
+            preview.buttons["关闭"].tap()
+            XCTAssertTrue(preview.waitForNonExistence(timeout: 5))
+            app.terminate()
+        }
+    }
+
     func testInlineImagePreviewAlsoUsesDownloadLeftCloseRight() {
         let app = launchInteractionFixture("--agent-inline-image-preview-fixture")
         let image = app.buttons["查看图片 内联预览图片"]

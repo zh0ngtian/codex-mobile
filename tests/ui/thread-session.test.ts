@@ -66,7 +66,7 @@ describe("恢复已有 app-server 会话", () => {
     const details = await loadTurnChangeStatsPage({ request }, "thread-1");
     const summary = [{ id: "turn-image", status: "completed", itemsView: "summary", items: [
       { id: "user", type: "userMessage" },
-      { id: "answer", type: "agentMessage", phase: "final_answer", text: "图片如下" },
+      { id: "answer", type: "agentMessage", phase: "final_answer", text: "[打开原图](/tmp/assistant.png)" },
     ] }];
     const once = applyTurnChangeStats(summary, details);
     const twice = applyTurnChangeStats(once, details);

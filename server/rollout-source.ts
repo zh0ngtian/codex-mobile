@@ -6,9 +6,10 @@ import { Readable } from 'node:stream';
 import { RemoteCommands, RemoteCommandError, decodeRemoteCommandText } from './remote/commands.js';
 import { RemoteRpcSession } from './remote/rpc-session.js';
 import { ROLLOUT_COMMENTARY_PYTHON, ROLLOUT_LOCATOR_PYTHON, ROLLOUT_PYTHON } from './remote/rollout-python.js';
+import { viewedImagePath } from './viewed-image.js';
 
 export type RolloutProjection = 'timestamps' | 'citations' | 'metadata' | 'cwd' | 'image' | 'commentary';
-export interface HistoryCommentary { items: Record<string, unknown>[]; messageOrder: string[] }
+export interface HistoryCommentary { items: Record<string, unknown>[]; images: Record<string, unknown>[]; messageOrder: string[] }
 export interface RolloutRead {
   files(threadId: string): AsyncGenerator<string>;
   project(path: string, threadId: string, projection: RolloutProjection, wanted: string[]): AsyncGenerator<{ reset: true } | { value: Record<string, any> }>;
@@ -184,22 +185,28 @@ export class RemoteRolloutSource {
       const file = new Map<string, Map<string, Record<string, unknown> | undefined>>();
       for await (const row of read.project(path, threadId, 'commentary', [...wanted])) {
         if ('reset' in row) { file.clear(); continue; }
-        const { turnId, id, text, timestamp } = row.value;
+        const { turnId, id, text, timestamp, imagePath } = row.value;
         if (typeof turnId !== 'string' || !wanted.has(turnId) || (id !== undefined && typeof id !== 'string') ||
-          (text !== undefined && (typeof text !== 'string' || !id))) throw new RolloutSourceError('protocol');
+          (text !== undefined && (typeof text !== 'string' || !id)) ||
+          (imagePath !== undefined && (typeof imagePath !== 'string' || !id || text !== undefined))) throw new RolloutSourceError('protocol');
         let items = file.get(turnId);
         if (!items) { items = new Map(); file.set(turnId, items); }
         if (!id) continue;
         if (typeof text === 'string') {
           const time = typeof timestamp === 'string' ? Date.parse(timestamp) / 1000 : NaN;
           items.set(id, { id, type: 'agentMessage', phase: 'commentary', text, ...(time > 0 ? { timestamp: time } : {}) });
-        } else if (!items.has(id)) items.set(id, undefined);
+        } else {
+          const path = viewedImagePath(imagePath);
+          if (path) items.set(id, { id, type: 'imageView', path, backfilled: true });
+          else if (!items.has(id)) items.set(id, undefined);
+        }
       }
       for (const [turnId, items] of file) {
         const previous = result.get(turnId);
         const commentary = new Map(previous?.items.map(item => [item.id, item]));
-        for (const [id, item] of items) if (item) commentary.set(id, item);
-        result.set(turnId, { items: [...commentary.values()], messageOrder: [...new Set([...(previous?.messageOrder ?? []), ...items.keys()])] });
+        const images = new Map(previous?.images.map(image => [image.id, image]));
+        for (const [id, item] of items) if (item) (item.type === 'imageView' ? images : commentary).set(id, item);
+        result.set(turnId, { items: [...commentary.values()], images: [...images.values()], messageOrder: [...new Set([...(previous?.messageOrder ?? []), ...items.keys()])] });
       }
     }
     return result;

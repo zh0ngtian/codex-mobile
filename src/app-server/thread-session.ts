@@ -3,6 +3,7 @@ import type {
   ApprovalsReviewer,
 } from "../ui/settings";
 import { hasTurnChangeStats, summarizeTurnChanges } from "../ui/conversation";
+import { viewedImagePath } from "../../server/viewed-image";
 import { confirmLocalUserMessages, mergeConfirmedUserMessage, reconcileUserMessageAliases } from "./user-message-reconciliation";
 import type { AppServerRequestOptions } from "./client";
 
@@ -168,12 +169,13 @@ export function applyTurnChangeStats(
     );
     let insertAt = finalIndex < 0 ? items.length : finalIndex;
     for (const image of detail.images ?? []) {
-      const source = image.path ?? image.savedPath ?? image.result;
+      const screenshot = image.type === "imageView";
+      const source = screenshot ? viewedImagePath(image.path) : image.path ?? image.savedPath ?? image.result;
       if (items.some((item: AnyRecord) =>
         (image.id && item.id === image.id) ||
         (source && item.type === image.type &&
-          (item.path ?? item.savedPath ?? item.result) === source) ||
-        (source && item.type === "agentMessage" && typeof item.text === "string" && item.text.includes(source)),
+          (screenshot ? viewedImagePath(item.path) : item.path ?? item.savedPath ?? item.result) === source) ||
+        (!screenshot && source && item.type === "agentMessage" && typeof item.text === "string" && item.text.includes(source)),
       )) continue;
       items.splice(insertAt, 0, image);
       insertAt += 1;

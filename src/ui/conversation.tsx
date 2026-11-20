@@ -1,4 +1,5 @@
 import { decodeUserMessage } from '../../server/user-message-format';
+import { viewedImagePath } from '../../server/viewed-image';
 import { confirmLocalUserMessages, hasUserMessageContent, mergeConfirmedUserMessage, reconcileUserMessageAliases, userMessagesMatch, type UserMessageMatchOptions } from '../app-server/user-message-reconciliation';
 import { parseRemoteFileHref } from './remote-file-target';
 export { parseRemoteFileHref } from './remote-file-target';
@@ -403,14 +404,15 @@ export function imageSourcesForItem(
     return images;
   }
   if (item.type === "imageView" && item.path) {
-    return [
+    const source = viewedImagePath(item.path);
+    return source ? [
       {
-        source: item.path,
-        name: imageName(item.path),
+        source,
+        name: source.split(/[\\/]/).filter(Boolean).at(-1) ?? t("图片"),
         local: true,
         hideIfMissing: true,
       },
-    ];
+    ] : [];
   }
   if (item.type === "imageGeneration") {
     const source =

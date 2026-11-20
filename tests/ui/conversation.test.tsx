@@ -1067,6 +1067,10 @@ describe("移动端对话格式", () => {
     expect(
       imageSourcesForItem({ type: "imageView", path: "/tmp/view.webp" }),
     ).toEqual([{ source: "/tmp/view.webp", name: "view.webp", local: true, hideIfMissing: true }]);
+    expect(imageSourcesForItem({ type: "imageView", path: "file:///tmp/shot%20%231.png" }))
+      .toEqual([{ source: "/tmp/shot #1.png", name: "shot #1.png", local: true, hideIfMissing: true }]);
+    expect(imageSourcesForItem({ type: "imageView", path: "/tmp/shot%20.png" })[0].source)
+      .toBe("/tmp/shot%20.png");
     expect(
       imageSourcesForItem({
         type: "imageGeneration",

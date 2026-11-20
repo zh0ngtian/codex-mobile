@@ -30,6 +30,7 @@ struct OutputImageCard: View {
             }
             .frame(maxWidth: .infinity)
             .clipShape(.rect(cornerRadius: 16))
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .foregroundStyle(AgentTheme.ink)
