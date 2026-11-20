@@ -270,6 +270,7 @@ export async function fixture(change: Partial<RemoteRuntimeOptions> = {}) {
     log,
     controllers,
     connections,
+    relayServer: wss,
     canonicals,
     keys: () => keysCreated,
     oauth: () => oauth,

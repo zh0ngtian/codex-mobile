@@ -1,3 +1,4 @@
+import { RemoteGatewayError } from "../../src/backends/http-transport";
 import { describe, expect, it, vi } from "vitest";
 import {
   bindReadOnlyThreadRefresh,
@@ -246,6 +247,15 @@ describe("App 前后台连接恢复", () => {
     await recoverBackendConnection(null, reconnect);
 
     expect(reconnect).toHaveBeenCalledTimes(2);
+  });
+
+  it("前台恢复探测收到远程上游错误时保留网关连接", async () => {
+    const reconnect = vi.fn();
+    const reconcile = vi.fn();
+    const request = vi.fn(async () => { throw new RemoteGatewayError("upstream-unavailable"); });
+    await recoverBackendConnection({ request } as never, reconnect, reconcile);
+    expect(reconnect).not.toHaveBeenCalled();
+    expect(reconcile).not.toHaveBeenCalled();
   });
 
   it("健康探测成功但增量对账失败时不拆掉连接", async () => {

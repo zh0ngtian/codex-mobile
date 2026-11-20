@@ -22,7 +22,7 @@ export class RemoteAuthRequiredError extends Error {
   constructor(message = 'Remote 需要重新认证') { super(message); this.name = 'RemoteAuthRequiredError'; }
 }
 export class RemoteSendError extends Error {
-  constructor(message: string, readonly mayHaveBeenSent: boolean, readonly seqId?: number, readonly code: 'network' | 'timeout' = 'network') { super(message); this.name = 'RemoteSendError'; }
+  constructor(message: string, readonly mayHaveBeenSent: boolean, readonly seqId?: number, readonly code: 'network' | 'timeout' | 'rejected' = 'network') { super(message); this.name = 'RemoteSendError'; }
 }
 export interface RemoteDisconnect {
   reason: 'network' | 'protocol' | 'auth-required' | 'closed'; mayHaveBeenSent: boolean; lastSentSeqId?: number;
@@ -349,7 +349,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
     const seqId = stream.lastSentSeqId + 1;
     try {
       if (stream.closed && control !== 'client_closed') throw new RemoteSendError('Remote stream 已关闭', false);
-      if (!Number.isSafeInteger(seqId)) throw new RemoteSendError('Remote 序列耗尽', false);
+      if (!Number.isSafeInteger(seqId)) throw new RemoteSendError('Remote 序列耗尽', false, undefined, 'rejected');
       const route = { clientId: this.clientId, streamId: stream.streamId, environmentId: stream.environmentId, seqId };
       const frames = control ? [JSON.stringify({ type: control, client_id: this.clientId, stream_id: stream.streamId, env_id: stream.environmentId, seq_id: seqId,
         ...(control === 'ping' ? { skip_history: true, state: 'foreground' } : {}) })] : encodeClientMessage(route, message!, { maxMessageBytes: this.maxMessageBytes });
@@ -357,7 +357,7 @@ export class RemoteRelay extends EventEmitter<RelayEvents> {
       if (deadline !== undefined && performance.now() >= deadline) throw new RemoteSendError('Remote 发送超时', false, undefined, 'timeout');
       return this.write(prepared.socket, frames, prepared.bytes, seqId, stream, deadline, control === undefined).then(() => ({ seqId }));
     } catch (error) {
-      return Promise.reject(error instanceof RemoteSendError ? error : new RemoteSendError(error instanceof RemoteProtocolError ? error.message : 'Remote 发送数据无效', false));
+      return Promise.reject(error instanceof RemoteSendError ? error : new RemoteSendError(error instanceof RemoteProtocolError ? error.message : 'Remote 发送数据无效', false, undefined, 'rejected'));
     }
   }
   private preflight(frames: string[], handshake = false): { socket: WebSocket; bytes: number } {

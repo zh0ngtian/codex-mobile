@@ -6,7 +6,7 @@ import {
 import type { ConnectionState } from "../ui/app-display";
 import { t } from "../i18n";
 import type { BackendConfig } from "./types";
-import { HttpRpcTransport } from "./http-transport";
+import { HttpRpcTransport, RemoteGatewayError } from "./http-transport";
 
 export interface WebSocketLike {
   readyState: number;
@@ -269,6 +269,13 @@ export class BackendConnectionManager {
     } catch (reason) {
       const current = this.current(backendId, generation);
       if (!current) return;
+      if (reason instanceof RemoteGatewayError) {
+        if (reason.reason === "authorization-required") this.options.onConnection?.(backendId, "connecting", reason.message);
+        this.entries.delete(backendId);
+        current.socket.close();
+        this.scheduleRetry(current.config, current.retryAttempt + 1);
+        return;
+      }
       this.options.onConnection?.(
         backendId,
         "offline",

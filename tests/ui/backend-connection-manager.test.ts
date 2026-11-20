@@ -105,6 +105,35 @@ describe("多后端连接池", () => {
     } finally { manager.close(); vi.useRealTimers(); }
   });
   afterEach(() => vi.unstubAllGlobals());
+  it("Remote 上游初始化失败后静默重试，网关拒绝连接时仍标记离线", async () => {
+    vi.useFakeTimers();
+    let phase = "upstream";
+    const states: string[] = [];
+    vi.stubGlobal("fetch", async (input: string) => {
+      if (phase === "upstream") return new Response(JSON.stringify({ error: { code: "remote-upstream-unavailable" } }), { status: 503 });
+      if (phase === "rejected") return new Response("Unauthorized", { status: 401 });
+      if (new URL(input).pathname === "/api/events") {
+        return new Response(JSON.stringify({ epoch: "epoch", cursor: 0, messages: [], requests: [], active: true }));
+      }
+      return new Response(JSON.stringify({ result: { gateway: { directRequests: true } } }));
+    });
+    const manager = new BackendConnectionManager({ onConnection: (_id, state) => states.push(state) });
+    try {
+      manager.sync([{ ...backend("relay", "http://relay.test"), gatewayMode: "remote", remoteTarget: {
+        mode: "remote", gatewayId: "gateway", account: { accountId: "account", accountUserId: "user" }, target: { environmentId: "env", installationId: "install" },
+      } }]);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(states).toEqual(["connecting"]);
+      phase = "healthy";
+      await vi.advanceTimersByTimeAsync(751);
+      expect(states.at(-1)).toBe("online");
+      expect(states).not.toContain("offline");
+      phase = "rejected";
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(states.at(-1)).toBe("offline");
+    } finally { manager.close(); vi.useRealTimers(); }
+  });
+
   it("默认 HTTP，选择流式使用带口令的 WebSocket，切回后关闭旧连接", () => {
     const urls: string[] = [];
     class StreamSocket extends FakeSocket {

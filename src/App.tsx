@@ -41,7 +41,7 @@ import {
   useState,
 } from "react";
 import { AppServerClient, type RpcMessage } from "./app-server/client";
-import { HttpOperationPendingError, transportUuid } from "./backends/http-transport";
+import { HttpOperationPendingError, RemoteGatewayError, transportUuid, type HttpSyncState } from "./backends/http-transport";
 import {
   buildEditedHistoryInput,
   createHistoricalMessageEditTarget,
@@ -449,7 +449,7 @@ function BackendWorkspace({
   const approvalRequests = useApprovalRequests();
   const { requests, approval, userAnswers } = approvalRequests;
   useEffect(() => { approvalRequests.syncAsyncQuestions(active); }, [active, approvalRequests.syncAsyncQuestions]);
-  const [syncState, setSyncState] = useState<{ updatedAt: number | null; stale: boolean } | null>(null);
+  const [syncState, setSyncState] = useState<HttpSyncState | null>(null);
   const [models, setModels] = useState<AnyRecord[]>([]);
   const [permissionProfiles, setPermissionProfiles] = useState<AnyRecord[]>([]);
   const [selectedModel, setSelectedModel] = useState(restoredWorkspace?.settings.model ?? "");
@@ -1038,7 +1038,7 @@ function BackendWorkspace({
 
   async function loadThreads(
     client = clientRef.current,
-    options: { silent?: boolean } = {},
+    options: { silent?: boolean; background?: boolean } = {},
   ) {
     if (!client || client !== clientRef.current) return;
     return threadRefreshRef.current!.run(client, async () => {
@@ -1104,7 +1104,10 @@ function BackendWorkspace({
         }
       } catch (reason) {
         if (client !== clientRef.current || client.signal?.aborted) return;
-        setError(reason instanceof Error ? reason.message : String(reason));
+        if (!(options.silent || options.background) || backend.gatewayMode !== "remote" ||
+          (reason instanceof RemoteGatewayError && reason.reason === "authorization-required")) {
+          setError(reason instanceof Error ? reason.message : String(reason));
+        }
         setThreadListState((current) =>
           current === "loading" ? "error" : current,
         );
@@ -1352,7 +1355,11 @@ function BackendWorkspace({
     }
     const client = clientRef.current;
     void loadThreads(client)
-      .catch(() => undefined)
+      .catch(reason => {
+        if (sequence === refreshSequenceRef.current && client === clientRef.current && !client.signal?.aborted) {
+          setError(reason instanceof Error ? reason.message : String(reason));
+        }
+      })
       .finally(() => {
         if (sequence === refreshSequenceRef.current) setRefreshing(false);
       });
@@ -1379,6 +1386,7 @@ function BackendWorkspace({
     };
     invalidateUploadUsage();
     setSyncState(null);
+    let retryWorkspaceBootstrap: (() => void) | undefined;
     let manager: BackendConnectionManager;
     manager = new BackendConnectionManager({
       onConnection: (_backendId, status, connectionError) => {
@@ -1386,6 +1394,7 @@ function BackendWorkspace({
         setConnection(status);
         if (status === "online") setError("");
         if (status === "connecting" || status === "offline") {
+          retryWorkspaceBootstrap = undefined;
           releaseWorkspaceSettingsRef.current?.();
           invalidateUploadUsage();
           projectlessLoadRef.current = null;
@@ -1434,7 +1443,10 @@ function BackendWorkspace({
             return;
           }
           if (message.method === "mobile/sync") {
-            setSyncState({ updatedAt: params.updatedAt ?? null, stale: params.stale === true });
+            setSyncState({ updatedAt: params.updatedAt ?? null, stale: params.stale === true,
+              ...(params.gatewayReachable === true ? { gatewayReachable: true } : {}),
+            });
+            if (params.stale !== true) retryWorkspaceBootstrap?.();
             return;
           }
           const closedSide = message.method === 'thread/closed' ? sidechats.get(String(params.threadId ?? '')) : undefined;
@@ -1934,12 +1946,12 @@ function BackendWorkspace({
             : null,
           openSequence: openSequenceRef.current,
         };
-        void (async () => {
+        const initializeWorkspace = async () => {
           try {
             if (!disposed && manager.client(backend.id) === source) {
             const [modelResult, permissionResult, configResult] =
               await runWorkspaceBootstrap({
-                loadThreads: () => loadThreads(client).finally(() => {
+                loadThreads: () => loadThreads(client, { background: true }).finally(() => {
                   if (!disposed && client === clientRef.current && !client.signal?.aborted) setRefreshing(false);
                 }),
                 waitForSettings,
@@ -2159,6 +2171,14 @@ function BackendWorkspace({
               client === clientRef.current &&
               manager.client(backend.id) === source
             ) {
+              if (backend.gatewayMode === "remote") {
+                if (reason instanceof RemoteGatewayError && reason.reason === "authorization-required") setError(reason.message);
+                retryWorkspaceBootstrap = () => {
+                  retryWorkspaceBootstrap = undefined;
+                  void initializeWorkspace();
+                };
+                return;
+              }
               setError(
                 reason instanceof Error ? reason.message : String(reason),
               );
@@ -2170,7 +2190,8 @@ function BackendWorkspace({
               }
             }
           }
-        })();
+        };
+        void initializeWorkspace();
       },
     });
     connectionManagerRef.current = manager;

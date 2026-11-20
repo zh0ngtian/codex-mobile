@@ -682,6 +682,40 @@ describe("HTTP 文字传输", () => {
     expect(states.at(-1)).toMatchObject({ stale: false });
   });
 
+  it("Remote 上游暂缓和恢复保留网关连接，清理旧审批并重新同步", async () => {
+    vi.useFakeTimers();
+    const approval = { id: 7, method: "item/commandExecution/requestApproval", params: { threadId: "thread" } };
+    const messages: any[] = [];
+    const approvals: Array<{ epoch: string }> = [];
+    let pulls = 0;
+    const transport = setup((async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/api/events") {
+        if (++pulls === 2) return new Response(null, { status: 204 });
+        return events({ epoch: pulls === 1 ? "first" : "recovered", requests: [approval] });
+      }
+      const envelope = JSON.parse(String(init?.body));
+      if (!envelope.message.method) approvals.push(envelope);
+      return new Response("{}");
+    }) as typeof fetch, "remote-relay-recovery", "remote");
+    transport.addEventListener("message", (event) => messages.push(JSON.parse((event as MessageEvent).data)));
+    const disconnected = vi.fn();
+    transport.addEventListener("close", disconnected);
+    await vi.advanceTimersByTimeAsync(0);
+    await transport.send(JSON.stringify({ method: "initialized" }));
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(messages.at(-1)).toMatchObject({ method: "mobile/sync", params: { stale: true, gatewayReachable: true } });
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(transport.readyState).toBe(1);
+    expect(disconnected).not.toHaveBeenCalled();
+    expect(messages.filter(message => message.method === "mobile/reset")).toHaveLength(1);
+    expect(messages.filter(message => message.id === 7)).toHaveLength(2);
+    expect(messages).toContainEqual({ method: "mobile/requests", params: { requests: [] } });
+    expect(messages.at(-1)).toMatchObject({ method: "mobile/sync", params: { stale: false } });
+    await transport.send(JSON.stringify({ id: 7, result: { decision: "accept" } }));
+    expect(approvals).toMatchObject([{ epoch: "recovered" }]);
+  });
+
   it("审批回复失败会抛错，调用方可以保留审批", async () => {
     const transport = setup((async (url) => {
       if (String(url).includes("/api/operations")) return new Response("{}", { status: 404 });

@@ -142,7 +142,7 @@ export class OperationScheduler {
     return this.own(() => this.submitRpc(input, call));
   }
   protocol(input: { context: OperationContext; sessionId: string; requestId: string; message: RpcMessage }, original?: SessionCallOptions) { return this.own(() => this.protocolRpc(input, original)); }
-  events(context: OperationContext, sessionId: string, after: number, original?: SessionCallOptions) { return this.own(() => this.sessionEvents(context, sessionId, after, original)); }
+  events(context: OperationContext, sessionId: string, after: number, original?: SessionCallOptions, previousEpoch?: string) { return this.own(() => this.sessionEvents(context, sessionId, after, original, previousEpoch)); }
   result(id: string, original?: SessionCallOptions): Promise<SessionDispatchResult> { return this.own(() => this.readResult(id, original)); }
   /** 本地只读复用原 Session 的瞬态幂等缓存，不触碰共享耐久账本。 */
   localRead(context: OperationContext, sessionId: string, envelope: PublicRpcEnvelope, original: SessionCallOptions): Promise<RpcMessage> {
@@ -558,11 +558,11 @@ export class OperationScheduler {
     }, original);
     delivery(); assertRemoteOperation(); return result;
   }
-  private async sessionEvents(context: OperationContext, sessionId: string, after: number, original?: SessionCallOptions) {
+  private async sessionEvents(context: OperationContext, sessionId: string, after: number, original?: SessionCallOptions, previousEpoch?: string) {
     context = structuredClone(context); const parents = captureRemoteOperation(); let delivery = () => {};
     if (sessionId === SIDECHAT || !UUID.test(sessionId) || !Number.isSafeInteger(after) || after < 0) throw new TypeError('需要原Session与合法事件游标');
     const result = await this.budget(async call => {
-      const sessions = await this.sessions(context, call); const result = await sessions.readEvents(sessionId, after, call);
+      const sessions = await this.sessions(context, call); const result = await sessions.readEvents(sessionId, after, call, previousEpoch);
       this.#options.onEvents?.(context, sessionId, result);
       const fence = await this.#options.resolver.authorizeOperation(context, 'read', call.signal);
       delivery = () => { fence(); parents(); this.assertOpen(); if (call.signal?.aborted || performance.now() >= call.deadline) throw new Error('事件原预算已结束'); };

@@ -1,3 +1,4 @@
+import { RemoteGatewayError } from "./http-transport";
 import { isClientForeground } from "../native-ui/foreground";
 import {
   AppServerConnectionUnavailableError,
@@ -139,8 +140,8 @@ export async function recoverBackendConnection(
       { limit: 1 },
       { timeoutMs: 2_500 },
     );
-  } catch {
-    await reconnect();
+  } catch (error) {
+    if (!(error instanceof RemoteGatewayError)) await reconnect();
     return;
   }
   try {
