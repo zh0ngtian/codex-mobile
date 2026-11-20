@@ -35,8 +35,12 @@ export async function mediaRemote(options: { scope?: RemoteCommandScope; windows
     else if (message.method === 'command/exec') {
       const id = p.processId as string; const argv = [...p.command as string[]]; const file = id.includes('file:');
       const buffered = p.streamStdoutStderr === false;
-      if (file) argv[4] = mapping + (options.prefix ? `\n_fixture_previous_path=_fixture_path\ndef _fixture_path(p):\n    if isinstance(p,str) and p.startswith(${JSON.stringify(options.prefix)}): return _fixture_root+'/'+p[${options.prefix.length}:]\n    return _fixture_previous_path(p)\n` : '') + (buffered && delayReadMs ? `\nimport time\ntime.sleep(${delayReadMs / 1000})\n` : '') + argv[4];
-      if (file && buffered) { const request = JSON.parse(argv[7]!); reads.push(request); await beforeRead?.(request); }
+      const request = file && buffered ? JSON.parse(argv[7]!) : undefined;
+      if (file) argv[4] = mapping + (options.prefix ? `\n_fixture_previous_path=_fixture_path\ndef _fixture_path(p):\n    if isinstance(p,str) and p.startswith(${JSON.stringify(options.prefix)}): return _fixture_root+'/'+p[${options.prefix.length}:]\n    return _fixture_previous_path(p)\n` : '') + (request && request.mode !== 'stat' && delayReadMs ? `\nimport time\ntime.sleep(${delayReadMs / 1000})\n` : '') + argv[4];
+      if (request) {
+        if (request.mode === 'stat') { stats++; await beforeStat?.(); }
+        else { reads.push(request); await beforeRead?.(request); }
+      }
       const child = spawn(argv[0]!.startsWith('C:\\Fixture\\') ? 'python3' : argv[0]!, argv.slice(1), { cwd: root, detached: true, env: { PATH: process.env.PATH } });
       processes.set(id, child); child.stdin.on('error', () => {});
       const captured = { stdout: [] as Buffer[], stderr: [] as Buffer[] }; let metadataBuffer = '';
@@ -61,7 +65,6 @@ export async function mediaRemote(options: { scope?: RemoteCommandScope; windows
       if (p.streamStdin === false) child.stdin.end();
     } else if (message.method === 'command/exec/write') {
       const bytes = Buffer.from(p.deltaBase64 as string, 'base64');
-      if (bytes.includes(Buffer.from('"mode":"stat"'))) { stats++; await beforeStat?.(); }
       const child = processes.get(p.processId as string); child?.stdin.write(bytes); if (p.closeStdin) child?.stdin.end();
       queueMicrotask(() => reply(message, {}));
     } else if (message.method === 'command/exec/terminate') {

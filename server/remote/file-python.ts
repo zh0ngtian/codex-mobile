@@ -357,9 +357,7 @@ try:
     # READY在目标先发生，网关之后测量剩余时间：无需异机时钟同步即可给出保守绝对边界。
     deadline=min(deadline,ready_at+budget/1000);check();mode=request['mode'];path=request['path']
     if type(path)!=str or not os.path.isabs(path) or '\0' in path: raise Failure('invalid-input')
-    if mode=='stat':
-        s=os.stat(path);finish('stat',path=path,type=kind(s),facts=facts(s))
-    elif mode=='read':
+    if mode=='read':
         with open(path,'rb') as f:
             initial=facts(os.fstat(f.fileno()))
             if not stat.S_ISREG(os.fstat(f.fileno()).st_mode): raise Failure('invalid-input')

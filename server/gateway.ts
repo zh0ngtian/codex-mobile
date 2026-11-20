@@ -7,14 +7,14 @@ import { performance } from 'node:perf_hooks';
 import { extname, join, normalize } from "node:path";
 import { homedir } from "node:os";
 import WebSocket, { WebSocketServer } from "ws";
-import type { CodexProjectState } from "./codex-projects.js";
+import { RemoteProjectReadError, type CodexProjectState } from "./codex-projects.js";
 import { readImageGenerationError } from "./image-generation-error.js";
 import { TurnChangeHistory } from "./turn-change-history.js";
 import { MessageWebCitations } from "./web-citations.js";
 import { MessageTimestamps } from "./message-timestamps.js";
 import { compactTurnDetails, compactTurnCommentary, turnCommentaryRequest, validTurnCommentaryParams } from "./turn-details.js";
 import { FollowUps } from "./follow-ups.js";
-import { HttpSessions, HOSTED_SESSION_ID, readOriginalOperation, validateRpcEnvelope } from "./http-session.js";
+import { HttpSessions, HOSTED_SESSION_ID, isReadOnlyRpc, readOriginalOperation, validateRpcEnvelope, type RpcMessage } from "./http-session.js";
 import { BarkNotifications } from "./bark-notifications.js";
 import { FollowedThreadNotifications } from "./followed-thread-notifications.js";
 import { ImagePreviews } from "./image-preview.js";
@@ -25,7 +25,7 @@ import { parseTargetReference, TargetResolver, type ResolvedRemoteTarget } from 
 import { GatewayRemoteServices } from './gateway-remote-services.js';
 import { OperationScheduler } from './operation-scheduler.js';
 import { ThreadObserver } from './thread-observer.js';
-import { GatewayRpc } from './gateway-rpc.js';
+import { GatewayRpc, publicRemoteRpcError, remoteUpstreamError, remoteUpstreamUnavailable } from './gateway-rpc.js';
 import { GatewayAttachments } from './gateway-attachments.js';
 import type { OperationContext } from './operation-queue.js';
 import { withIndependentRemoteOperation } from './remote/operation-guard.js';
@@ -293,6 +293,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
   const imagePreviews = new ImagePreviews();
   const server: Server = createServer(async (request, response) => {
     let delivery = () => {};
+    let remoteRequest = false;
     try {
     const url = new URL(request.url ?? "/", "http://gateway.local");
     const origin = request.headers.origin;
@@ -360,6 +361,7 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       return;
     }
     const reference = url.searchParams.get('mode') === 'remote' && url.searchParams.has('target') ? parseTargetReference(JSON.parse(url.searchParams.get('target')!)) : undefined;
+    remoteRequest = reference !== undefined;
     // RPC入口在handle内核验完整context并在交付前复核，不叠加另一份上下文和授权。
     if (queuedRpc && ['/api/rpc', '/api/events', '/api/operations', '/api/read-snapshot'].includes(url.pathname)) {
       await queuedRpc.handle(request, response, url, reference); return;
@@ -551,9 +553,15 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
             };
         response.setHeader("content-type", "application/json; charset=utf-8");
         response.end(JSON.stringify(projectState));
-      } catch {
-        response.statusCode = 500;
-        response.end("无法读取 Codex 本地项目");
+      } catch (error) {
+        if (bundle && (remoteUpstreamUnavailable(error, true) || error instanceof RemoteProjectReadError && error.code === 'disconnected')) {
+          response.statusCode = 503;
+          response.setHeader('content-type', 'application/json; charset=utf-8');
+          response.end(JSON.stringify({ error: remoteUpstreamError }));
+        } else {
+          response.statusCode = 500;
+          response.end(bundle ? "无法读取远程项目" : "无法读取 Codex 本地项目");
+        }
       }
       return;
     }
@@ -665,7 +673,9 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       else {
         response.statusCode = [400, 403, 404, 405, 409, 413, 429, 507].includes((error as any)?.status) ? (error as any).status : 503;
         response.setHeader('content-type', 'application/json; charset=utf-8');
-        try { response.end(JSON.stringify({ error: { code: (error as any)?.code ?? 'target-unavailable', message: '目标或授权暂时不可用' } })); } catch { response.destroy(); }
+        const failure = remoteRequest && remoteUpstreamUnavailable(error)
+          ? remoteUpstreamError : { code: (error as any)?.code ?? 'target-unavailable', message: '目标或授权暂时不可用' };
+        try { response.end(JSON.stringify({ error: failure })); } catch { response.destroy(); }
       }
     }
   });
@@ -674,7 +684,9 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
   const wss = new WebSocketServer({ noServer: true });
   const queuedSocket = (client: WebSocket, context: OperationContext) => {
     const sessionId = randomUUID(); const controller = new AbortController(); let after = 0; let epoch: string | undefined;
-    let initialized = false; let polling = false; let requests = new Set<string>();
+    const remote = context.mode === 'remote';
+    let initialized = false; let polling = false;
+    let requests = new Map<string | number, { id: string | number; threadId: unknown }>();
     sockets.add(client);
     const send = (message: unknown) => { if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(message)); };
     const call = () => ({ deadline: performance.now() + 60000, signal: controller.signal });
@@ -682,15 +694,36 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
       if (!initialized || polling || client.readyState !== WebSocket.OPEN) return;
       polling = true;
       try {
-        const events = await scheduler!.events(context, sessionId, after, call());
+        const events = await scheduler!.events(context, sessionId, after, call(), remote ? epoch : undefined);
         if (controller.signal.aborted) return;
-        if (epoch && epoch !== events.epoch) { client.close(1012, 'session changed'); return; }
-        epoch = events.epoch; after = events.cursor;
+        const changed = epoch !== undefined && epoch !== events.epoch;
+        if (changed && !remote) { client.close(1012, 'session changed'); return; }
         const fence = await resolver!.authorizeOperation(context, 'read', controller.signal);
-        for (const message of events.messages) { fence(); send(message); }
-        const next = new Set<string>();
+        fence();
+        epoch = events.epoch; after = events.cursor;
+        if (changed) {
+          for (const request of requests.values()) send({ method: 'serverRequest/resolved', params: { requestId: request.id, threadId: request.threadId } });
+          requests.clear();
+          send({ method: 'mobile/reset', params: {} });
+        }
+        for (const message of events.messages) {
+          fence();
+          if (remote && message.method === 'serverRequest/resolved') {
+            const request = requests.get(message.params?.requestId);
+            if (request && request.threadId === message.params?.threadId) {
+              requests.delete(message.params?.requestId);
+              send({ ...message, params: { ...message.params, requestId: request.id } });
+            }
+          } else send(message);
+        }
+        const next: typeof requests = new Map();
         for (const message of events.requests) {
-          const key = JSON.stringify(message.id); next.add(key); if (!requests.has(key)) { fence(); send(message); }
+          if (message.id == null) continue;
+          const previous = requests.get(message.id);
+          // 同一上游请求 ID 可以在新代际复用，前端使用只绑定原审批的 ID。
+          const request = previous ?? { id: remote ? randomUUID() : message.id, threadId: message.params?.threadId };
+          next.set(message.id, request);
+          if (!previous) { fence(); send({ ...message, id: request.id }); }
         }
         requests = next;
       } catch { /* 暂时离线保留原游标与原逻辑 Session。 */ }
@@ -700,10 +733,19 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
     client.on('error', () => {});
     client.on('close', () => { clearInterval(timer); controller.abort(); sockets.delete(client); });
     client.on('message', data => {
+      let input: RpcMessage | undefined;
       void (async () => {
         if (rawMessageBytes(data) > MAX_APP_SERVER_MESSAGE_BYTES) { client.close(1009, 'message too large'); return; }
+        const requestId = randomUUID();
         const message = JSON.parse(rawMessageText(data));
-        const requestId = randomUUID(); const envelope = validateRpcEnvelope({ requestId, message, ...(!message.method && epoch ? { epoch } : {}) });
+        const envelope = validateRpcEnvelope({ requestId, message, ...(!message.method && epoch ? { epoch } : {}) });
+        input = envelope.message;
+        if (remote && !input.method) {
+          const approvalId = input.id;
+          const original = [...requests].find(([, request]) => request.id === approvalId);
+          if (!original) { send({ id: approvalId, error: { code: -32000, message: '原审批请求已失效' } }); return; }
+          envelope.message = { ...input, id: original[0] };
+        }
         let result = await queuedRpc!.dispatch(context, sessionId, envelope, call());
         while (result.status === 202 && !controller.signal.aborted) {
           await new Promise(resolve => setTimeout(resolve, 250));
@@ -713,7 +755,15 @@ export async function createGateway(options: GatewayOptions): Promise<Gateway> {
         if (message.method === 'initialized') { initialized = true; void poll(); }
         const fence = await resolver!.authorizeOperation(context, 'read', controller.signal); fence();
         if (message.id != null) send({ ...result.body, id: message.id });
-      })().catch(() => { if (!controller.signal.aborted) client.close(1011, 'RPC unavailable'); });
+      })().catch(error => {
+        if (controller.signal.aborted) return;
+        if (!remote || !input) { client.close(1011, 'RPC unavailable'); return; }
+        // 只响应当前有 ID 的请求。上游失败不结束手机到网关的连接。
+        if (input.id == null) return;
+        const failure = publicRemoteRpcError(error, isReadOnlyRpc(input) || input.method === 'initialize');
+        send({ id: input.id, error: { code: typeof failure.code === 'number' ? failure.code : -32000,
+          message: failure.message, ...(typeof failure.code === 'string' ? { data: { code: failure.code } } : {}) } });
+      });
     });
   };
   server.on("upgrade", (request, socket, head) => {

@@ -4,12 +4,13 @@ import { t } from "../../i18n";
 
 export function RunProgress({ thread, busy, sync, operationPending = false }: { thread: Record<string, any>; busy: boolean; sync: HttpSyncState | null; operationPending?: boolean }) {
   const [now, setNow] = useState(Date.now());
+  const gatewayUnavailable = sync?.stale && !sync.gatewayReachable;
   useEffect(() => {
-    if (!busy && !sync?.stale) return;
+    if (!busy && !gatewayUnavailable) return;
     const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
-  }, [busy, sync?.stale]);
-  if (!busy && !sync?.stale && !operationPending) return null;
+  }, [busy, gatewayUnavailable]);
+  if (!busy && !gatewayUnavailable && !operationPending) return null;
   const flags: string[] = thread.status?.activeFlags ?? [];
   const turn = thread.turns?.at(-1);
   const items: Record<string, any>[] = turn?.items ?? [];
@@ -26,11 +27,11 @@ export function RunProgress({ thread, busy, sync, operationPending = false }: { 
   const plan: Array<{ step: string; status: string }> = busy ? thread.mobilePlan ?? [] : [];
   return <section className="run-progress" aria-label={t("执行状态")}>
     {operationPending && <span role="status" className="operation-pending">{t("发送状态确认中")}</span>}
-    {(busy || sync?.stale) && <strong>{label}{detail ? ` · ${String(detail).slice(0, 120)}` : ""}</strong>}
+    {(busy || gatewayUnavailable) && <strong>{label}{detail ? ` · ${String(detail).slice(0, 120)}` : ""}</strong>}
     {plan.length > 0 && <ol>{plan.map((entry, index) => <li key={index} data-status={entry.status}>
       <span aria-hidden="true">{entry.status === "completed" ? "✓" : entry.status === "inProgress" ? "●" : "○"}</span> {entry.step}
     </li>)}</ol>}
-    {sync?.stale && <span>{t("连接暂时不可用，正在重试")}</span>}
+    {gatewayUnavailable && <span>{t("连接暂时不可用，正在重试")}</span>}
     {sync?.updatedAt && <small>{t("最近同步：{seconds} 秒前", { seconds: Math.max(0, Math.floor((now - sync.updatedAt) / 1_000)) })}</small>}
   </section>;
 }

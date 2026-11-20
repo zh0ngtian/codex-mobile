@@ -1,14 +1,32 @@
 import { snapshotRead } from './remote-read-snapshots.js';
 import { performance } from 'node:perf_hooks';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { TargetResolver } from './targets.js';
+import { TargetResolutionError, TargetResolver } from './targets.js';
 import { OperationScheduler } from './operation-scheduler.js';
 import { OperationQueueError, type OperationContext } from './operation-queue.js';
-import { HttpSessions, isReadOnlyRpc, readRpcEnvelope, HOSTED_SESSION_ID, type PublicRpcEnvelope, type RpcMessage, type SessionCallOptions } from './http-session.js';
+import { RemoteSendError } from './remote/relay.js';
+import { HttpError, HttpSessions, UNCERTAIN_RPC, isReadOnlyRpc, readRpcEnvelope, HOSTED_SESSION_ID, type PublicRpcEnvelope, type RpcMessage, type SessionCallOptions } from './http-session.js';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const SIDECHAT = 'c0dec000-0000-4000-8000-000000000002';
 function reject(status: number, message: string): never { throw Object.assign(new Error(message), { status }); }
+
+export function remoteUpstreamUnavailable(error: unknown, readOnly = false): boolean {
+  return (error instanceof TargetResolutionError && error.code === 'target-offline') ||
+    (error instanceof RemoteSendError && error.code === 'network' && (readOnly || !error.mayHaveBeenSent)) ||
+    (readOnly && error instanceof HttpError && error.code === UNCERTAIN_RPC);
+}
+export const remoteUpstreamError = { code: 'remote-upstream-unavailable', message: '远程上游暂不可用，请稍后重试' };
+
+export function publicRemoteRpcError(error: unknown, readOnly: boolean) {
+  if (remoteUpstreamUnavailable(error, readOnly)) return remoteUpstreamError;
+  if (error instanceof HttpError && error.code === UNCERTAIN_RPC) return { code: error.code, message: error.message };
+  if (error instanceof TargetResolutionError && ['identity-changed', 'pending-resume', 'paused', 'not-configured'].includes(error.code)) {
+    return { code: error.code, message: '远程授权需要处理，请在网关 Mac 上检查授权与恢复状态' };
+  }
+  const code = error instanceof HttpError || error instanceof OperationQueueError || error instanceof TargetResolutionError ? error.code : 'rpc-unavailable';
+  return { code, message: '远程请求未完成，请核对原请求' };
+}
 
 /** 公共 RPC 复用 Session/WAL；历史账本只供原 UUID 对账，现行请求不离线入队。 */
 export class GatewayRpc {
@@ -43,7 +61,10 @@ export class GatewayRpc {
     if (message.method === 'mobile/attachments/upload') reject(403, '附件请求只能由上传入口创建');
     if (['initialize', 'initialized'].includes(message.method ?? '')) {
       const result = await this.scheduler.protocol({ context, sessionId, requestId: envelope.requestId, message }, call);
-      if (result.outcome !== 'response') reject(503, '连接初始化未完成');
+      if (result.outcome !== 'response') {
+        if (context.mode === 'remote' && remoteUpstreamUnavailable(result.error, true)) throw result.error;
+        reject(503, '连接初始化未完成');
+      }
       if (!(result.message.result as any)?.gateway?.acceptingOffline) this.sessions.set(binding, await this.scheduler.sessionsForTarget(context, call));
       if (message.method === 'initialize' && this.scheduler.directRequests && (result.message as RpcMessage).error == null) {
         const upstream = result.message.result as Record<string, unknown>;
@@ -95,6 +116,7 @@ export class GatewayRpc {
     request.once('aborted', abort); response.once('close', closed);
     const timeout = setTimeout(abort, 60000); timeout.unref();
     response.setHeader('content-type', 'application/json; charset=utf-8'); response.setHeader('cache-control', 'no-store');
+    let readOnly = false;
     try {
       const sessionId = url.searchParams.get('sessionId') ?? '';
       if (!UUID.test(sessionId) || [HOSTED_SESSION_ID, SIDECHAT].includes(sessionId)) reject(400, 'Session ID 无效或保留');
@@ -120,9 +142,12 @@ export class GatewayRpc {
         fence();
       } else if (url.pathname === '/api/rpc' && request.method === 'POST') {
         const envelope = await readRpcEnvelope(request);
+        readOnly = isReadOnlyRpc(envelope.message) || ['initialize', 'initialized'].includes(envelope.message.method ?? '');
         const result = await this.dispatch(context, sessionId, envelope, call); status = result.status; value = result.body;
       } else if (url.pathname === '/api/events' && request.method === 'GET') {
-        value = await this.scheduler.events(context, sessionId, Number(url.searchParams.get('after') ?? '0'), call);
+        const previousEpoch = context.mode === 'remote' ? url.searchParams.get('epoch') ?? undefined : undefined;
+        if (previousEpoch !== undefined && !UUID.test(previousEpoch)) reject(400, '事件会话代际无效');
+        value = await this.scheduler.events(context, sessionId, Number(url.searchParams.get('after') ?? '0'), call, previousEpoch);
       } else if (url.pathname === '/api/operations' && request.method === 'GET') {
         const id = url.searchParams.get('requestId') ?? ''; if (!UUID.test(id)) reject(400, '请求 UUID 无效');
         const sessions = this.sessions.get(JSON.stringify(context));
@@ -142,8 +167,15 @@ export class GatewayRpc {
       response.statusCode = status; response.end(body);
     } catch (error) {
       if (!response.headersSent && !response.destroyed) {
+        if (reference && url.pathname === '/api/events' && request.method === 'GET' &&
+          !controller.signal.aborted && remoteUpstreamUnavailable(error, true)) {
+          response.statusCode = 204;
+          response.end();
+          return;
+        }
         response.statusCode = [400, 403, 404, 405, 409, 413, 429, 507].includes((error as any)?.status) ? (error as any).status : 503;
-        response.end(JSON.stringify({ error: { code: (error as any)?.code ?? 'rpc-unavailable', message: '请求未完成，请查询原请求或检查连接状态' } }));
+        response.end(JSON.stringify({ error: reference ? publicRemoteRpcError(error, readOnly) :
+          { code: (error as any)?.code ?? 'rpc-unavailable', message: '请求未完成，请查询原请求或检查连接状态' } }));
       } else response.destroy();
     } finally { clearTimeout(timeout); request.removeListener('aborted', abort); response.removeListener('close', closed); }
   }

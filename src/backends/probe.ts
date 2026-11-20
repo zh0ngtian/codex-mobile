@@ -1,5 +1,5 @@
 import { AppServerClient } from "../app-server/client";
-import { HttpRpcTransport, transportUuid } from "./http-transport";
+import { HttpRpcTransport, readRemoteGatewayError, transportUuid } from "./http-transport";
 import { gatewayUrl, readGatewayTargets } from './gateway-route';
 import type { GatewayTarget, BackendConfig } from "./types";
 import { t } from "../i18n";
@@ -58,7 +58,11 @@ export async function fetchBackendProjectState(
         gatewayUrl(config, "/api/projects").toString(),
         { method: "GET", mode: "cors", signal: controller.signal },
       );
-      if (!response.ok) throw new Error(t("项目目录接口返回 {status}", { status: response.status }));
+      if (!response.ok) {
+        const remoteError = config.gatewayMode === "remote" ? await readRemoteGatewayError(response) : undefined;
+        if (remoteError) throw remoteError;
+        throw new Error(t("项目目录接口返回 {status}", { status: response.status }));
+      }
       const payload = (await response.json()) as {
         projects?: unknown;
         projectlessThreadIds?: unknown;

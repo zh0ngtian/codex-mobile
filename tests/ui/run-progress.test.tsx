@@ -5,6 +5,15 @@ import { RunProgress } from "../../src/features/conversation/RunProgress";
 afterEach(cleanup);
 
 describe("拉取执行进度", () => {
+  it("网关仍可达时后台同步暂缓不显示连接错误", () => {
+    const sync = { updatedAt: Date.now(), stale: true, gatewayReachable: true as const };
+    const { rerender } = render(<RunProgress thread={{}} busy={false} sync={sync} />);
+    expect(screen.queryByLabelText("执行状态")).not.toBeInTheDocument();
+    rerender(<RunProgress thread={{}} busy sync={sync} />);
+    expect(screen.getByText("任务进行中")).toBeInTheDocument();
+    expect(screen.queryByText("连接暂时不可用，正在重试")).not.toBeInTheDocument();
+  });
+
   it("仅待确认时仍显示独立状态，确认结束后移除", () => {
     const { rerender } = render(<RunProgress thread={{ turns: [] }} busy={false} sync={null} operationPending />);
     expect(screen.getByRole("status").textContent).toBe("发送状态确认中");

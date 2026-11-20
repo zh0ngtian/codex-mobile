@@ -129,6 +129,112 @@ it('公开网关目录、HTTP、WS 与附件均沿唯一 Runtime，网关本机�
   } finally { socket?.terminate(); await gateway.close(); }
 }, 30000);
 
+it('Remote 图片缩略图与文件下载只使用能自然结束的文件读取命令', async () => {
+  const f = await gatewayRemote();
+  const gateway = await createGateway({ host: '127.0.0.1', port: 0, mode: 'external', upstreamUrl: 'ws://127.0.0.1:1',
+    staticDir: null, codexHome: f.gatewayHome, targetResolver: f.resolver });
+  const path = join(f.targetHome, '中文 图片.svg');
+  const bytes = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"></svg>';
+  const endpoint = (route: string) => {
+    const url = new URL(route, `http://127.0.0.1:${gateway.port}`);
+    url.search = new URLSearchParams({ mode: 'remote', target: JSON.stringify(f.reference), path, thumbnail: '1' }).toString();
+    return url;
+  };
+  try {
+    await writeFile(path, bytes);
+    const preview = await fetch(endpoint('/api/images/preview'));
+    expect(preview.status).toBe(200);
+    expect(preview.headers.get('content-type')).toBe('image/jpeg');
+    expect((await preview.arrayBuffer()).byteLength).toBeGreaterThan(0);
+    const download = await fetch(endpoint('/api/files/download/image.svg'));
+    expect(download.status).toBe(200);
+    expect(await download.text()).toBe(bytes);
+    const fileCalls = f.frames.filter(frame => frame.params?.processId?.startsWith('codex-mobile-file:'));
+    expect(fileCalls.length).toBeGreaterThan(0);
+    expect(fileCalls.every(frame => frame.method === 'command/exec'
+      && frame.params.streamStdin === false && frame.params.streamStdoutStderr === false)).toBe(true);
+  } finally { await gateway.close(); }
+}, 15000);
+
+it('官方 Relay 断开时保留客户端连接，恢复后旧审批不能提交给新代际', async () => {
+  const f = await gatewayRemote();
+  const gateway = await createGateway({ host: '127.0.0.1', port: 0, mode: 'external', upstreamUrl: 'ws://127.0.0.1:1',
+    staticDir: null, codexHome: f.gatewayHome, targetResolver: f.resolver, accessToken: 'token' });
+  const sessionId = randomUUID();
+  const url = (path: string) => {
+    const result = new URL(path, `http://127.0.0.1:${gateway.port}`);
+    result.searchParams.set('token', 'token'); result.searchParams.set('mode', 'remote');
+    result.searchParams.set('target', JSON.stringify(f.reference)); result.searchParams.set('sessionId', sessionId);
+    return result;
+  };
+  const httpRequest = (message: unknown) => fetch(url('/api/rpc'), { method: 'POST', body: JSON.stringify({ requestId: randomUUID(), message }) });
+  const wsUrl = url('/ws'); wsUrl.protocol = 'ws:';
+  let socket: WebSocket | undefined;
+  const initialize = { id: 1, method: 'initialize', params: { clientInfo: { name: 'test', version: '1' } } };
+  try {
+    expect((await httpRequest(initialize)).status).toBe(200);
+    expect((await httpRequest({ method: 'initialized' })).status).toBe(200);
+    const events = await fetch(url('/api/events'));
+    expect(events.status).toBe(200);
+    const { epoch: originalEpoch } = await events.json() as { epoch: string };
+    socket = new WebSocket(wsUrl);
+    await new Promise<void>((resolve, reject) => { socket!.once('open', resolve); socket!.once('error', reject); });
+    const wsMessages: any[] = [];
+    socket.on('message', data => wsMessages.push(JSON.parse(data.toString())));
+    const wsRequest = async (message: { id: number | string; method?: string; params?: unknown; result?: unknown }) => {
+      const offset = wsMessages.length;
+      socket!.send(JSON.stringify(message));
+      const reply = () => wsMessages.slice(offset).find(value => value.id === message.id && value.method == null);
+      await until(() => reply() !== undefined || socket!.readyState !== WebSocket.OPEN);
+      return reply();
+    };
+    expect(await wsRequest({ ...initialize, params: { clientInfo: { name: 'stream', version: '1' } } })).toMatchObject({ id: 1, result: { codexHome: f.targetHome } });
+    socket.send(JSON.stringify({ method: 'initialized' }));
+    const prompt = { id: 7, method: 'item/commandExecution/requestApproval', params: { threadId: 'thread', turnId: 'turn' } };
+    f.prompts.get('stream')!(prompt);
+    await until(() => wsMessages.some(message => message.method === prompt.method));
+    const originalApproval = wsMessages.find(message => message.method === prompt.method).id;
+    const target = { env_id: 'local-env', installation_id: 'local-install', kind: 'single', online: false, busy: false };
+    f.setTargets([target]); await f.runtime.refreshTargets();
+    f.connections[0]!.terminate();
+    await until(() => f.runtime.status().state === 'offline');
+    const paused = await fetch(url('/api/events'));
+    expect(paused.status).toBe(204);
+    expect(await paused.text()).toBe('');
+    const reading = { id: 2, method: 'thread/read', params: { threadId: 'thread' } };
+    const failed = await httpRequest(reading);
+    expect(failed.status).toBe(503);
+    expect(await failed.json()).toMatchObject({ error: { code: 'remote-upstream-unavailable' } });
+    await expect(wsRequest(reading)).resolves.toMatchObject({ id: 2, error: { data: { code: 'remote-upstream-unavailable' } } });
+    expect(socket.readyState).toBe(WebSocket.OPEN);
+    await until(() => f.connections.length > 1 && f.runtime.status().state === 'online');
+    f.setTargets([{ ...target, online: true }]); await f.runtime.refreshTargets();
+    const previousPage = url('/api/events');
+    previousPage.searchParams.set('epoch', originalEpoch);
+    previousPage.searchParams.set('after', String(Number.MAX_SAFE_INTEGER));
+    const resumed = await fetch(previousPage);
+    expect(resumed.status).toBe(200);
+    const resumedEvents = await resumed.json() as { epoch: string; reset: boolean };
+    expect(resumedEvents).toMatchObject({ reset: true });
+    expect(resumedEvents.epoch).not.toBe(originalEpoch);
+    await until(() => wsMessages.some(message => message.method === 'mobile/reset'));
+    f.prompts.get('stream')!(prompt);
+    await until(() => wsMessages.filter(message => message.method === prompt.method).length === 2);
+    const newApproval = wsMessages.filter(message => message.method === prompt.method).at(-1).id;
+    expect(newApproval).not.toBe(originalApproval);
+    expect(wsMessages).toContainEqual({ method: 'serverRequest/resolved', params: { requestId: originalApproval, threadId: 'thread' } });
+    await expect(wsRequest({ id: originalApproval, result: { decision: 'accept' } })).resolves.toMatchObject({ error: { message: '原审批请求已失效' } });
+    expect(f.frames.some(message => message.id === prompt.id && message.result?.decision === 'accept')).toBe(false);
+    await expect(wsRequest({ id: newApproval, result: { decision: 'accept' } })).resolves.toMatchObject({ id: newApproval });
+    expect(f.frames.some(message => message.id === prompt.id && message.result?.decision === 'accept')).toBe(true);
+    await expect(wsRequest({ ...reading, id: 3 })).resolves.toMatchObject({ id: 3, result: { ok: true } });
+    f.setManaged({ accountUserId: 'different-user' });
+    const revoked = await fetch(url('/api/events'));
+    expect(revoked.status).toBe(503);
+    expect(await revoked.json()).toMatchObject({ error: { code: 'identity-changed' } });
+  } finally { socket?.terminate(); await gateway.close(); }
+}, 15000);
+
 it('普通操作离线直接失败，只有排队消息跨手机共享、CAS编辑并在重启恢复后发送', async () => {
   const f = await gatewayRemote(message => message.method === 'turn/start' ? { turn: { id: 'turn', status: 'inProgress' } } : undefined);
   const targets = [{ env_id: 'local-env', installation_id: 'local-install', kind: 'single', online: false, busy: false }];

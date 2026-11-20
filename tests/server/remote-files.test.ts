@@ -365,7 +365,7 @@ it('目标stat版本贯穿非整块Range并支持空文件', async () => {
   expect(stat).toMatchObject({ path, type: 'file', size: data.length });
   const proofs: Record<string, unknown>[] = []; f.buffered(value => { proofs.push(JSON.parse(value.stdout.trimEnd().split('\n').at(-1)!)); return value; });
   expect(await bytes(f.files.read(path, { offset: 17, length: 800003, version: stat.version }))).toEqual(data.subarray(17, 800020));
-  expect(f.captures.map(capture => capture.request)).toEqual([{ path, offset: 17, length: 800003, window: 0, position: 0, expected: expect.any(Object) }, { path, offset: 17, length: 800003, window: 1, position: 524288, expected: expect.any(Object) }]);
+  expect(f.captures.map(capture => capture.request)).toEqual([{ mode: 'stat', path }, { path, offset: 17, length: 800003, window: 0, position: 0, expected: expect.any(Object) }, { path, offset: 17, length: 800003, window: 1, position: 524288, expected: expect.any(Object) }]);
   expect(proofs.at(-1)).toMatchObject({ kind: 'done', total: 800003, position: 524288, sha256: sha(data.subarray(17, 800020)) });
   expect(await bytes(f.files.read(path, { offset: data.length, length: 0, version: stat.version }))).toHaveLength(0);
   expect(proofs.at(-1)).toMatchObject({ kind: 'done', total: 0, position: 0, sha256: sha(Buffer.alloc(0)) });
@@ -411,8 +411,8 @@ it.each(['C:\\', 'C:/Users/名字/data', '\\\\codex-files-controlled-server\\sha
   const f = await fixture({ codexHome: 'C:\\Fixture\\.codex', platformFamily: 'windows', platformOs: 'windows', userAgent: 'controlled-not-windows-machine' });
   const { RemoteFiles } = await import('../../server/remote/files.js'); const files = await RemoteFiles.create(f.session, scope); cleanup.push(() => files.close());
   const outcome = await files.stat(path).catch(error => error); expect(outcome).toMatchObject({ mayHaveBeenSent: true });
-  const frame = f.frames.filter(frame => frame.method === 'command/exec/write').at(-1)!;
-  expect(JSON.parse(Buffer.from((frame.params as Record<string, string>).deltaBase64!, 'base64').toString()).path).toBe(path);
+  const frame = f.frames.filter(frame => frame.method === 'command/exec').at(-1)!;
+  expect(JSON.parse((frame.params as { command: string[] }).command[7]!).path).toBe(path);
 });
 
 it('JSONL同步解析结束后仍检查父操作，父期限失效不得交付解析结果', async () => {
@@ -1186,8 +1186,10 @@ it('受控Windows协议只传递目标原始路径，不以网关规则改写或
   const f = await fixture({ codexHome: 'C:\\Users\\名字\\.codex', platformFamily: 'windows', platformOs: 'windows', userAgent: 'controlled-not-windows-machine' });
   const { RemoteFiles } = await import('../../server/remote/files.js'); const files = await RemoteFiles.create(f.session, scope); cleanup.push(() => files.close());
   const path = 'C:\\Users\\名字\\a\\..\\data.bin'; await expect(files.stat(path)).rejects.toMatchObject({ code: 'invalid-input', mayHaveBeenSent: true });
-  const frame = f.frames.filter(frame => frame.method === 'command/exec/write').at(-1)!; const payload = JSON.parse(Buffer.from((frame.params as Record<string, string>).deltaBase64!, 'base64').toString()); expect(payload.path).toBe(path);
-  const command = f.frames.filter(frame => frame.method === 'command/exec').at(-1)!; expect((command.params as Record<string, string>).cwd).toBe('C:\\Users\\名字\\.codex');
+  const frame = f.frames.filter(frame => frame.method === 'command/exec').at(-1)!;
+  const params = frame.params as { command: string[]; cwd: string };
+  expect(JSON.parse(params.command[7]!).path).toBe(path);
+  expect(params.cwd).toBe('C:\\Users\\名字\\.codex');
 });
 
 it('Python3不支持和同session跨scope改绑均明确失败且没有替代连接', async () => {
@@ -1226,7 +1228,7 @@ it.each(['chunk-hash', 'chunk-size', 'base64', 'total-hash', 'truncated', 'extra
 
 it('外层exec提前exit0也立即失败，不能冒充完整文件证明', async () => {
   const f = await prepared(); f.exitFilesWithoutProof();
-  await expect(f.files.stat(join(f.directory, 'never-read'), { timeoutMs: 1000 })).rejects.toMatchObject({ code: 'protocol', mayHaveBeenSent: true });
+  await expect(f.files.list(f.directory, { timeoutMs: 1000 }).next()).rejects.toMatchObject({ code: 'protocol', mayHaveBeenSent: true });
 });
 
 it.each(['hash', 'size', 'nonce', 'raw'] as const)('DONE的%s损坏不得作为跨stream成功屏障', async fault => {
@@ -1261,7 +1263,9 @@ it('目录最后一页暂停期间取消后不能以正常结束返回', async (
 
 it('旧stream操作从READY时刻收紧到网关剩余期限，不用异机时钟或每块重置期限', async () => {
   const f = await prepared(); const path = join(f.directory, 'ready-budget'); await writeFile(path, 'x'); const before = f.frames.length;
-  await f.files.stat(path, { timeoutMs: 1000 });
+  const paths: string[] = [];
+  for await (const page of f.files.list(f.directory, { timeoutMs: 1000 })) paths.push(...page.map(entry => entry.path));
+  expect(paths).toContain(path);
   const payloads = f.frames.slice(before).filter(frame => frame.method === 'command/exec/write').map(frame => JSON.parse(Buffer.from((frame.params as Record<string, string>).deltaBase64!, 'base64').toString()));
   expect(typeof payloads[0].readyBudgetMs).toBe('number'); expect(payloads[0].readyBudgetMs).toBeGreaterThan(0); expect(payloads[0].readyBudgetMs).toBeLessThanOrEqual(1000);
   expect(payloads.slice(1).every(payload => payload.readyBudgetMs === undefined)).toBe(true);

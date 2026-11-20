@@ -284,7 +284,9 @@ it('同缩略图合并任务保留其他waiter，最后取消后不缓存且新�
 });
 
 it('Remote图片排队最多16项且仅两个active读取，取消后队列与能力均可恢复', async () => {
-  const implementation = await api(); const f = await target(); const source = implementation.remoteMediaFiles(f.files, 'gateway'); const images = new ImagePreviews();
+  const implementation = await api(); const f = await target(); const remote = implementation.remoteMediaFiles(f.files, 'gateway'); const images = new ImagePreviews();
+  let completedStats = 0;
+  const source = { ...remote, async stat(...args: Parameters<typeof remote.stat>) { const value = await remote.stat(...args); completedStats++; return value; } };
   for (let index = 0; index < 20; index++) await writeFile(join(f.root, `queued-${index}.svg`), svg('red'));
   f.delayReads(10000); const url = await http((req, res, url) => images.handle(req, res, url, source));
   const controllers: AbortController[] = []; const requests: Array<Promise<Response | null>> = []; const statuses: number[] = [];
@@ -294,7 +296,7 @@ it('Remote图片排队最多16项且仅两个active读取，取消后队列与�
   };
   try {
     start(0); await until(() => f.reads.length === 1); start(1); await until(() => f.reads.length === 2);
-    for (let index = 2; index < 20; index++) { const count = f.stats; start(index); await until(() => f.stats > count); await new Promise(resolve => setTimeout(resolve, 10)); }
+    for (let index = 2; index < 20; index++) { const count = completedStats; start(index); await until(() => completedStats > count); }
     await until(() => statuses.length === 2); expect(statuses).toEqual([503, 503]); expect(f.reads.length).toBe(2);
   } finally { for (const controller of controllers) controller.abort(); await Promise.all(requests); }
   await until(() => f.active === 0); f.delayReads(0);

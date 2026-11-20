@@ -6,7 +6,7 @@ import { t } from "../i18n";
 import { isNavigationResume } from "../../server/rpc-replay";
 import { httpRequestScheduler, type HttpRequestPriority } from "./http-request-scheduler";
 
-export interface HttpSyncState { updatedAt: number | null; stale: boolean }
+export interface HttpSyncState { updatedAt: number | null; stale: boolean; gatewayReachable?: true }
 interface Config extends GatewayRoute { id: string }
 interface PollResponse {
   epoch: string; cursor: number; messages: RpcMessage[]; requests: RpcMessage[];
@@ -23,6 +23,21 @@ function persistentWrite(operation: PendingWrite): PendingWrite {
   };
 }
 const pendingWrites = new Map<string, Map<string, PendingWrite>>();
+
+export class RemoteGatewayError extends Error {
+  readonly status = 503;
+  constructor(readonly reason: "upstream-unavailable" | "authorization-required") {
+    super(reason === "upstream-unavailable" ? t("远程上游暂不可用，请稍后重试") : t("远程授权需要处理，请在网关 Mac 上检查授权与恢复状态"));
+  }
+}
+
+export async function readRemoteGatewayError(response: Response): Promise<RemoteGatewayError | undefined> {
+  if (response.status !== 503) return;
+  const body = await response.json().catch(() => undefined);
+  const code = body?.error?.code;
+  if (code === "remote-upstream-unavailable") return new RemoteGatewayError("upstream-unavailable");
+  if (["identity-changed", "pending-resume", "paused", "not-configured"].includes(code)) return new RemoteGatewayError("authorization-required");
+}
 
 export class HttpOperationPendingError extends Error {
   constructor(readonly requestId: string, readonly request: RpcMessage, cause?: unknown, readonly submissionState: 'pending' | 'not-submitted' = 'pending') {
@@ -170,7 +185,10 @@ export class HttpRpcTransport extends EventTarget {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await this.fetcher(this.url(path, params), { ...init, mode: "cors", cache: "no-store", signal: controller.signal });
+      if (path === "/api/events" && response.status === 204) return null;
       if (!response.ok) {
+        const remoteError = this.config.gatewayMode === "remote" ? await readRemoteGatewayError(response) : undefined;
+        if (remoteError) throw remoteError;
         const error = new Error(response.status === 404
           ? t("设备网关需要升级以支持 HTTP 同步")
           : response.status === 401 ? t("访问口令不正确") : t("设备网关返回 {status}", { status: response.status }));
@@ -188,17 +206,18 @@ export class HttpRpcTransport extends EventTarget {
     if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     const message = JSON.parse(raw) as RpcMessage;
     const deadline = Date.now() + timeoutMs;
+    const approvalEpoch = !message.method ? this.epoch : undefined;
     // 同一网关的另一个设备可能正在恢复，握手不能阻断已连接设备的读取。
     if (message.method === "initialize" || message.method === "initialized") return this.sendNow(message, deadline, operationKey);
     return httpRequestScheduler.run(new URL(this.config.baseUrl).origin, priority, this.requestLifetime.signal,
       () => {
         const remaining = deadline - Date.now();
         if (remaining <= 0) throw new Error(t('{method} 请求超时', { method: message.method ?? 'HTTP' }));
-        return this.sendNow(message, deadline, operationKey);
+        return this.sendNow(message, deadline, operationKey, approvalEpoch);
       });
   }
 
-  private async sendNow(message: RpcMessage, deadline: number, operationKey?: string): Promise<void> {
+  private async sendNow(message: RpcMessage, deadline: number, operationKey?: string, approvalEpoch?: string): Promise<void> {
     if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     if (this.config.gatewayMode === 'remote') await this.restored;
     if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
@@ -213,6 +232,7 @@ export class HttpRpcTransport extends EventTarget {
       await this.firstPoll;
       if (!this.epoch || this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     }
+    if (approvalEpoch && this.epoch !== approvalEpoch) throw new Error(t("原审批请求已失效"));
     const sidechatRead = message.method === 'mobile/sidechat/rpc' && (message.params as any)?.method === 'read';
     const signature = !message.method || (!sidechatRead && !readMethods.has(message.method) && !isNavigationResume(message))
       ? (message.method ? JSON.stringify({ method: message.method, params: message.params, ...(operationKey ? { operationKey } : {}) }) : responseSignature(message, this.epoch)) : null;
@@ -264,7 +284,7 @@ export class HttpRpcTransport extends EventTarget {
           }
         } catch (reason) {
           failure = reason;
-          if (this.directRequests && !signature) throw reason;
+          if (!signature && (this.directRequests || reason instanceof RemoteGatewayError)) throw reason;
           if ([401, 409, 404, 400].includes((reason as { status?: number }).status ?? 0)) {
             // 旧未知项可能早已执行；新一轮拒绝不能撤销早先的受理事实。
             if (mayHaveBeenAccepted && signature) throw new HttpOperationPendingError(requestId, operation.message, reason);
@@ -303,7 +323,7 @@ export class HttpRpcTransport extends EventTarget {
       } else if (!response.error && (message.method === "turn/start" || message.method === "turn/steer")) {
         this.active = true;
         this.schedule(0);
-      } else if (!message.method && message.id != null) {
+      } else if (!message.method && message.id != null && operation.epoch === this.epoch) {
         this.answeredRequests.add(String(message.id));
         this.schedule(0);
       }
@@ -311,7 +331,10 @@ export class HttpRpcTransport extends EventTarget {
       this.inflightWrites.delete(requestId);
       if (message.id != null) this.inflightRpcWrites.delete(message.id);
       if (existing && signature && response && this.readyState === 1 && this.writes.get(signature) !== operation) {
-        this.emit({ method: "mobile/operation/confirmed", params: { requestId, request: operation.message, response } });
+        this.emit({ method: "mobile/operation/confirmed", params: {
+          requestId, request: operation.message, response,
+          ...(!operation.message.method && operation.epoch !== this.epoch ? { staleApproval: true } : {}),
+        } });
       }
       this.scheduleOperations();
     }
@@ -392,9 +415,21 @@ export class HttpRpcTransport extends EventTarget {
     clearTimeout(this.timer);
     this.polling = true;
     try {
-      const payload = await this.fetchJson("/api/events", {}, { after: String(this.cursor) }) as PollResponse;
+      const remote = this.config.gatewayMode === "remote";
+      // 网关可能正在恢复逻辑会话，等待其原 60 秒处理窗口结束。
+      const payload = await this.fetchJson("/api/events", {}, { after: String(this.cursor),
+        ...(remote && this.epoch ? { epoch: this.epoch } : {}),
+      }, remote ? 65_000 : undefined) as PollResponse | null;
       if (this.readyState !== 1 || !isClientForeground()) return;
-      if (this.epoch && this.epoch !== payload.epoch) { this.close(4001, "gateway session changed"); return; }
+      if (!payload) { this.failures++; this.sync(true, true); return; }
+      const restoredSession = Boolean(this.epoch && this.epoch !== payload.epoch);
+      if (restoredSession && !remote) { this.close(4001, "gateway session changed"); return; }
+      if (restoredSession) {
+        this.seenRequests.clear();
+        this.answeredRequests.clear();
+        this.latestRequests = [];
+        this.emit({ method: "mobile/requests", params: { requests: [] } });
+      }
       this.epoch = payload.epoch;
       this.active = payload.active || payload.requests.length > 0;
       this.hasMore = payload.hasMore === true;
@@ -402,7 +437,7 @@ export class HttpRpcTransport extends EventTarget {
         this.catchUpAnnounced = true;
         this.emit({ method: "mobile/events/catchup", params: { active: true } });
       }
-      if (payload.reset) this.emit({ method: "mobile/reset", params: {} });
+      if (payload.reset || restoredSession) this.emit({ method: "mobile/reset", params: {} });
       for (const message of payload.messages) this.emit(message);
       const pending = new Set(payload.requests.map((request) => String(request.id)));
       for (const id of this.answeredRequests) if (!pending.has(id)) this.answeredRequests.delete(id);
@@ -426,8 +461,8 @@ export class HttpRpcTransport extends EventTarget {
     } catch (reason) {
       if (this.readyState !== 1) return;
       this.failures++;
-      this.sync(true);
       const status = (reason as { status?: number }).status;
+      this.sync(true, this.config.gatewayMode === "remote" && status !== undefined && status !== 401);
       // Remote 暂时不可读不撤销手机至网关的提交能力；写入仍按原上下文由网关核验。
       if (status === 401 || (status === 503 && this.config.gatewayMode !== 'remote')) this.close(4001, "upstream unavailable");
     } finally {
@@ -436,8 +471,8 @@ export class HttpRpcTransport extends EventTarget {
     }
   }
 
-  private sync(stale: boolean) {
-    const state: HttpSyncState = { updatedAt: this.updatedAt, stale };
+  private sync(stale: boolean, gatewayReachable = false) {
+    const state: HttpSyncState = { updatedAt: this.updatedAt, stale, ...(gatewayReachable ? { gatewayReachable: true } : {}) };
     this.dispatchEvent(new CustomEvent("sync", { detail: state }));
     this.emit({ method: "mobile/sync", params: state });
   }

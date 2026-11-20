@@ -28,11 +28,17 @@ def verify(f,path,expected):
     try: actual=facts(os.stat(path))
     except FileNotFoundError: raise Failure('version')
     if facts(os.fstat(f.fileno()))!=expected or actual!=expected: raise Failure('version')
-try:
-    request=json.loads(sys.argv[3])
-    if type(request)!=dict or set(request)-{'path','offset','length','expected','window','position'} or not {'path','offset','window','position'}<=set(request): raise Failure('protocol')
-    path=request['path'];offset=request['offset'];window=request['window'];position=request['position']
+def handle(request):
+    if type(request)!=dict: raise Failure('protocol')
+    path=request.get('path')
     if type(path)!=str or not os.path.isabs(path) or '\0' in path: raise Failure('invalid-input')
+    if request.get('mode')=='stat':
+        if set(request)!={'mode','path'}: raise Failure('protocol')
+        s=os.stat(path);mode=s.st_mode
+        kind='file' if stat.S_ISREG(mode) else 'directory' if stat.S_ISDIR(mode) else 'symlink' if stat.S_ISLNK(mode) else 'other'
+        emit('stat',path=path,type=kind,facts=facts(s));return
+    if set(request)-{'path','offset','length','expected','window','position'} or not {'offset','window','position'}<=set(request): raise Failure('protocol')
+    offset=request['offset'];window=request['window'];position=request['position']
     if type(offset)!=int or type(window)!=int or type(position)!=int or offset<0 or window<0 or position!=window*WINDOW: raise Failure('protocol')
     with open(path,'rb') as f:
         initial=facts(os.fstat(f.fileno()))
@@ -61,7 +67,8 @@ try:
             verify(f,path,initial)
             emit('done',window=window,position=position,total=total,sha256=whole.hexdigest(),facts=initial)
         else: emit('batch-end',window=window,position=position,total=total,facts=initial)
-    finish()
+try:
+    handle(json.loads(sys.argv[3]));finish()
 except Failure as error:
     emit('failure',code=str(error));finish()
 except FileNotFoundError:

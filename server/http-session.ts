@@ -137,10 +137,11 @@ export function isReadOnlyRpc(message: RpcMessage): boolean {
   return typeof message.method === 'string' && (READ_ONLY_METHODS.has(message.method) || isNavigationResume(message));
 }
 
-class HttpError extends Error {
+export class HttpError extends Error {
   constructor(public status: number, message: string, public code = -32000) { super(message); }
 }
-const uncertain = () => new HttpError(503, "请求结果待确认，请刷新会话后检查，勿重复发送", -32004);
+export const UNCERTAIN_RPC = -32004;
+const uncertain = () => new HttpError(503, "请求结果待确认，请刷新会话后检查，勿重复发送", UNCERTAIN_RPC);
 
 type Operation = {
   requestId: string;
@@ -470,7 +471,7 @@ class Session {
       if (!committed && socket.lastSentSeqId === originalSequence) call.onSendRejected?.();
       if (error instanceof RemoteSendError) { if (error.mayHaveBeenSent) call.onSubmitted?.(); throw error; }
       if (committed) call.onSubmitted?.();
-      throw new RemoteSendError('Remote 发送被拒绝', committed);
+      throw new RemoteSendError('Remote 发送被拒绝', committed, undefined, 'rejected');
     }
   }
   private onMessage(message: RpcMessage, socket: SessionSocket) {
@@ -673,13 +674,15 @@ class Session {
     while (this.items.size > MAX_EVENTS) this.items.delete(this.items.keys().next().value!);
   }
 
-  events(after: number) {
+  events(after: number, previousEpoch?: string) {
     this.touch();
     if (!this.ready) throw new HttpError(503, "Initialize session before polling events");
     this.pruneSnapshots();
+    const epochChanged = previousEpoch !== undefined && previousEpoch !== this.epoch;
+    if (epochChanged) after = 0;
     const continuation = this.snapshotPages.get(after);
     if (!continuation && after > this.cursor && after >= SNAPSHOT_CURSOR_MIN) throw new HttpError(503, "Snapshot page expired; bootstrap again");
-    const reset = !continuation && (after > this.cursor || (this.history.length > 0 && after < this.history[0].cursor - 1));
+    const reset = !continuation && (epochChanged || after > this.cursor || (this.history.length > 0 && after < this.history[0].cursor - 1));
     const available = continuation ? continuation.snapshot.entries : reset ? [...this.snapshots.values()].sort((a, b) => {
       const ap = a.message.params ?? {}; const bp = b.message.params ?? {};
       if (ap.threadId === bp.threadId && (ap.turn?.id ?? ap.turnId) === (bp.turn?.id ?? bp.turnId)) {
@@ -751,6 +754,13 @@ class Session {
       return this.initializing;
     }
     return this.initialized;
+  }
+
+  async restoreReadConnection(call: SessionCall) {
+    if (this.ready || !this.initializationMessage) return;
+    const initialized = await this.initialize(this.initializationMessage, call);
+    if (initialized.error != null) throw new HttpError(503, "Unable to reinitialize session");
+    if (this.initializedNotification && !this.sentInitialized) await this.notifyInitialized({ method: "initialized", params: {} }, this.socket, call);
   }
 
   private async notifyInitialized(message: RpcMessage, socket = this.socket, call: SessionCall = sessionCall()) {
@@ -864,9 +874,7 @@ class Session {
         if (!message.method && (message.id == null || !this.pending.has(message.id))) throw new HttpError(409, "Approval request is not pending");
         if (message.method === "initialize") await this.connect(call);
         else if (!this.ready && (READ_ONLY_METHODS.has(message.method ?? "") || isNavigationResume(message)) && this.initializationMessage) {
-          const initialized = await this.initialize(this.initializationMessage, call);
-          if (initialized.error != null) throw new HttpError(503, "Unable to reinitialize session");
-          if (this.initializedNotification && !this.sentInitialized) await this.notifyInitialized({ method: "initialized", params: {} }, this.socket, call);
+          await this.restoreReadConnection(call);
         }
         else if (!this.ready || !this.open) throw new HttpError(503, "Initialize session before sending RPC");
         const submittedSocket = this.socket;
@@ -1474,9 +1482,14 @@ export class HttpSessions {
     authorization?.(); assertCall(call); assertRemoteOperation();
   }
   /** 与内部调度的协议/审批共用同一真实Session；公开路由保持原实现。 */
-  async readEvents(sessionId: string, after: number, call: SessionCallOptions) {
+  async readEvents(sessionId: string, after: number, call: SessionCallOptions, previousEpoch?: string) {
     let authorization: (() => void) | undefined;
-    const result = await this.withCall(call, async (_call, authorize) => { authorization = authorize; return this.session(sessionId, authorize).events(after); });
+    const result = await this.withCall(call, async (call, authorize) => {
+      authorization = authorize;
+      const session = this.session(sessionId, authorize);
+      if (this.options.remote) await session.restoreReadConnection(call);
+      return session.events(after, previousEpoch);
+    });
     authorization?.(); assertCall(call); assertRemoteOperation(); return result;
   }
   reconcileAttachment(requestId: string, message: RpcMessage, call: SessionCallOptions): Promise<RpcMessage | undefined> {
