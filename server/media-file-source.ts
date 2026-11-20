@@ -16,7 +16,7 @@ export interface MediaFileSource {
   readonly namespace: string;
   readonly paths: Pick<typeof path, 'isAbsolute' | 'basename' | 'extname'>;
   stat(path: string, signal?: AbortSignal): Promise<MediaFileDetails>;
-  open(path: string, version?: string, signal?: AbortSignal): Promise<MediaFile>;
+  open(path: string, expected?: MediaFileDetails, signal?: AbortSignal): Promise<MediaFile>;
 }
 export interface MediaFileReference { source: MediaFileSource; path: string; origin: 'target' | 'gateway-cache' }
 export class MediaFileVersionError extends Error {
@@ -31,11 +31,11 @@ function localDetails(path: string, value: BigIntStats): MediaFileDetails {
 export const localMediaFiles: MediaFileSource = Object.freeze({
   kind: 'local', namespace: 'gateway-local-media', paths: path,
   async stat(path: string, signal?: AbortSignal) { signal?.throwIfAborted(); return localDetails(path, await stat(path, { bigint: true })); },
-  async open(path: string, version?: string, signal?: AbortSignal) {
+  async open(path: string, expected?: MediaFileDetails, signal?: AbortSignal) {
     signal?.throwIfAborted(); const file = await open(path, 'r');
     try {
       const details = localDetails(path, await file.stat({ bigint: true })); signal?.throwIfAborted();
-      if (version !== undefined && details.version !== version) throw new MediaFileVersionError();
+      if (expected && (expected.path !== path || details.version !== expected.version)) throw new MediaFileVersionError();
       return { details,
         async *read(offset = 0, length = details.size - offset) {
           signal?.throwIfAborted(); if (!length) return;
@@ -61,27 +61,23 @@ export function remoteMediaFiles(files: RemoteFiles, gatewayId: string): MediaFi
       const details = await files.stat(path, { signal });
       return { ...details, version: JSON.stringify([namespace, details.version]) };
     },
-    async open(path, version, signal) {
-      const selected = await files.stat(path, { signal });
-      const details = { ...selected, version: JSON.stringify([namespace, selected.version]) };
-      if (version !== undefined && version !== details.version) throw new MediaFileVersionError();
+    async open(path, expected, signal) {
+      signal?.throwIfAborted();
+      const details = expected ?? await source.stat(path, signal);
+      const [fileNamespace, version] = JSON.parse(details.version) as [string, string];
+      if (details.path !== path || fileNamespace !== namespace || typeof version !== 'string') throw new MediaFileVersionError();
       const controller = new AbortController(); const cancelled = () => controller.abort(signal?.reason);
       signal?.addEventListener('abort', cancelled, { once: true }); if (signal?.aborted) cancelled();
       return { details,
-        async *read(offset = 0, length = selected.size - offset) {
-          let pending: Buffer | undefined;
-          // 单次能力上限不改变媒体大小；每段绑定同一个冻结版本，保持流式背压。
-          for (let position = 0; position < length; position += REMOTE_FILE_LIMITS.maxBytes) {
+        async *read(offset = 0, length = details.size - offset) {
+          let position = 0;
+          do {
             const size = Math.min(REMOTE_FILE_LIMITS.maxBytes, length - position);
-            for await (const bytes of files.read(path, { offset: offset + position, length: size, version: selected.version, timeoutMs: 600000, signal: controller.signal })) {
-              if (pending) yield pending;
-              pending = bytes;
-            }
-          }
+            // 每段在目标打开和读完时校验同一版本，通过最后一块的完整性校验后才交付。
+            yield* files.read(path, { offset: offset + position, length: size, version, timeoutMs: 600000, signal: controller.signal });
+            position += size;
+          } while (position < length);
           controller.signal.throwIfAborted();
-          if ((await source.stat(path, controller.signal)).version !== details.version) throw new MediaFileVersionError();
-          // 最后一块在所有窗口与最终版本复核后才交给 Content-Length 响应。
-          if (pending) yield pending;
         },
         async close() { signal?.removeEventListener('abort', cancelled); controller.abort(); },
       };

@@ -65,13 +65,14 @@ export class ImagePreviews {
     } else this.active -= 1;
   }
 
-  private async convert(source: MediaFileSource, path: string, version: string, key: string, signal: AbortSignal): Promise<Thumbnail> {
+  private async convert(source: MediaFileSource, details: MediaFileDetails, key: string, signal: AbortSignal): Promise<Thumbnail> {
     await this.acquire(signal);
+    const { path, version } = details;
     let file: MediaFile | undefined;
     try {
       signal.throwIfAborted();
       // Only active jobs open source files; queued and coalesced requests hold no file descriptors.
-      file = await source.open(path, version, signal);
+      file = await source.open(path, details, signal);
       if (file.details.version !== version) {
         throw new ImagePreviewError(409, "Image changed while queued; retry preview");
       }
@@ -88,7 +89,6 @@ export class ImagePreviews {
       await file.close();
       file = undefined;
       signal.throwIfAborted();
-      if ((await source.stat(path, signal)).version !== version) throw new ImagePreviewError(409, "Image changed during read; retry preview");
       const bytes = await sharp(sourceBytes, { limitInputPixels: MAX_SOURCE_PIXELS, failOn: "error" })
         .autoOrient()
         .resize({ width: 640, height: 640, fit: "inside", withoutEnlargement: true })
@@ -130,7 +130,7 @@ export class ImagePreviews {
     }
   }
 
-  private async thumbnail(source: MediaFileSource, path: string, version: string, key: string, signal: AbortSignal) {
+  private async thumbnail(source: MediaFileSource, details: MediaFileDetails, key: string, signal: AbortSignal) {
     signal.throwIfAborted();
     const cached = this.cache.get(key);
     if (cached) {
@@ -142,7 +142,7 @@ export class ImagePreviews {
     if (!job || job.controller.signal.aborted) {
       const controller = new AbortController();
       const created = { controller, waiters: 0, settled: false, promise: undefined as unknown as Promise<Thumbnail> };
-      created.promise = Promise.resolve().then(() => this.convert(source, path, version, key, controller.signal)).finally(() => {
+      created.promise = Promise.resolve().then(() => this.convert(source, details, key, controller.signal)).finally(() => {
         created.settled = true;
         if (this.inFlight.get(key) === created) this.inFlight.delete(key);
       });
@@ -192,7 +192,7 @@ export class ImagePreviews {
       if (details.size === 0) throw new ImagePreviewError(415, "Empty image");
       if (details.size > MAX_SOURCE_BYTES) throw new ImagePreviewError(413, "Image exceeds 64 MiB");
       const key = JSON.stringify([source.namespace, details.version]);
-      const thumbnail = url.searchParams.get("thumbnail") === "1" ? await this.thumbnail(source, path, details.version, key, controller.signal) : null;
+      const thumbnail = url.searchParams.get("thumbnail") === "1" ? await this.thumbnail(source, details, key, controller.signal) : null;
       controller.signal.throwIfAborted();
       const etag = thumbnail?.etag ?? etagFor(key);
       // Always revalidate against current file identity, including overwrites preserving mtime and size.
@@ -209,11 +209,23 @@ export class ImagePreviews {
       if (request.method === "HEAD") { response.end(); return; }
       if (thumbnail) { response.end(thumbnail.bytes); return; }
       // pipeline observes read/client errors; no unhandled stream error can terminate the gateway.
-      file = await source.open(path, details.version, controller.signal);
+      file = await source.open(path, details, controller.signal);
       if (file.details.version !== details.version) {
         throw new ImagePreviewError(409, "Image changed before download; retry preview");
       }
-      await pipeline(Readable.from(file.read(), { objectMode: false }), response, { signal: controller.signal });
+      // 等第一块通过目标版本检查后再交给 pipeline，保留发送正文前的 HTTP 错误。
+      const chunks = file.read()[Symbol.asyncIterator]();
+      try {
+        const first = await chunks.next();
+        if (first.done) throw new ImagePreviewError(409, "Image changed before download; retry preview");
+        const stream = Readable.from((async function* () {
+          yield first.value;
+          yield* { [Symbol.asyncIterator]: () => chunks };
+        })(), { objectMode: false });
+        await pipeline(stream, response, { signal: controller.signal });
+      } finally {
+        await chunks.return?.();
+      }
     } catch (error) {
       if (response.headersSent || response.destroyed) {
         response.destroy();

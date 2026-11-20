@@ -57,7 +57,7 @@ it('图片缩略图按可信网关和完整目标隔离缓存，原图/HEAD/ETag
   const path = '/media/shared.svg'; await writeFile(join(a.root, 'shared.svg'), svg('red')); await writeFile(join(b.root, 'shared.svg'), svg('blue'));
   const sources = { a: implementation.remoteMediaFiles(a.files, 'gateway-one'), b: implementation.remoteMediaFiles(b.files, 'gateway-one'),
     c: implementation.remoteMediaFiles(a.files, 'gateway-two') };
-  await expect(sources.c.open(path, (await sources.a.stat(path)).version)).rejects.toThrow('File changed');
+  await expect(sources.c.open(path, await sources.a.stat(path))).rejects.toThrow('File changed');
   const images = new ImagePreviews();
   const url = await http((req, res, url) => images.handle(req, res, url, sources[url.searchParams.get('target') as keyof typeof sources]));
   const first = await fetch(url(path, { target: 'a', thumbnail: '1' })); expect(first.status).toBe(200); const firstBytes = await body(first);
@@ -72,6 +72,27 @@ it('图片缩略图按可信网关和完整目标隔离缓存，原图/HEAD/ETag
   await writeFile(join(a.root, 'shared.svg'), svg('green'));
   const changed = await fetch(url(path, { target: 'a', thumbnail: '1' }), { headers: { 'if-none-match': first.headers.get('etag')! } });
   expect(changed.status).toBe(200); expect(await body(changed)).not.toEqual(firstBytes);
+});
+
+it.each([
+  { thumbnail: false, metadataCalls: 1 },
+  { thumbnail: true, metadataCalls: 2 },
+])('Remote 图片只做必要的元数据查询（缩略图 $thumbnail）', async ({ thumbnail, metadataCalls }) => {
+  const implementation = await api();
+  const f = await target();
+  const source = implementation.remoteMediaFiles(f.files, 'gateway');
+  const images = new ImagePreviews();
+  const original = svg('red');
+  await writeFile(join(f.root, 'preview.svg'), original);
+  const url = await http((req, res, url) => images.handle(req, res, url, source));
+
+  const response = await fetch(url('/media/preview.svg', thumbnail ? { thumbnail: '1' } : {}));
+  expect(response.status).toBe(200);
+  const data = await body(response);
+  if (thumbnail) expect(await sharp(data).metadata()).toMatchObject({ format: 'jpeg', width: 32, height: 16 });
+  else expect(data).toEqual(original);
+  expect(f.reads).toHaveLength(1);
+  expect(f.stats).toBe(metadataCalls);
 });
 
 it('视频注入保留单Range、suffix/open、206/416与原有404/415及空文件语义', async () => {
@@ -226,12 +247,12 @@ it('可信引用编码失败或缓存不可写时保留完整内联协议消息'
   expect(await blocked.result(original)).toEqual(original);
 });
 
-it('读取或转换期间替换目标图片时返回409且不污染缓存，同文件符号链接仍可读取', async () => {
+it.each([false, true])('首次读图前替换目标文件返回409（缩略图 %s）', async thumbnail => {
   const implementation = await api(); const f = await target(); const source = implementation.remoteMediaFiles(f.files, 'gateway'); const images = new ImagePreviews();
   const file = join(f.root, 'replace.svg'); await writeFile(file, svg('red'));
   const url = await http((req, res, url) => images.handle(req, res, url, source)); let swapped = false;
   f.beforeRead(async () => { if (swapped) return; swapped = true; const replacement = join(f.root, 'next.svg'); await writeFile(replacement, svg('blue')); await rename(replacement, file); });
-  const rejected = await fetch(url('/media/replace.svg', { thumbnail: '1' })); expect(rejected.status).toBe(409); await body(rejected);
+  const rejected = await fetch(url('/media/replace.svg', thumbnail ? { thumbnail: '1' } : {})); expect(rejected.status).toBe(409); await body(rejected);
   f.beforeRead(); const accepted = await fetch(url('/media/replace.svg', { thumbnail: '1' })); expect(accepted.status).toBe(200);
   expect((await sharp(await body(accepted)).stats()).channels[2].mean).toBeGreaterThan(200);
   const { symlink } = await import('node:fs/promises'); await symlink(file, join(f.root, 'link.svg'));
@@ -306,14 +327,14 @@ it('Remote图片排队最多16项且仅两个active读取，取消后队列与�
 it('图片转换结束后的目标替换同样拒绝且不缓存旧转换结果', async () => {
   const implementation = await api(); const f = await target(); const source = implementation.remoteMediaFiles(f.files, 'gateway'); const images = new ImagePreviews();
   await writeFile(join(f.root, 'after-convert.svg'), svg('red'));
-  f.beforeStat(async () => { if (f.stats === 5) { const replacement = join(f.root, 'replacement.svg'); await writeFile(replacement, svg('blue')); await rename(replacement, join(f.root, 'after-convert.svg')); } });
+  f.beforeStat(async () => { if (f.stats === 2) { const replacement = join(f.root, 'replacement.svg'); await writeFile(replacement, svg('blue')); await rename(replacement, join(f.root, 'after-convert.svg')); } });
   const url = await http((req, res, url) => images.handle(req, res, url, source));
   const response = await fetch(url('/media/after-convert.svg', { thumbnail: '1' })); expect(response.status).toBe(409); await body(response);
   f.beforeStat(); const retry = await fetch(url('/media/after-convert.svg', { thumbnail: '1' })); expect(retry.status).toBe(200);
   expect((await sharp(await body(retry)).stats()).channels[2].mean).toBeGreaterThan(200);
 });
 
-it('排队期间目标图片替换在active复核时拒绝，未为等待项提前读取目标字节', async () => {
+it('排队中的缩略图不提前读取，出队时按首次版本拒绝替代文件', async () => {
   const implementation = await api(); const f = await target(); const remote = implementation.remoteMediaFiles(f.files, 'gateway'); const images = new ImagePreviews();
   let completedStats = 0;
   const source = { ...remote, async stat(...args: Parameters<typeof remote.stat>) { const value = await remote.stat(...args); completedStats++; return value; } };
@@ -325,10 +346,14 @@ it('排队期间目标图片替换在active复核时拒绝，未为等待项提�
   const b = fetch(url('/media/active-b.svg', { thumbnail: '1' }), { signal: controllers[1].signal }).catch(() => null);
   await until(() => f.reads.length === 2);
   const waiting = fetch(url('/media/queued.svg', { thumbnail: '1' })); await until(() => completedStats >= 3);
+  expect(f.reads).toHaveLength(2);
   await writeFile(join(f.root, 'replacement.svg'), svg('blue')); await rename(join(f.root, 'replacement.svg'), join(f.root, 'queued.svg'));
+  f.delayReads(0);
   controllers.forEach(controller => controller.abort()); await Promise.all([a, b]);
-  const rejected = await waiting; expect(rejected.status).toBe(409); await body(rejected); expect(f.reads.length).toBe(2);
-  f.delayReads(0); const retry = await fetch(url('/media/queued.svg', { thumbnail: '1' })); expect(retry.status).toBe(200); await body(retry);
+  const rejected = await waiting; expect(rejected.status).toBe(409); await body(rejected);
+  expect(f.reads).toHaveLength(3);
+  expect(f.reads[2]).toMatchObject({ path: '/media/queued.svg', expected: expect.any(Object) });
+  const retry = await fetch(url('/media/queued.svg', { thumbnail: '1' })); expect(retry.status).toBe(200); await body(retry);
 });
 
 it('超过分段边界前目标替换会中断HTTP，不能以Content-Length伪装完整下载', async () => {
