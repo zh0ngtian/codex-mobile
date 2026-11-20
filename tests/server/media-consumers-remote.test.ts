@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createHash } from 'node:crypto';
-import { mkdtemp, open, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
@@ -43,13 +43,29 @@ it('临时RPC目标的同名文件下载隔离字节，保留GET/HEAD、UTF8名�
     expect(result.status).toBe(200); expect(result.headers.get('content-length')).toBe(String(bytes.length));
     expect(result.headers.get('content-disposition')).toBe(`attachment; filename*=UTF-8''${encodeURIComponent('中文照片.png')}`);
     expect(result.headers.get('content-type')).toBe('image/png'); expect(await body(result)).toEqual(bytes);
-    const readCount = (id === 'a' ? a : b).reads.length;
+    const target = id === 'a' ? a : b;
+    expect(target.stats).toBe(0);
+    expect(target.reads).toHaveLength(1);
     const head = await fetch(url(path, { target: id }), { method: 'HEAD' });
     expect(head.status).toBe(200); expect(head.headers.get('content-length')).toBe(String(bytes.length)); expect((await body(head)).length).toBe(0);
-    expect((id === 'a' ? a : b).reads.length).toBe(readCount);
+    expect(target.stats).toBe(1); expect(target.reads).toHaveLength(1);
   }
   expect((await fetch(url('relative.png', { target: 'a' }))).status).toBe(400);
   expect((await fetch(url('/media/bad\0.png', { target: 'a' }))).status).toBe(400);
+});
+
+it('Remote 空文件下载一次读取得到零长度，目录及不存在的文件返回404', async () => {
+  const f = await target(); const source = (await api()).remoteMediaFiles(f.files, 'gateway');
+  await writeFile(join(f.root, 'empty.txt'), '');
+  await mkdir(join(f.root, 'folder'));
+  const url = await http((req, res, url) => downloadFile(req, res, url, source));
+  const empty = await fetch(url('/media/empty.txt'));
+  expect(empty.status).toBe(200); expect(empty.headers.get('content-length')).toBe('0');
+  expect(await body(empty)).toEqual(Buffer.alloc(0));
+  expect((await fetch(url('/media/folder'))).status).toBe(404);
+  expect((await fetch(url('/media/missing.txt'))).status).toBe(404);
+  expect(f.stats).toBe(0);
+  expect(f.reads).toHaveLength(3);
 });
 
 it('图片缩略图按可信网关和完整目标隔离缓存，原图/HEAD/ETag/304使用目标版本', async () => {
@@ -272,8 +288,13 @@ it('大于100MiB下载以同一版本分段流式传输，Range跨分段边界�
   for await (const chunk of response.body!) { actual.update(chunk); count += chunk.length; }
   expect(count).toBe(size); expect(actual.digest('hex')).toBe(expected.digest('hex'));
   expect(f.reads.some(read => read.offset === 100 * 1024 * 1024 && read.length === 1024 * 1024 + 17)).toBe(true);
-  expect(f.reads.every(read => read.length! <= 100 * 1024 * 1024)).toBe(true);
-  expect(new Set(f.reads.map(read => JSON.stringify(read.expected))).size).toBe(1);
+  expect(f.stats).toBe(0);
+  const [firstRead, ...continuations] = f.reads;
+  expect(firstRead).toMatchObject({ download: true, offset: 0, position: 0 });
+  expect(firstRead?.expected).toBeUndefined();
+  expect(continuations.every(read => read.length! <= 100 * 1024 * 1024)).toBe(true);
+  expect(continuations[0]?.expected).toEqual(expect.any(Object));
+  expect(new Set(continuations.map(read => JSON.stringify(read.expected))).size).toBe(1);
   const boundary = await fetch(url('/media/large.mp4', { video: '1' }), { headers: { range: `bytes=${100 * 1024 * 1024 - 9}-${100 * 1024 * 1024 + 8}` } });
   expect(boundary.status).toBe(206); expect((await body(boundary)).toString()).toBe('cross-boundary-end');
 }, 30000);
