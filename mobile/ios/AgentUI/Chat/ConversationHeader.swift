@@ -84,6 +84,7 @@ private struct ConversationSubtitle: ViewModifier {
     let title: String
     let subtitle: String
     func body(content: Content) -> some View {
+        #if compiler(>=6.2)
         if #available(iOS 26.0, *) { content.navigationSubtitle(subtitle) }
         else {
             content.toolbar {
@@ -93,6 +94,14 @@ private struct ConversationSubtitle: ViewModifier {
                 }
             }
         }
+        #else
+        content.toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 2) { Text(title).font(.body); Text(subtitle).font(.body).foregroundStyle(.secondary) }
+                    .lineLimit(1)
+            }
+        }
+        #endif
     }
 }
 

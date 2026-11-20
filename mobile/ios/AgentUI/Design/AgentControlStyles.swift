@@ -4,12 +4,16 @@ import SwiftUI
 struct AgentGlassSurface: ViewModifier {
     var cornerRadius: CGFloat = 24
     func body(content: Content) -> some View {
+        #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
             // 输入栏仅借用玻璃材质；整块表面交互会抢走与其重叠的系统菜单项点击。
             content.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
         } else {
             content.background(.regularMaterial, in: .rect(cornerRadius: cornerRadius))
         }
+        #else
+        content.background(.regularMaterial, in: .rect(cornerRadius: cornerRadius))
+        #endif
     }
 }
 
@@ -17,6 +21,7 @@ struct AgentGlassButton: ViewModifier {
     var prominent = false
     var circular = false
     @ViewBuilder func body(content: Content) -> some View {
+        #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
             if prominent { content.buttonStyle(.glassProminent).buttonBorderShape(circular ? .circle : .capsule) }
             else { content.buttonStyle(.glass).buttonBorderShape(circular ? .circle : .capsule) }
@@ -24,13 +29,21 @@ struct AgentGlassButton: ViewModifier {
             if prominent { content.buttonStyle(.borderedProminent).buttonBorderShape(circular ? .circle : .capsule) }
             else { content.buttonStyle(.bordered).buttonBorderShape(circular ? .circle : .capsule) }
         }
+        #else
+        if prominent { content.buttonStyle(.borderedProminent).buttonBorderShape(circular ? .circle : .capsule) }
+        else { content.buttonStyle(.bordered).buttonBorderShape(circular ? .circle : .capsule) }
+        #endif
     }
 }
 
 struct AgentGlassGroup<Content: View>: View {
     @ViewBuilder let content: Content
     var body: some View {
+        #if compiler(>=6.2)
         if #available(iOS 26.0, *) { GlassEffectContainer(spacing: 12) { content } }
         else { content }
+        #else
+        content
+        #endif
     }
 }

@@ -30,7 +30,11 @@ struct ComposerSubmitButton: View {
 
 /// 已有明确的圆形填充，在 Show Borders 下不再叠加系统玻璃按钮的额外描边。
 private struct ComposerSubmitAppearance: ViewModifier {
+    #if compiler(>=6.2.1)
     @Environment(\.accessibilityShowBorders) private var showBorders
+    #else
+    @Environment(\.accessibilityShowButtonShapes) private var showBorders
+    #endif
     let accent: AgentAccent
     @Environment(\.isEnabled) private var isEnabled
     @ViewBuilder func body(content: Content) -> some View {

@@ -779,7 +779,11 @@ struct AgentTypographyFixture: ViewModifier {
 }
 /// 显式布局回归参数下记录真实表面范围，避免辅助功能容器只返回子控件并集。
 struct AgentComposerGeometryFixture: ViewModifier {
+    #if compiler(>=6.2.1)
     @Environment(\.accessibilityShowBorders) private var showBorders
+    #else
+    @Environment(\.accessibilityShowButtonShapes) private var showBorders
+    #endif
     @State private var frame = CGRect.zero
     func body(content: Content) -> some View {
         if ProcessInfo.processInfo.arguments.contains("--agent-composer-geometry-fixture") {
