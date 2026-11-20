@@ -129,6 +129,33 @@ it('公开网关目录、HTTP、WS 与附件均沿唯一 Runtime，网关本机�
   } finally { socket?.terminate(); await gateway.close(); }
 }, 30000);
 
+it('Remote 图片缩略图与文件下载只使用能自然结束的文件读取命令', async () => {
+  const f = await gatewayRemote();
+  const gateway = await createGateway({ host: '127.0.0.1', port: 0, mode: 'external', upstreamUrl: 'ws://127.0.0.1:1',
+    staticDir: null, codexHome: f.gatewayHome, targetResolver: f.resolver });
+  const path = join(f.targetHome, '中文 图片.svg');
+  const bytes = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"></svg>';
+  const endpoint = (route: string) => {
+    const url = new URL(route, `http://127.0.0.1:${gateway.port}`);
+    url.search = new URLSearchParams({ mode: 'remote', target: JSON.stringify(f.reference), path, thumbnail: '1' }).toString();
+    return url;
+  };
+  try {
+    await writeFile(path, bytes);
+    const preview = await fetch(endpoint('/api/images/preview'));
+    expect(preview.status).toBe(200);
+    expect(preview.headers.get('content-type')).toBe('image/jpeg');
+    expect((await preview.arrayBuffer()).byteLength).toBeGreaterThan(0);
+    const download = await fetch(endpoint('/api/files/download/image.svg'));
+    expect(download.status).toBe(200);
+    expect(await download.text()).toBe(bytes);
+    const fileCalls = f.frames.filter(frame => frame.params?.processId?.startsWith('codex-mobile-file:'));
+    expect(fileCalls.length).toBeGreaterThan(0);
+    expect(fileCalls.every(frame => frame.method === 'command/exec'
+      && frame.params.streamStdin === false && frame.params.streamStdoutStderr === false)).toBe(true);
+  } finally { await gateway.close(); }
+}, 15000);
+
 it('普通操作离线直接失败，只有排队消息跨手机共享、CAS编辑并在重启恢复后发送', async () => {
   const f = await gatewayRemote(message => message.method === 'turn/start' ? { turn: { id: 'turn', status: 'inProgress' } } : undefined);
   const targets = [{ env_id: 'local-env', installation_id: 'local-install', kind: 'single', online: false, busy: false }];

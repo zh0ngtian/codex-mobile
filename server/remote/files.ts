@@ -96,12 +96,22 @@ export class RemoteFiles {
   private async release(channel: RemoteFileChannel | undefined): Promise<void> { if (channel) { await channel.stop(); channel.release(); this.channels.delete(channel); } }
   private track<T>(work: Promise<T>): Promise<T> { this.flights.add(work); void work.then(() => this.flights.delete(work), () => this.flights.delete(work)); return work; }
   async stat(path: string, options: RemoteFileOptions = {}): Promise<RemoteFileStat> {
-    const started = performance.now(); let channel: RemoteFileChannel | undefined;
+    const started = performance.now(); let channel: RemoteFileReadChannel | undefined;
     try {
-      path = this.path(path); const o = this.options(options, [], started); channel = await this.channel(o.deadline, o.signal);
-      const [result] = await channel.exchange([{ mode: 'stat', path }]); body(result!, 'stat', ['path', 'type', 'facts']); const stat = this.statRecord(path, result!);
-      await channel.finish(); return stat;
-    } catch (error) { throw fileFailure(error, channel?.sent ?? false); } finally { await this.release(channel); }
+      path = this.path(path);
+      const { deadline, signal } = this.options(options, [], started);
+      channel = this.readChannel(deadline, signal);
+      const records = await channel.read({ mode: 'stat', path });
+      if (records.length !== 1) throw new RemoteFileError('protocol', true);
+      const result = records[0]!;
+      body(result, 'stat', ['path', 'type', 'facts']);
+      return this.statRecord(path, result);
+    } catch (error) { throw fileFailure(error, channel?.sent ?? false); } finally { channel?.release(); }
+  }
+  private readChannel(deadline: number, signal?: AbortSignal): RemoteFileReadChannel {
+    const channel = new RemoteFileReadChannel(this.session, this.binding, deadline, signal, () => this.channels.delete(channel));
+    this.channels.add(channel);
+    return channel;
   }
   read(path: string, options: RemoteReadOptions = {}): AsyncGenerator<Buffer> {
     const started = performance.now(); return this.readInternal(path, options, started);
@@ -113,7 +123,7 @@ export class RemoteFiles {
       const offset = integer(o.raw.offset, 0); const length = o.raw.length === undefined ? undefined : integer(o.raw.length, 0, FILE_MAX_BYTES);
       if (length !== undefined && !Number.isSafeInteger(offset + length)) throw new RemoteFileError('capacity', false);
       let expected = o.raw.version === undefined ? undefined : this.expected(path, o.raw.version);
-      channel = new RemoteFileReadChannel(this.session, this.binding, o.deadline, o.signal, () => this.channels.delete(channel!)); this.channels.add(channel);
+      channel = this.readChannel(o.deadline, o.signal);
       let total = 0; let window = 0; let rangeLength = length; let initialVersion: string | undefined; const hash = createHash('sha256');
       while (true) {
         const batch = await channel.read({ path, offset, window, position: total, ...(rangeLength === undefined ? {} : { length: rangeLength }), ...(expected ? { expected } : {}) });
