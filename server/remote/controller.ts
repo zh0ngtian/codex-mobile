@@ -1,5 +1,8 @@
+import { ResourceSettlement } from './resource-settlement.js';
+import { assertRemoteOperation, withRemoteOperation } from './operation-guard.js';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import { performance } from 'node:perf_hooks';
 import { isAbsolute, normalize } from 'node:path';
 import { RemoteNetworkError } from './auth.js';
 import { parseEnrollment, type EnrollmentRecord, type ManagedAuth } from './auth-protocol.js';
@@ -25,10 +28,11 @@ export interface RemoteControllerCanonical {
   on?(event: 'notification' | 'close' | 'disconnect', listener: (...args: any[]) => void): unknown;
   off?(event: 'notification' | 'close' | 'disconnect', listener: (...args: any[]) => void): unknown;
   close?(): unknown;
+  settled?(): Promise<void>;
 }
 export interface RemoteControllerOptions {
   store: PrivateStore;
-  managedAuth: { load(): Promise<ManagedAuth>; verifyIdentity(expected?: ManagedAuthIdentity): Promise<Readonly<ManagedAuthIdentity>>; close?(): unknown };
+  managedAuth: { load(): Promise<ManagedAuth>; verifyIdentity(expected?: ManagedAuthIdentity): Promise<Readonly<ManagedAuthIdentity>>; close?(): unknown; settled?(): Promise<void> };
   authProvider: RemoteAuthProvider & { getEnrollment(): Promise<EnrollmentRecord | null>; verifyBinding(expected?: EnrollmentRecord): Promise<EnrollmentRecord> };
   canonicalUrl?: string; canonicalFactory?: () => Promise<RemoteControllerCanonical>;
   /** 可信 runtime 在候选首次 proof 和配对前固定身份；不向客户端开放。 */
@@ -89,6 +93,7 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
   private mutating = false;
   private readonly canonicalDisposers: (() => void)[] = [];
   private relay?: RemoteRelay;
+  private readonly resources = new ResourceSettlement();
   private readonly streams = new Map<RemoteStream, RemoteTargetIdentity>();
   private catalog: RemoteCatalog;
   private timer?: NodeJS.Timeout;
@@ -119,20 +124,28 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
     if (this.currentState === state && this.reason === reason) return;
     this.currentState = state; this.reason = reason; this.publish('state', state, reason);
   }
-  private assert(epoch: number): void { if (this.state === 'closed' || this.epoch !== epoch || this.abort.signal.aborted) throw new RemoteControllerError('closed'); }
-  private async external<T>(epoch: number, operation: () => Promise<T>, network = true): Promise<T> {
-    this.assert(epoch); let timer: NodeJS.Timeout | undefined; let aborted: (() => void) | undefined; const signal = this.abort.signal;
-    try {
-      const result = await Promise.race([Promise.resolve().then(operation), new Promise<never>((_resolve, reject) => {
-        aborted = () => reject(new RemoteControllerError('closed')); signal.addEventListener('abort', aborted, { once: true });
-        timer = setTimeout(() => reject(new RemoteNetworkError()), this.timeout);
-      })]); this.assert(epoch); return result;
-    } catch (error) {
-      if (error instanceof RemoteControllerError) throw new RemoteControllerError(error.code);
-      if (error instanceof RemoteAuthRequiredError) throw new RemoteAuthRequiredError();
-      if (error instanceof RemoteNetworkError || network) throw new RemoteNetworkError();
-      throw new RemoteControllerError('binding-invalid');
-    } finally { clearTimeout(timer); if (aborted) signal.removeEventListener('abort', aborted); }
+  private assert(epoch: number): void { this.options.store.assertOwnership(); if (this.state === 'closed' || this.epoch !== epoch || this.abort.signal.aborted) throw new RemoteControllerError('closed'); }
+  private async external<T>(epoch: number, operation: (assertActive: () => void) => Promise<T>, network = true): Promise<T> {
+    const deadline = performance.now() + this.timeout;
+    const check = () => {
+      if (this.state === 'closed' || this.epoch !== epoch || this.abort.signal.aborted) throw new RemoteControllerError('closed');
+      if (performance.now() >= deadline) throw new RemoteNetworkError();
+    };
+    const active = () => { this.assert(epoch); check(); assertRemoteOperation(); };
+    return withRemoteOperation(check, async () => {
+      active(); let timer: NodeJS.Timeout | undefined; let aborted: (() => void) | undefined; const signal = this.abort.signal;
+      try {
+        const result = await Promise.race([Promise.resolve().then(() => { active(); return operation(active); }), new Promise<never>((_resolve, reject) => {
+          aborted = () => reject(new RemoteControllerError('closed')); signal.addEventListener('abort', aborted, { once: true });
+          timer = setTimeout(() => reject(new RemoteNetworkError()), Math.max(1, Math.ceil(deadline - performance.now())));
+        })]); active(); return result;
+      } catch (error) {
+        if (error instanceof RemoteControllerError) throw new RemoteControllerError(error.code);
+        if (error instanceof RemoteAuthRequiredError) throw new RemoteAuthRequiredError();
+        if (error instanceof RemoteNetworkError || network) throw new RemoteNetworkError();
+        throw new RemoteControllerError('binding-invalid');
+      } finally { clearTimeout(timer); if (aborted) signal.removeEventListener('abort', aborted); }
+    });
   }
   private async load(epoch: number): Promise<void> {
     if (this.loaded) return;
@@ -148,12 +161,18 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
       this.assert(epoch); this.loaded = true;
     } catch (error) { if (error instanceof RemoteControllerError && error.code === 'closed') throw error; throw new RemoteControllerError('binding-invalid'); }
   }
-  private async connection(epoch: number): Promise<RemoteControllerCanonical> {
+  private connection(epoch: number): Promise<RemoteControllerCanonical> {
+    return this.resources.track(this.connectCanonical(epoch));
+  }
+  private async connectCanonical(epoch: number): Promise<RemoteControllerCanonical> {
     if (this.canonical) return this.canonical;
-    let abandoned = false; let value: RemoteControllerCanonical | undefined;
-    const pending = Promise.resolve().then(this.factory); void pending.then(result => { if (abandoned) dispose(result); }, () => undefined);
+    let abandoned = false; let value: RemoteControllerCanonical | undefined; let unclaimed: RemoteControllerCanonical | undefined;
     try {
-      value = await this.external(epoch, () => pending); const metadata = object(await this.external(epoch, () => value!.initialize()));
+      value = await this.external(epoch, assertActive => {
+        const pending = this.resources.create(() => { assertActive(); return this.factory(); });
+        void pending.then(result => { unclaimed = result; if (abandoned) { void this.resources.close(result); unclaimed = undefined; } }, () => undefined);
+        return pending;
+      }); unclaimed = undefined; const metadata = object(await this.external(epoch, () => value!.initialize()));
       const expected = (this.record?.managed ?? this.expectedManaged)?.codexHome;
       if (!isAbsolute(text(metadata.codexHome)) || (expected !== undefined && metadata.codexHome !== expected)) throw new RemoteControllerError('identity-changed');
       this.assert(epoch); this.canonical = value; this.canonicalHome = text(metadata.codexHome);
@@ -164,9 +183,13 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
         this.canonicalDisposers.push(() => value!.off!('notification', notification), () => value!.off!('close', disconnected), () => value!.off!('disconnect', disconnected));
       }
       return value;
-    } catch (error) { abandoned = true; dispose(value); throw error; }
+    } catch (error) { abandoned = true; void this.resources.close(value); void this.resources.close(unclaimed); unclaimed = undefined; throw error; }
   }
-  private detachCanonical(): void { for (const remove of this.canonicalDisposers.splice(0)) { try { remove(); } catch { /* 坏监听器不阻碍其余资源清理。 */ } } const value = this.canonical; this.canonical = undefined; this.canonicalHome = undefined; dispose(value); }
+  private detachRelay(): void {
+    const relay = this.relay; this.relay = undefined;
+    void this.resources.close(relay);
+  }
+  private detachCanonical(): void { for (const remove of this.canonicalDisposers.splice(0)) { try { remove(); } catch { /* 坏监听器不阻碍其余资源清理。 */ } } const value = this.canonical; this.canonical = undefined; this.canonicalHome = undefined; void this.resources.close(value); }
   private async proof(epoch: number): Promise<Proof> {
     const auth = await this.external(epoch, () => this.options.managedAuth.load());
     const identity = managed(await this.external(epoch, () => this.options.managedAuth.verifyIdentity(this.record?.managed ?? this.expectedManaged)));
@@ -216,7 +239,7 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
     if (this.state === 'closed') return;
     this.mustResume = true; this.healthy = false; this.epoch++; this.abort.abort(); this.abort = new AbortController(); clearTimeout(this.timer); this.timer = undefined;
     this.setState(reason === 'auth-required' || reason === 'enrollment-required' || reason === 'account-mode' || reason === 'identity-changed' ? 'auth-required' : reason === 'remote-disabled' ? 'remote-disabled' : 'paused', reason);
-    dispose(this.relay); this.relay = undefined; this.detachCanonical(); this.catalog.close();
+    this.detachRelay(); this.detachCanonical(); this.catalog.close();
     void this.writePause(true, reason).catch(() => { this.setState('paused', 'binding-invalid'); });
   }
   private handle(error: unknown, epoch: number): void {
@@ -227,7 +250,7 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
   }
   private activate(epoch: number): void {
     this.assert(epoch); if (!this.started || this.relay) return;
-    const relay = new RemoteRelay({ ...this.options.relayOptions, clientId: this.record!.enrollment.clientId, authProvider: this.options.authProvider, reconnectMaxMs: Math.min(this.options.relayOptions?.reconnectMaxMs ?? 2000, 2000) }); this.relay = relay;
+    const relay = new RemoteRelay({ ...this.options.relayOptions, assertOwnership: () => this.options.store.assertOwnership(), clientId: this.record!.enrollment.clientId, authProvider: this.options.authProvider, reconnectMaxMs: Math.min(this.options.relayOptions?.reconnectMaxMs ?? 2000, 2000) }); this.relay = relay;
     relay.on('state', state => { if (this.relay !== relay || this.state === 'closed') return; if (state === 'auth-required') this.suspend('auth-required'); else if (state === 'online') this.setState(this.healthy ? 'online' : 'offline'); else if (state !== 'closed') this.setState('offline'); });
   }
   private async check(epoch: number, resume = false): Promise<void> {
@@ -407,13 +430,21 @@ export class RemoteController extends EventEmitter<ControllerEvents> {
     const pong = (value: ServerPong) => { if (value.status === 'unknown') this.terminateStream(stream); };
     stream.on('pong', pong); stream.once('close', () => { this.streams.delete(stream); stream.off('pong', pong); }); return stream;
   }
-  async createManagementSession(value: RemoteTargetIdentity): Promise<RemoteRpcSession> {
+  async createManagementSession(value: RemoteTargetIdentity, rpcOptions?: RemoteRpcSessionOptions): Promise<RemoteRpcSession> {
     const epoch = this.epoch; const identity = tuple(value); const stream = this.createRawStream(identity); let session: RemoteRpcSession | undefined;
-    try { session = RemoteRpcSession.fromRemoteStream(stream, this.options.rpcOptions); await session.initialize(); this.assert(epoch); if (!this.targetStatus(identity).executable) throw new RemoteControllerError('target-unavailable'); return session; }
+    try { session = RemoteRpcSession.fromRemoteStream(stream, { ...this.options.rpcOptions, ...rpcOptions }); await session.initialize(); this.assert(epoch); if (!this.targetStatus(identity).executable) throw new RemoteControllerError('target-unavailable'); return session; }
     catch (error) { dispose(session); this.terminateStream(stream); if (error instanceof RemoteControllerError) throw error; throw new RemoteNetworkError(); }
   }
+  /** 包含已暂停/替换的旧Relay，close仍保持原有storage等待语义。 */
+  async settled(): Promise<void> {
+    try { await this.close(); }
+    finally {
+      // storage拒绝也不能跳过已摘除连接的实际close。
+      await this.resources.settled();
+    }
+  }
   async close(): Promise<void> {
-    if (this.state !== 'closed') { this.epoch++; this.abort.abort(); this.currentState = 'closed'; this.reason = undefined; clearTimeout(this.timer); this.timer = undefined; this.catalog.close(); dispose(this.relay); this.relay = undefined; this.detachCanonical(); dispose(this.options.managedAuth); this.publish('state', 'closed'); this.removeAllListeners(); }
+    if (this.state !== 'closed') { this.epoch++; this.abort.abort(); this.currentState = 'closed'; this.reason = undefined; clearTimeout(this.timer); this.timer = undefined; this.catalog.close(); this.detachRelay(); this.detachCanonical(); void this.resources.close(this.options.managedAuth); this.publish('state', 'closed'); this.removeAllListeners(); }
     await this.storage;
   }
 }

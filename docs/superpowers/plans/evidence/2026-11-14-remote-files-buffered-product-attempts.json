@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-14",
+  "sourceCommit": "41dd5a751aab5fa26d124419a396e6510fcbf780",
+  "integratedMainCommit": "0c8c86badf0016300d656b04d40f629ffe62f1c7",
+  "status": "source-double-review-passed-official-files-failed-Q48-pending",
+  "passed": false,
+  "scope": "最终固定源码官方入口先查询原已提交100MiB收据，再调用RemoteFiles.read；两次均在原文件读回失败，后续新上传等验收尚未执行。",
+  "sourceValidation": {
+    "filesTestsPassed": 170,
+    "serverTestsPassed": 1315,
+    "serverTestsSkipped": 7,
+    "strictSourcePassed": true,
+    "strictSourceAndTestsPassed": true,
+    "serverBuildPassed": true,
+    "fixCommit": "e5fb55452aac9886b786f0c6a659c8212796ae21",
+    "fixTddRedCases": 3,
+    "integrationRelevantTestsPassed": 7,
+    "runtimeInputsUnchangedBetweenFixAndCandidate": true,
+    "firstFailuresRetainedAndNotAttributedWithoutEvidence": true
+  },
+  "independentReviews": {
+    "SPEC": {
+      "passed": true,
+      "reportSha256": "100b11995095a51e1a8056508d8a0b80f6060434be1ef1ce7c4dc9ca56ea74c5",
+      "manifestSha256": "5c9b5723bfbb916c0090a273a94d0c63bbcbb5b2986ce7f4c2d01544b102dc22",
+      "rootReadFullReport": true,
+      "rootVerifiedArtifacts": 5715,
+      "rootHashMismatches": 0,
+      "independentGroupsPassed": 12,
+      "independentGroupsFailed": 0,
+      "guardOldD89RedIndependentlyReproduced": true
+    },
+    "QUALITY": {
+      "passed": true,
+      "assessment": "Ready Yes",
+      "reportSha256": "854f44237fd29027c7d4d8c0060366853f68cd6cf4170362dc8e5b296d1ac7ba",
+      "manifestSha256": "39a892294cef68888b85892f934651e53a9da6f2b77f6b9d10e98e52f44d7f55",
+      "rootReadFullReport": true,
+      "rootVerifiedArtifacts": 2878,
+      "rootHashMismatches": 0,
+      "originalGroupsPassed": 6,
+      "supplementalGroupsPassed": 6,
+      "heapSnapshotsIndependentlyAnalyzed": 5,
+      "remainingIssues": {
+        "critical": 0,
+        "important": 0,
+        "minor": 0
+      },
+      "firstRunsPassed": true,
+      "oldNoAndRedPreserved": true
+    }
+  },
+  "attempts": [
+    {
+      "sourceCommit": "41dd5a751aab5fa26d124419a396e6510fcbf780",
+      "passed": false,
+      "failureCode": "timeout",
+      "receivedBytes": 83886080,
+      "chunks": 160,
+      "fullReadDurationMs": 180003,
+      "originalCommittedQueryPassed": true,
+      "originalUploadReplayed": false,
+      "newUploadsStarted": false,
+      "bufferedRead": {
+        "execCalls": 41,
+        "completed": 40,
+        "rejected": 1,
+        "activeReadRpcs": 0,
+        "maximumConcurrentReadRpcs": 1,
+        "maximumStdoutBytes": 2797985,
+        "maximumStderrBytes": 128,
+        "unexpectedOutputDelta": 0,
+        "configurationViolations": 0
+      },
+      "authPrepares": 1,
+      "nativePings": 12,
+      "nativePongs": 12,
+      "observationErrors": 0,
+      "unexpectedProtocolErrors": 0,
+      "disconnectEvents": [
+        "closed"
+      ],
+      "causeEstablished": false,
+      "privateArtifactsVerified": 4,
+      "privateManifestSha256": "c627f747e26fcb31e31b8d109b24458658b8103f339cc0acd004b7403b37531d",
+      "startedAtUtc": "2026-11-14T04:49:01.000Z",
+      "finishedAtUtc": "2026-11-14T04:52:16.185Z",
+      "newAuthorizationOrEnrollment": false,
+      "testChatsCreated": 0,
+      "modelInferenceRequestsSent": 0
+    },
+    {
+      "sourceCommit": "41dd5a751aab5fa26d124419a396e6510fcbf780",
+      "passed": false,
+      "failureCode": "disconnected",
+      "receivedBytes": 67108864,
+      "chunks": 128,
+      "fullReadDurationMs": 60874,
+      "originalCommittedQueryPassed": true,
+      "originalUploadReplayed": false,
+      "newUploadsStarted": false,
+      "bufferedRead": {
+        "execCalls": 33,
+        "completed": 32,
+        "rejected": 1,
+        "activeReadRpcs": 0,
+        "maximumConcurrentReadRpcs": 1,
+        "maximumStdoutBytes": 2797985,
+        "maximumStderrBytes": 128,
+        "unexpectedOutputDelta": 0,
+        "configurationViolations": 0
+      },
+      "authPrepares": 1,
+      "nativePings": 4,
+      "nativePongs": 3,
+      "observationErrors": 0,
+      "unexpectedProtocolErrors": 0,
+      "directDisconnectTrigger": {
+        "reason": "network",
+        "origin": "native-pong-timeout",
+        "nativePongTimeoutMs": 10000,
+        "lastNativePingMs": 66459,
+        "disconnectAtMs": 76460,
+        "lastSocketMessageMs": 76271,
+        "socketSilenceAtDisconnectMs": 189,
+        "lastRecordedChunkMs": 76265,
+        "chunkSilenceAtDisconnectMs": 195,
+        "pendingAssemblies": 1,
+        "compiledStackLocation": "relay.js:472:52",
+        "sourceLocation": "server/remote/relay.ts:375",
+        "delayedNativePongCauseEstablished": false
+      },
+      "privateArtifactsVerified": 4,
+      "privateManifestSha256": "a3ed979e7b8f33f81b7afaa165951e10c7f6a9e72dc91a4e873aa86e7de54c4b",
+      "startedAtUtc": "2026-11-14T04:55:37.286Z",
+      "finishedAtUtc": "2026-11-14T04:56:53.888Z",
+      "newAuthorizationOrEnrollment": false,
+      "testChatsCreated": 0,
+      "modelInferenceRequestsSent": 0
+    }
+  ],
+  "currentGates": {
+    "sourceSpecificationReview": true,
+    "sourceQualityReview": true,
+    "actualRemoteFilesProduct": false,
+    "task3bComplete": false,
+    "pushedMain": false,
+    "deployedGateway": false,
+    "publishedClient": false
+  },
+  "retainedFixture": {
+    "originalCommitted100MiBFixtureAndReceiptRetained": true,
+    "originalUploadReplayed": false,
+    "unknownWritesAutomaticallyRetried": false,
+    "newUploadsStarted": false,
+    "privatePathsAndOperationIdsOmitted": true
+  },
+  "pendingDecision": {
+    "number": 48,
+    "approved": false,
+    "recommended": "A",
+    "proposal": "将当前连接严格校验后的新增有效进度纳入传输存活判断；持续10秒无原生pong且无有效进度才断开。",
+    "runtimeHeartbeatChanged": false,
+    "underlyingPongDelayCauseKnown": false,
+    "firstAttemptTimeoutCauseKnown": false
+  },
+  "limitations": [
+    "本收据中的1315/170项与独立双审只证明对应源码验证，不能抵销两轮官方产品失败。",
+    "第二轮只确定本地pongTimer的直接断开触发点，不能确定pong迟到的根因，不能用于解释第一轮超时。",
+    "每轮默认权限、有限输出cap和单活动读取RPC均保持；未延长180秒Files绝对期限。",
+    "两轮均在原已提交文件读取失败，尚未执行本候选新100MiB上传、Range、未知提交跨OS对账及精确清理的完整计划。",
+    "实际官方目标仅当前Mac；Windows实机、手机、P95、8小时、凭据周期及睡眠唤醒未验收。",
+    "没有新增授权、密钥或登记，没有模型推理、测试聊天、现役服务修改或客户端构建。"
+  ]
+}

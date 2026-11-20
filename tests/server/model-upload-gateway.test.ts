@@ -68,3 +68,35 @@ it('HTTP 与 WebSocket 均可读取、实时接收及恢复统计，不读取或
   expect(requests).not.toContain('thread/resume'); expect(requests).not.toContain('mobile/uploadUsage/read');
   client.terminate();
 });
+
+it('真实桌面IPC失效经HTTP轮询、WS与只读统一返回null，业务连接继续存活', async () => {
+  const root = await mkdtemp('/tmp/upload-live-'); cleanup.push(() => rm(root, { recursive: true, force: true }));
+  const server = createServer(); const wss = new WebSocketServer({ server });
+  wss.on('connection', socket => socket.on('message', raw => { const message = JSON.parse(raw.toString()); if (message.id != null) socket.send(JSON.stringify({ id: message.id, result: { alive: true } })); }));
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  cleanup.push(async () => { for (const socket of wss.clients) socket.terminate(); await new Promise<void>(resolve => server.close(() => resolve())); });
+  const upstreamUrl = `ws://127.0.0.1:${(server.address() as any).port}`;
+  const meter = new ModelUploadMeter(); meter.begin({ threadId: 'a', turnId: 'turn-a' })(42); meter.begin({ threadId: 'b', turnId: 'turn-b' })(84);
+  const publisher = await publishDesktopModelUsage({ socketPath: desktopMeterSocketPath(root), upstreamUrl, meter }); cleanup.push(() => publisher.close());
+  const source = externalDesktopModelUsage(upstreamUrl, root)!; cleanup.push(() => source.close());
+  const gateway = await createGateway({ host: '127.0.0.1', port: 0, mode: 'external', upstreamUrl, staticDir: null, codexHome: root, uploadMeter: source }); cleanup.push(() => gateway.close());
+  const session = randomUUID(); const url = `http://127.0.0.1:${gateway.port}/api/`;
+  const rpc = async (message: unknown) => (await fetch(url + `rpc?sessionId=${session}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ requestId: randomUUID(), message }) })).json() as Promise<any>;
+  const read = async (threadId: string) => (await rpc({ id: 1, method: 'mobile/uploadUsage/read', params: { threadId } })).result.usage;
+  await rpc({ id: 2, method: 'initialize', params: { clientInfo: { name: 'fixture', version: '1' } } });
+  const client = new WebSocket(`ws://127.0.0.1:${gateway.port}/ws`); await once(client, 'open'); cleanup.push(async () => client.terminate());
+  const received: any[] = []; client.on('message', raw => received.push(JSON.parse(raw.toString())));
+  const call = async (id: number, method: string, params = {}) => {
+    client.send(JSON.stringify({ id, method, params })); await expect.poll(() => received.find(message => message.id === id)).toBeDefined(); return received.find(message => message.id === id);
+  };
+  await call(3, 'initialize', { clientInfo: { name: 'fixture-ws', version: '1' } });
+  await expect.poll(async () => (await read('a'))?.turnBytes).toBe(42);
+  await publisher.close();
+  await expect.poll(() => received.filter(message => message.method === 'mobile/uploadUsage/updated' && message.params.usage === null).map(message => message.params.threadId).sort()).toEqual(['a', 'b']);
+  expect(await read('a')).toBeNull(); expect((await call(4, 'mobile/uploadUsage/read', { threadId: 'b' })).result.usage).toBeNull();
+  const events = await (await fetch(url + `events?sessionId=${session}&after=0`)).json() as any;
+  const invalidations = events.messages.filter((message: any) => message.method === 'mobile/uploadUsage/updated' && message.params.usage === null);
+  expect(invalidations.map((message: any) => message.params).sort((a: any, b: any) => a.threadId.localeCompare(b.threadId))).toEqual([{ threadId: 'a', usage: null }, { threadId: 'b', usage: null }]);
+  expect(JSON.stringify(invalidations)).not.toContain(root); expect(JSON.stringify(invalidations)).not.toContain('upstreamUrl');
+  expect((await call(42, 'test/alive')).result).toEqual({ alive: true }); expect(client.readyState).toBe(WebSocket.OPEN);
+});

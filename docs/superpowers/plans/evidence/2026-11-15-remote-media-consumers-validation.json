@@ -1,0 +1,251 @@
+{
+  "schemaVersion": 1,
+  "task": "Task3d.1-trusted-target-file-consumers",
+  "sourceCommit": "58362ad0bb1b494e3a13256b18d576e76605b99f",
+  "baselineMain": "a3a05e75e57ae9c290e4b17ff5f8a1556387c920",
+  "sourceOnly": true,
+  "deployed": false,
+  "clientBuiltOrPublished": false,
+  "gates": {
+    "implementationCommitted": true,
+    "specPassed": true,
+    "qualityPassed": true,
+    "actualRemoteProbePassed": true
+  },
+  "implementation": {
+    "initialCommit": "31920586dab005a426fd30b8374a7e4eb2923898",
+    "resolverRepairCommit": "cd60e421ce33e4e3d04f822265ba6fa3e9b94071",
+    "queueWaitRepairCommit": "58362ad0bb1b494e3a13256b18d576e76605b99f",
+    "reportSha256": "d87dfaf8a4ef25b84e54972df1465695eaafc23a9d3065f905a3dbdc854edaa4",
+    "manifestSha256": "8fd1959c71542c5b8550c6418477834e72f6ccf02309abedb7863a5e439f9587",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 3460,
+    "sourceSnapshotFiles": 2865
+  },
+  "localValidation": {
+    "focused": {
+      "files": 7,
+      "passed": 75,
+      "exitCode": 0,
+      "elapsedSeconds": 27.853
+    },
+    "server": {
+      "sourceCommit": "cd60e421ce33e4e3d04f822265ba6fa3e9b94071",
+      "filesPassed": 64,
+      "filesSkipped": 2,
+      "passed": 1518,
+      "skipped": 7,
+      "total": 1525,
+      "exitCode": 0,
+      "elapsedSeconds": 362.529,
+      "reuseBasis": "产品和其他测试字节相同；本次唯一变更的媒体测试全文件另验通过，不声称新冻结重跑完整server"
+    },
+    "strictSourceExitCode": 0,
+    "strictServerTestsExitCode": 0,
+    "buildServerExitCode": 0,
+    "sourceBytesBoundBeforeAfterArchiveCommitAndCurrent": true,
+    "queueWaitFix": {
+      "sourceCommit": "58362ad0bb1b494e3a13256b18d576e76605b99f",
+      "productOrFixtureChanged": false,
+      "changedTestFiles": 1,
+      "controlledGreenPassed": true,
+      "controlledGreenElapsedSeconds": 0.599,
+      "mediaTestsPassed": 23,
+      "mediaTestsElapsedSeconds": 17.163,
+      "focusedPassed": 75,
+      "focusedElapsedSeconds": 27.853,
+      "strictServerTestsExitCode": 0,
+      "strictServerTestsElapsedSeconds": 1.834,
+      "fullServerRerun": false,
+      "reusedFullServerSourceCommit": "cd60e421ce33e4e3d04f822265ba6fa3e9b94071",
+      "rootAllEvidenceAuditPending": false
+    },
+    "transport": "temporary real HTTP -> direct test RemoteStream RPC -> actual fixed product Python",
+    "additionalBoundaryProofs": [
+      "两个目标及同一RemoteFiles两个gateway的同路径缓存和取消隔离，失效后拒绝旧缓存",
+      "排队、读取和转换后版本复核；末窗后替换使完整下载/视频失败、Sidechat拒绝",
+      "100MiB以上媒体按同版本分段；非零起点100MiB+17视频Range经201物理窗核对完整SHA",
+      "背压、取消、自有资源关闭、共享RPC继续，以及原有限额/Local兼容",
+      "可信目标与网关缓存两来源重建；resolver-only和显式Local丢映射明确拒绝"
+    ],
+    "windows": "controlled protocol fixtures only; no Windows hardware"
+  },
+  "firstIndependentSpec": {
+    "sourceCommit": "31920586dab005a426fd30b8374a7e4eb2923898",
+    "passed": false,
+    "reportSha256": "faee9ea9de3f248d68204ce3060546026047e9038d012ac8ab8382d0e3ea5cc9",
+    "manifestSha256": "a5b645ddca80045c369acd329f1ac6d9d7570925741d481c26d2b7a1e83f3c49",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 2910,
+    "sourceFiles": 2865
+  },
+  "firstQuality": {
+    "sourceCommit": "cd60e421ce33e4e3d04f822265ba6fa3e9b94071",
+    "passed": false,
+    "reportSha256": "163bd86a499c0b61b58392a15c472a01a9f09db0cb5a0a009cdc582bc966bdcf",
+    "manifestSha256": "a150525540796f37bf28d7d0327689a6dd0a36f651056889a9d40ba2cdc801b2",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 2930,
+    "sourceFiles": 2865
+  },
+  "preQueueWaitFixSpec": {
+    "sourceCommit": "cd60e421ce33e4e3d04f822265ba6fa3e9b94071",
+    "passed": true,
+    "reportSha256": "32a15bfc00a69cbbbf2b11218307f5842f61ba9d7870cdd9d4fb040fcfbfa4ea",
+    "manifestSha256": "b7f5183524acf73174b0b726262c469669ff7d82894bcde92f7236446ddb2f5d",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 2915,
+    "sourceFiles": 2865
+  },
+  "finalSpec": {
+    "sourceCommit": "58362ad0bb1b494e3a13256b18d576e76605b99f",
+    "passed": true,
+    "reportSha256": "2a71b50d3a8e1801c4fb38d1141b04f960da9148d6e35b1712a0b06d700a2e70",
+    "manifestSha256": "844748ea5937697a74d1ced289658d208407be084daca5e5459d08e42211dadd",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 2934,
+    "sourceFiles": 2865
+  },
+  "finalQuality": {
+    "sourceCommit": "58362ad0bb1b494e3a13256b18d576e76605b99f",
+    "passed": true,
+    "reportSha256": "8de5de9a75f2722787e24bcbad3ee8675df19568cecd5b2ddde79d9f8e201ab8",
+    "manifestSha256": "dbff17a0035148b817dcbb275b55a0aa4eedce0bb2b46751591c39a9cca1b1df",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 2954,
+    "sourceFiles": 2865
+  },
+  "firstOfficialFailure": {
+    "sourceCommit": "58362ad0bb1b494e3a13256b18d576e76605b99f",
+    "passed": false,
+    "reportSha256": "06631113d53e59c2d1ae861ca6f3b131d611ea25b9f803d7a2a56d39f11dfcfc",
+    "manifestSha256": "a1852a64548d4a8667c40ebed8debc2bbe743852c43c68289950ca97a82d3327",
+    "rootAuditedAllArtifacts": true,
+    "artifacts": 175,
+    "sourceFiles": 85,
+    "attempt": "A",
+    "classification": "probe module resolution before runtime initialization",
+    "productChanged": false,
+    "isolatedRootActualAbsent": true
+  },
+  "firstFailuresRetained": [
+    {
+      "classification": "official probe tooling",
+      "detail": "首轮A写死sharp旧入口，模块解析失败、实际退出1且隔离根清理；Runtime/RPC未启动，175工件封存；修正探针为当前包入口并通过离线完整模块加载后另开B，产品源码未改"
+    },
+    {
+      "classification": "product RED",
+      "detail": "首轮SPEC实际2PASS/1FAIL；显式resolver缺映射且files省略时opaque被误作input_image；原FAIL工件保持不变"
+    },
+    {
+      "classification": "product repair RED",
+      "detail": "四种resolver-only/显式Local与cache/target组合实际HTTP200而预期422；4FAIL/1PASS后完成最小修复"
+    },
+    {
+      "classification": "new test type error",
+      "detail": "3处unknown读取类型错误仅修测试类型，未算产品RED"
+    },
+    {
+      "classification": "test synchronization",
+      "detail": "coalesce原发送stat计数不能证明第二waiter已加入；真实第三stat阻塞证明后仅修完成等待点，产品ImagePreviews不变"
+    },
+    {
+      "classification": "quality test synchronization",
+      "detail": "首轮QUALITY Ready No；queued替换测试等待stat已发送+20ms无法证明完成，受控诊断合法200/read3；仅修完成等待点并以受控屏障验证409/read2"
+    },
+    {
+      "classification": "root audit tooling",
+      "detail": "根v1审计只允许直接依赖链接而误拒已登记scope/bin逐包链接；2930普通工件始终匹配，保留失败audit，新v2按明确布局与inventory核验"
+    },
+    {
+      "classification": "evidence audit tooling",
+      "detail": "本轮复用证据整理误写旧archive文件名，及root首版快照审计只识别裸SHA格式，均保留原错误并修正审计方式；未改产品或旧工件，也未因此重跑产品测试"
+    },
+    {
+      "classification": "verification environment",
+      "detail": "长TMPDIR导致Unix socket EINVAL，第一次全server36FAIL/1482PASS/7SKIP/1unhandled；原日志保留，短路径实际预检、原4文件106PASS及最终全套通过"
+    }
+  ],
+  "official": {
+    "attempt": "B",
+    "passed": true,
+    "startedAt": "2026-11-15T02:28:55.139Z",
+    "finishedAt": "2026-11-15T02:30:45.626Z",
+    "actualExitCode": 0,
+    "actualSignalCode": null,
+    "startToBusinessAndCliMs": 83416,
+    "zeroFlowActualMs": 25003,
+    "isolatedRootRemoved": true,
+    "privateAdminCleanupPassed": true,
+    "lateRpcPassed": true,
+    "noNewPrepareDuringDwell": true,
+    "actualBoundPortMatched": true,
+    "newAuthorizationOrEnrollment": false,
+    "productionChanged": false,
+    "modelInferenceRequestsSent": 0,
+    "testChatsCreated": 0,
+    "checks": {
+      "attachmentPassed": true,
+      "headPassed": true,
+      "ordinaryRangeIgnored": true,
+      "invalidPathPassed": true,
+      "missingPassed": true,
+      "videoPassed": true,
+      "videoRangeCases": 3,
+      "videoInvalidRangeCases": 2,
+      "imageOriginalPassed": true,
+      "thumbnailPassed": true,
+      "imageHeadPassed": true,
+      "etag304Passed": true,
+      "trustedReferencesPassed": true,
+      "sidechatActualBytesPassed": true,
+      "resolverOnlyReplayPassed": true,
+      "unresolvedReferenceRejected": true,
+      "fixtureCleanupPassed": true,
+      "temporaryHttpClosed": true,
+      "adapterCloseKeptCallerSession": true,
+      "businessCompleted": true,
+      "closed": true
+    },
+    "counts": {
+      "runtimeStarts": 1,
+      "prepares": 1,
+      "relayInstances": 1,
+      "commandExecRequests": 38,
+      "actualExecEnds": 38,
+      "rejectedExecs": 0,
+      "activeExecs": 0,
+      "peakActiveExecs": 1,
+      "maxSerializedOutgoingBytes": 32070,
+      "forbidden": 0,
+      "permissionViolations": 0,
+      "zeroFlowStartActive": 0,
+      "zeroFlowEndActive": 0,
+      "zeroFlowNewStreams": 0
+    },
+    "rpcCounts": {
+      "account/read": 41,
+      "remoteControl/status/read": 40,
+      "command/exec": 38,
+      "command/exec/write": 30,
+      "command/exec/terminate": 28,
+      "model/list": 2
+    },
+    "defaultPermissionsOnly": true,
+    "evidence": {
+      "sourceCommit": "58362ad0bb1b494e3a13256b18d576e76605b99f",
+      "passed": true,
+      "reportSha256": "f92c9b3389ac16212c02eb146ab1c4a5b771f6e50a46631bc386dea067216813",
+      "manifestSha256": "a63ba1f844dd1631dfb3eb445077d3fd6f4e0e661bcd9897645b4632ef94b542",
+      "rootAuditedAllArtifacts": true,
+      "artifacts": 175,
+      "sourceFiles": 85
+    }
+  },
+  "limitations": [
+    "仅当前Mac、小型自有媒体、临时loopback产品handler；正式HTTP目标路由仍为后续Task4",
+    "本项官方未测100MiB以上消费者或恶意替换/多机；其隔离反证不冒充官方性能",
+    "未实现或验收共享持久队列、手机Remote模式、P95、8小时、凭据刷新或真实Mac睡眠唤醒",
+    "未新授权/登记、调用推理或创建测试会话；未部署/构建发布客户端"
+  ]
+}

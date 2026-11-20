@@ -256,6 +256,7 @@ export async function loadProjectThreadRecords(
       limit,
       cwd: queryRoots.length > 1 ? queryRoots : cwd,
       sortKey: "recency_at",
+      useStateDbOnly: true,
       ...(nextCursor ? { cursor: nextCursor } : {}),
     });
     const eligible = result.data.filter((thread) => {
@@ -415,10 +416,11 @@ export function createLatestThreadListLoader(
           if (sequence !== latestSequence) return Promise.reject(new DOMException("Refresh superseded", "AbortError"));
           const id = method === "thread/read" && (params as any)?.includeTurns === false
             ? String((params as any).threadId) : null;
-          if (!id) return client.request(method, params, { priority });
+          const requestOptions = { priority };
+          if (!id) return client.request(method, params, requestOptions);
           let request = reads.get(id);
           if (!request) {
-            request = client.request(method, params, { priority });
+            request = client.request(method, params, requestOptions);
             reads.set(id, request);
           }
           return request;
@@ -447,7 +449,7 @@ export function createLatestThreadListLoader(
           ? orderedProjects.map((cwd) => loadProject(preferred.has(cwd) ? visibleBackground : background, cwd, sequence, options))
           : projectlessThreadIds.length
             ? []
-            : [background.request("thread/list", { limit: 50, sortKey: "recency_at" })
+            : [background.request("thread/list", { limit: 50, sortKey: "recency_at", useStateDbOnly: true })
               .then((result: ThreadListResponse) => {
                 if (sequence === latestSequence) {
                   callbacks.onData?.(markProjectlessThreads(
@@ -460,12 +462,14 @@ export function createLatestThreadListLoader(
         }
         return Promise.all(projectRequests).then(() => undefined);
       };
-      // 运行会话也占首批五条名额，首屏不再等待全局摘要。
-      const projectRequest = loadProjects();
+      // 旧网关会逐条读取摘要，继续让展开项目先派发。
+      const legacyProjectRequest = client.sidebarIndex ? undefined : loadProjects();
       const summaryIds = new Set([...explicitIds, ...(options.rememberedRunningThreadIds ?? [])]);
       const priorityRequest = summaryIds.size || options.includeRunningThreads
-        ? loadPrioritizedThreadRecords(background, summaryIds, options.includeRunningThreads === true, publishPrioritized)
+        ? loadPrioritizedThreadRecords(client.sidebarIndex ? visibleBackground : background,
+          summaryIds, options.includeRunningThreads === true, publishPrioritized)
         : Promise.resolve();
+      const projectRequest = legacyProjectRequest ?? loadProjects();
       const promise = Promise.allSettled([priorityRequest, projectRequest])
         .then((results) => {
           if (sequence !== latestSequence) return;

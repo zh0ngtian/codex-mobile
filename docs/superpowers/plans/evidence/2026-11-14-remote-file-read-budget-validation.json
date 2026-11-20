@@ -1,0 +1,257 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-11-14T09:03:35.099731+00:00",
+  "decision": "Q49 A 用户已批准",
+  "implementationCommit": "9bed636dd9cfee63869194abc8d63e1c40ac829c",
+  "baselineHead": "5c0fdcbfa33ff4f2953d0c626153156e0825de27",
+  "baselineOriginMain": "0c8c86badf0016300d656b04d40f629ffe62f1c7",
+  "status": "新冻结源码独立SPEC与QUALITY均通过；官方原100MiB在68MiB后触发既有30秒组装期限，Files gate未通过",
+  "contract": {
+    "explicitReadMaximumTimeoutMs": 600000,
+    "defaultReadTimeoutMs": 20000,
+    "otherOperationsMaximumTimeoutMs": 180000,
+    "windowWatchdogCommandAndRpcMaximumTimeoutMs": 180000,
+    "originalAbsoluteDeadlineNotReset": true,
+    "windowBytes": 2097152,
+    "chunkBytes": 524288,
+    "chunksPerWindow": 4,
+    "outputBytesCap": 3145728,
+    "maximumActiveReadProcessesPerFile": 1,
+    "defaultPermissionsUnchanged": true,
+    "unknownWritesNotReplayed": true
+  },
+  "tdd": {
+    "originalReadLimitRed": {
+      "failed": 2,
+      "exitCode": 1,
+      "requestedTimeoutMs": [
+        180001,
+        600000
+      ],
+      "errorCode": "capacity",
+      "mayHaveBeenSent": false
+    },
+    "firstGreen": {
+      "passed": 2,
+      "exitCode": 0,
+      "bytesPerCase": 2097171,
+      "windowsPerCase": 2,
+      "sha256": "49fb9d923e147cf5d457d83d2a9b4b9b61136b149fa8f552a0ea7501a0850ca1",
+      "actualTemporaryPythonAndRpc": true
+    },
+    "subMillisecondRed": {
+      "failed": 1,
+      "exitCode": 1,
+      "actual": "不足1ms被向上取到1ms并交付字节"
+    },
+    "subMillisecondGreen": {
+      "passed": 1,
+      "exitCode": 0,
+      "actual": "发送前受控timeout，无命令发送"
+    },
+    "newCases": 19,
+    "controlledClockCoverage": [
+      "默认20秒",
+      "三种单窗预算180000→100000→10000",
+      "调用起计及准备/跨窗/末窗消费暂停",
+      "最终独立Range SHA结果越原600秒拒绝末窗",
+      "取消/断线/单窗RPC超时丢弃迟到结果并保持额度至原期限",
+      "未消费末窗继续占四文件额度",
+      "无效read期限受控拒绝",
+      "其他文件操作/Commands/Rpc最高180秒保留"
+    ]
+  },
+  "localValidation": {
+    "relatedRegression": {
+      "passedFiles": 6,
+      "passed": 372,
+      "filesCasesLoaded": 188,
+      "exitCode": 0,
+      "durationMs": 122990,
+      "lastAddedShaCaseSeparatelyPassed": 1
+    },
+    "fullServer": {
+      "runs": 1,
+      "failedRuns": 0,
+      "passedFiles": 58,
+      "skippedFiles": 2,
+      "passed": 1353,
+      "skipped": 7,
+      "filesCases": 189,
+      "durationMs": 158230,
+      "exitCode": 0,
+      "maximumWorkers": 2
+    },
+    "strictSource": true,
+    "strictSourceAndTests": true,
+    "serverBuild": true,
+    "lastProductChangeBeforeStrictAndBuild": true,
+    "lastTestOnlyChangeFollowedByStrictAndFullServer": true
+  },
+  "freshReviews": {
+    "SPEC": {
+      "sourceCommit": "253aa0b0fdce441959fc0fb20108573457f1c26b",
+      "passed": true,
+      "status": "PASS",
+      "reportSha256": "b64ab355b4f768398abe831a4a816741964d54f6a18562ae87a696191537cf5c",
+      "manifestSha256": "d1ef388a1f6aafcd97d465c0effdf8b93286e6e368e1ecd2e03c747f2973c67b",
+      "rootReadReportAndRawLogs": true,
+      "rootVerifiedArtifacts": 67,
+      "rootArtifactMismatchCount": 0,
+      "independentCases": 36,
+      "firstRunPassed": 36
+    },
+    "QUALITY": {
+      "sourceCommit": "253aa0b0fdce441959fc0fb20108573457f1c26b",
+      "passed": true,
+      "status": "PASS",
+      "reportSha256": "fb34edb1a80e764cf38f946bb380e50ed625462af02dde573df0e5e48dfacb58",
+      "manifestSha256": "d9660ee78da05227a72d05ab200d48de7036d5fc24e088a320f1d7c922f225e9",
+      "rootReadReportAndRawLogs": true,
+      "rootVerifiedArtifacts": 123,
+      "rootArtifactMismatchCount": 0,
+      "independentCases": 6,
+      "firstRunPassed": 6
+    }
+  },
+  "officialRemote": {
+    "executed": true,
+    "passed": false,
+    "plannedOriginalUploadNotReplayed": true,
+    "plannedOriginalReadTimeoutMs": 600000,
+    "plannedNewUploadTimeoutMs": 180000,
+    "plannedCases": [
+      "原100MiB原收据查询与完整读回/Range/精确清理",
+      "独立新100MiB上传与完整读回/Range",
+      "producer失败不提交半文件",
+      "未知提交跨实际OS进程仅查原收据/精确清理",
+      "零逻辑流25秒后再次RPC"
+    ],
+    "attempts": 1,
+    "sourceCommit": "253aa0b0fdce441959fc0fb20108573457f1c26b",
+    "receivedBytes": 71303168,
+    "readElapsedMs": 296509,
+    "failure": "unchanged-30-second-absolute-assembly-timeout",
+    "newUploadStarted": false,
+    "unknownCommitOrOsRestartStarted": false,
+    "originalReceiptAndFixturePreserved": true,
+    "evidence": "2026-11-14-remote-file-assembly-window-validation.json"
+  },
+  "filesGatePassed": false,
+  "pushedMain": false,
+  "deployed": false,
+  "clientBuilt": false,
+  "clientReleased": false,
+  "limitations": [
+    "本地Python/Rpc不是官方Remote吞吐验收。",
+    "600秒边界采用受控时钟，不实际等待十分钟。",
+    "没有Windows实机、手机路由、8小时及睡眠唤醒验收。",
+    "旧180秒失败和历史收据保留原样。"
+  ],
+  "implementationEvidence": {
+    "reportSha256": "28994bab4dc87409cd772821e2006753cd3450093f6988ec570c6e97ce302b5d",
+    "manifestSha256": "d28d5914df3e15e176351109031a5b6f26c85ff578ba43b35cef74dcd2356cf7",
+    "rootReadFullReport": true,
+    "rootVerifiedArtifacts": 36,
+    "hashMismatch": 0
+  },
+  "latestImplementationCommit": "8e2cef904783d82a4367490ebe2c0ad366474fb3",
+  "firstSpecReview": {
+    "passed": false,
+    "status": "FAIL-fix-pending",
+    "sourceCommit": "d1c82e44d229af851b86f16368168c0295a0bfe5",
+    "independentPassedCases": 27,
+    "productRedCases": 1,
+    "finding": "原read绝对期限已到，真实RPC从相对timeout重建期限后仍发送一条command/exec",
+    "reproduction": {
+      "originalReadDeadline": 600017,
+      "windowBudgetCalculatedAt": 600007,
+      "windowBudgetMs": 10,
+      "clockAtRpcSubmit": 600017,
+      "expectedExecsSent": 0,
+      "actualExecsSent": 1
+    },
+    "reportSha256": "f83cff52f1eede063510f2da90895a5ddf9f1219066ba4595a40707bff849d7b",
+    "manifestSha256": "b71c72706be500ade998c798b22eab198b4ad87cf1a10f8c77986fb77fabd8f6",
+    "rootReadFullReport": true,
+    "rootVerifiedArtifacts": 63,
+    "hashMismatch": 0,
+    "firstFailurePreserved": true,
+    "fixAndFreshReviewRequired": true,
+    "laterResolution": {
+      "fixCommit": "8e2cef904783d82a4367490ebe2c0ad366474fb3",
+      "reviewedSourceCommit": "253aa0b0fdce441959fc0fb20108573457f1c26b",
+      "freshSpecPassed": true,
+      "historicalFailUnchanged": true
+    }
+  },
+  "sendDeadlineFix": {
+    "commit": "8e2cef904783d82a4367490ebe2c0ad366474fb3",
+    "internalReadDeadlineOnly": true,
+    "originalAndWindowDeadlineBothEnforced": true,
+    "physicalSocketSendBarrier": true,
+    "networkProtocolUnchanged": true,
+    "permissionsUnchanged": true,
+    "cleanupAndCallerSessionPreserved": true,
+    "tdd": {
+      "rpcAndFilesFirstRedCases": 7,
+      "relayFirstRedCases": 4,
+      "firstRedExitCodes": [
+        1,
+        1
+      ],
+      "permanentGreenCases": 11,
+      "permanentGreenExitCode": 0,
+      "originalIndependentProbeReplayedByImplementer": {
+        "passed": 28,
+        "exitCode": 0,
+        "notIndependentRereview": true
+      },
+      "zeroSendExpiredCases": 3,
+      "zeroSendMayHaveBeenSent": false,
+      "partialDeadlineSentFramesBeforeFix": 3,
+      "partialDeadlineSentFramesAfterFix": 1,
+      "partialMayHaveBeenSent": true,
+      "sequenceAndPendingWriteBytesTimersAndFilePermitsChecked": true,
+      "subsequentSharedSessionRpcSucceeded": true
+    },
+    "localValidation": {
+      "relatedRegression": {
+        "passedFiles": 6,
+        "passed": 384,
+        "exitCode": 0,
+        "durationMs": 122750
+      },
+      "fullServer": {
+        "runs": 1,
+        "failedRuns": 0,
+        "passedFiles": 58,
+        "skippedFiles": 2,
+        "passed": 1364,
+        "skipped": 7,
+        "durationMs": 218740,
+        "exitCode": 0,
+        "maximumWorkers": 2
+      },
+      "strictSource": true,
+      "strictSourceAndTests": true,
+      "serverBuild": true,
+      "lastProductChangeBeforeStrictAndBuild": true
+    },
+    "evidence": {
+      "reportSha256": "578760e2d8a04425578913d3c5c0f5fff4b2b7dc336a46df0b4ca42b7ec6bcb7",
+      "manifestSha256": "f36b4c1caced6a109ff310ce18f264d6140392bd9d0e0d3db88ae21e644bd551",
+      "rootReadFullReport": true,
+      "rootVerifiedArtifacts": 52,
+      "hashMismatch": 0,
+      "original36ArtifactsPreserved": true,
+      "rootComparedSixFinalSnapshotsWithGitCommit": true
+    }
+  },
+  "reviewedSourceCommit": "253aa0b0fdce441959fc0fb20108573457f1c26b",
+  "nextDecision": {
+    "number": 50,
+    "approved": false,
+    "proposal": "../../specs/2026-11-14-remote-file-window-size-proposal.md"
+  }
+}

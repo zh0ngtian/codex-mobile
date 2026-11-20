@@ -12,6 +12,8 @@ import { RemoteNetworkError, deviceIdentityHash, type EnrollmentRecord, type Man
 import type { ManagedAuthIdentity } from '../../server/remote/managed-auth.js';
 import { RemoteAuthRequiredError } from '../../server/remote/relay.js';
 import { RemoteRpcSession } from '../../server/remote/rpc-session.js';
+import { RemoteChunkAssembler } from '../../server/remote/envelope.js';
+import { acquireRemoteOwner } from '../../server/remote/owner.js';
 
 const NOW = 1794530000000;
 const cleanup: (() => unknown | Promise<unknown>)[] = [];
@@ -34,7 +36,7 @@ async function fixture(options: Record<string, unknown> = {}) {
   const canonicalFactory = async () => { const value = Object.assign(new EventEmitter(), { async initialize() { initializes++; return { codexHome: home }; }, async call(method: string, params: unknown) { methods.push({ method, params }); if (network) throw new RemoteNetworkError('secret-cause'); if (method === 'account/read') return { account: accountType === 'logged-out' ? null : { type: accountType } }; if (method === 'remoteControl/status/read') return status; if (method === 'remoteControl/pairing/start') { pairStarts++; return pairing; } throw new Error('unexpected method'); }, close() { value.removeAllListeners(); } }); canonicals.push(value); return value; };
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 }); await new Promise<void>(resolve => wss.once('listening', resolve));
   const connections: WebSocket[] = []; const frames: Record<string, any>[] = []; const seq = new Map<string, number>();
-  wss.on('connection', socket => { connections.push(socket); socket.send(JSON.stringify({ type: 'device_key_challenge' })); socket.on('error', () => {}); socket.on('message', raw => { const frame = JSON.parse(raw.toString()); frames.push(frame); if (frame.type !== 'client_message' || frame.message.id === undefined) return;
+  wss.on('connection', socket => { const assembler = new RemoteChunkAssembler(); socket.once('close', () => assembler.close()); connections.push(socket); socket.send(JSON.stringify({ type: 'device_key_challenge' })); socket.on('error', () => {}); socket.on('message', raw => { let frame = JSON.parse(raw.toString()); frames.push(frame); if (frame.type === 'client_message_chunk') { const result = assembler.accept({ ...frame, type: 'server_message_chunk' }); if (!result.message) return; frame = { ...frame, type: 'client_message', message: result.message }; } if (frame.type !== 'client_message' || frame.message.id === undefined) return;
     const next = (seq.get(frame.stream_id) ?? 0) + 1; seq.set(frame.stream_id, next); socket.send(JSON.stringify({ type: 'server_message', client_id: 'own-client', env_id: frame.env_id, stream_id: frame.stream_id, seq_id: next, message: { id: frame.message.id, result: frame.message.method === 'initialize' ? { codexHome: `/remote/${frame.env_id}` } : { ok: true } } })); }); });
   cleanup.push(() => new Promise<void>(resolve => { for (const socket of wss.clients) socket.terminate(); wss.close(() => resolve()); }));
   const managedAuth = { get currentIdentity(): ManagedAuthIdentity { return { codexHome: home, accountId: auth.accountId, accountUserId: auth.accountUserId, userId: auth.userId }; }, async load() { if (network) throw new RemoteNetworkError(); return { ...auth }; }, async verifyIdentity(expected?: ManagedAuthIdentity) { reads++; if (network) throw new RemoteNetworkError(); const result = this.currentIdentity; if (expected && JSON.stringify(result) !== JSON.stringify(expected)) throw new RemoteAuthRequiredError('secret-auth'); return result; }, close() {} };
@@ -46,6 +48,55 @@ async function fixture(options: Record<string, unknown> = {}) {
     setAuth(change: Partial<ManagedAuth>) { auth = { ...auth, ...change }; }, setEnrollment(change: Partial<EnrollmentRecord> | null) { enrollment = change === null ? null : { ...enrollment!, ...change }; }, setHome(value: string) { home = value; }, setMode(value: string) { accountType = value; }, setStatus(value: unknown) { status = value; }, setTargets(value: typeof targets) { targets = value; }, setNetwork(value: boolean) { network = value; }, setFetch(value: typeof fetcher) { fetcher = value; } };
 }
 const local = { environmentId: 'local-env', installationId: 'local-install' }; const remote = { environmentId: 'remote-env', installationId: 'remote-install' };
+
+it('同Relay管理工厂只为本次标题逻辑会话配置16MiB，默认session仍保留原边界', async () => {
+  const f = await fixture(); await f.controller.start(); await until(() => f.controller.state === 'online');
+  const summary = await f.controller.createManagementSession(local, { maxRequestBytes: 16 * 1024 * 1024, maxInboundBytes: 16 * 1024 * 1024 });
+  const caller = await f.controller.createManagementSession(local);
+  await expect(summary.call('large-summary', { text: 'x'.repeat(2 * 1024 * 1024) })).resolves.toEqual({ ok: true });
+  await expect(caller.call('large-default', { text: 'x'.repeat(2 * 1024 * 1024) })).rejects.toMatchObject({ code: 'capacity', mayHaveBeenSent: false });
+  summary.close(); expect(await caller.call('alive')).toEqual({ ok: true }); expect(f.connections).toHaveLength(1); expect(f.prepares()).toBe(1); caller.close();
+});
+
+it('refreshTargets最终实际proof越界不交付目录、不继续执行，沿用原Relay且关闭实际自有资源', async () => {
+  const fsSync = await import('node:fs');
+  const { syncBuiltinESMExports } = await import('node:module');
+  const f = await fixture({ operationTimeoutMs: 250 });
+  const owner = await acquireRemoteOwner(f.store);
+  let returned = false;
+  let delayed = false;
+  const original = fsSync.default.lstatSync;
+  const spy = vi.spyOn(fsSync.default, 'lstatSync').mockImplementation((...args: Parameters<typeof original>) => {
+    const stat = Reflect.apply(original, fsSync.default, args);
+    if (returned && !delayed && String(args[0]) === f.store.directory) {
+      delayed = true;
+      const until = performance.now() + 500;
+      while (performance.now() < until) {}
+    }
+    return stat;
+  });
+  syncBuiltinESMExports();
+  try {
+    await f.controller.start();
+    await until(() => f.controller.state === 'online');
+    f.setFetch(async () => {
+      returned = true;
+      return new Response(JSON.stringify({ items: [target(), target('remote-env', 'remote-install')], cursor: null }));
+    });
+    await expect(f.controller.refreshTargets()).rejects.toMatchObject({ code: 'unavailable' });
+    expect(delayed).toBe(true);
+    expect(f.controller.state).toBe('offline');
+    expect(() => f.controller.createRawStream(local)).toThrow();
+    expect(f.prepares()).toBe(1);
+    await f.controller.settled();
+    expect(f.connections).toHaveLength(1);
+  } finally {
+    spy.mockRestore();
+    syncBuiltinESMExports();
+    await f.controller.settled();
+    await owner.close();
+  }
+});
 
 it('多次start与多目标raw/管理流只持有一个relay，零stream仍保持master，管理流只初始化一次', async () => {
   const f = await fixture(); await Promise.all(Array.from({ length: 6 }, () => f.controller.start())); await until(() => f.controller.state === 'online');

@@ -1,0 +1,360 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-11-14T02:38:31.187068+00:00",
+  "sourceCommit": "d202927e554236413b4f5d5955bb16240acdb68d",
+  "documentationBaselineMain": "40b0171f7e0c625e3e0656a2ed3e9b4e8d3bdcb0",
+  "status": "product-official-read-blocked-design-decision-pending",
+  "productOfficialFilesPassed": false,
+  "scope": "服务端源码本地双审及官方只读调查；不等于产品文件层或完整Remote验收通过",
+  "reviews": {
+    "approvedCleanupBoundary": "Q46-A",
+    "specBoundarySupplementPassed": true,
+    "qualityPassed": true,
+    "qualityIndependentGroups": 7,
+    "fullServerTestsPassed": 1282,
+    "fullServerTestsSkipped": 7,
+    "strictSourcePassed": true,
+    "strictTestsPassed": true,
+    "serverBuildPassed": true,
+    "qualityReportSha256": "aae487aec2480854000f8cae7c52514ac0dcd5c4fa5fbbf886d0e18d24c1ae04",
+    "qualityManifestSha256": "fde842dc026c98ff263fe8de9691f24a31c26d83b9ffd964773ea5ab66e92b96",
+    "qualityRootVerifiedArtifactCount": 2939,
+    "originalPrivateCleanupRedPreserved": true
+  },
+  "originalProductAttempts": [
+    {
+      "number": 1,
+      "sourceCommit": "d202927e554236413b4f5d5955bb16240acdb68d",
+      "exitCode": 1,
+      "classification": "测试夹具遗漏固定canonical只读身份RPC，非产品失败",
+      "prepares": 0,
+      "fileCommandsSent": 0,
+      "newAuthorizationOrEnrollment": false
+    },
+    {
+      "number": 2,
+      "sourceCommit": "d202927e554236413b4f5d5955bb16240acdb68d",
+      "exitCode": 1,
+      "classification": "正式RPC100MiB上传通过，完整回读2MiB后disconnected，原因未定；不是通过",
+      "prepares": 1,
+      "newAuthorizationOrEnrollment": false,
+      "uploadPassed": true,
+      "uploadMs": 74508,
+      "downloadPassed": false,
+      "downloadReceivedBytes": 2097152,
+      "downloadMs": 73904,
+      "downloadFailureCode": "disconnected"
+    },
+    {
+      "number": 3,
+      "sourceCommit": "d202927e554236413b4f5d5955bb16240acdb68d",
+      "exitCode": 1,
+      "classification": "原commit跨进程对账成功；100MiB回读在180s原预算到期仅26MiB；12次原生ping/pong完成，无已观测协议错误或意外断线",
+      "prepares": 1,
+      "downloadReceivedBytes": 27262976,
+      "downloadMs": 180009,
+      "downloadFailureCode": "timeout",
+      "originalCommitQueryPassed": true,
+      "no100MiBUploadReplay": true,
+      "nativePings": 12,
+      "nativePongs": 12,
+      "unexpectedRelayDisconnects": 0
+    }
+  ],
+  "bufferedReadFeasibility": {
+    "passed": true,
+    "productFilesPassed": false,
+    "startedAt": "2026-11-14T02:24:22.460Z",
+    "finishedAt": "2026-11-14T02:26:28.364Z",
+    "authPrepares": 1,
+    "defaultPermissionViolations": 0,
+    "nonfiniteOutputCapViolations": 0,
+    "rpcCounts": {
+      "account/read": 47,
+      "remoteControl/status/read": 46,
+      "command/exec": 58,
+      "command/exec/write": 3,
+      "command/exec/terminate": 1,
+      "model/list": 1
+    },
+    "serializedRpc": {
+      "maximumBytes": 32069,
+      "totalBytes": 251701,
+      "sentByMethod": {
+        "initialize": 1,
+        "initialized": 1,
+        "command/exec": 58,
+        "command/exec/write": 3,
+        "command/exec/terminate": 1,
+        "model/list": 1
+      }
+    },
+    "result": {
+      "passed": true,
+      "productFilesPassed": false,
+      "readOnly": true,
+      "originalUploadReused": true,
+      "windowBytes": 2097152,
+      "chunkBytes": 524288,
+      "maxActiveReadCommands": 1,
+      "totalReadBudgetMs": 180000,
+      "outputBytesCap": 3145728,
+      "cases": [
+        {
+          "name": "original committed upload query",
+          "passed": true,
+          "ms": 2486,
+          "rpc": {
+            "account/read": 1,
+            "remoteControl/status/read": 1,
+            "command/exec": 1,
+            "command/exec/write": 1,
+            "command/exec/terminate": 1
+          }
+        },
+        {
+          "name": "finite output cap truncation is rejected",
+          "passed": true,
+          "ms": 591,
+          "rpc": {
+            "account/read": 0,
+            "remoteControl/status/read": 0,
+            "command/exec": 1,
+            "command/exec/write": 0,
+            "command/exec/terminate": 0
+          }
+        },
+        {
+          "name": "100MiB sequential buffered windows within original180s",
+          "passed": true,
+          "ms": 109317,
+          "rpc": {
+            "account/read": 38,
+            "remoteControl/status/read": 38,
+            "command/exec": 50,
+            "command/exec/write": 0,
+            "command/exec/terminate": 0
+          }
+        },
+        {
+          "name": "buffered Range 0:0",
+          "passed": true,
+          "ms": 569,
+          "rpc": {
+            "account/read": 1,
+            "remoteControl/status/read": 1,
+            "command/exec": 1,
+            "command/exec/write": 0,
+            "command/exec/terminate": 0
+          }
+        },
+        {
+          "name": "buffered Range 17:524295",
+          "passed": true,
+          "ms": 720,
+          "rpc": {
+            "account/read": 1,
+            "remoteControl/status/read": 1,
+            "command/exec": 1,
+            "command/exec/write": 0,
+            "command/exec/terminate": 0
+          }
+        },
+        {
+          "name": "buffered Range 1048593:1048583",
+          "passed": true,
+          "ms": 1167,
+          "rpc": {
+            "account/read": 0,
+            "remoteControl/status/read": 0,
+            "command/exec": 1,
+            "command/exec/write": 0,
+            "command/exec/terminate": 0
+          }
+        },
+        {
+          "name": "buffered Range 104857569:31",
+          "passed": true,
+          "ms": 570,
+          "rpc": {
+            "account/read": 0,
+            "remoteControl/status/read": 0,
+            "command/exec": 1,
+            "command/exec/write": 0,
+            "command/exec/terminate": 0
+          }
+        }
+      ],
+      "unexpectedOwnOutputNotifications": 0,
+      "memory": {
+        "intervalMs": 50,
+        "maximumObservedRss": 256507904,
+        "maximumObservedExternal": 81726814,
+        "maximumObservedArrayBuffers": 77849157
+      },
+      "originalCommitVerified": true,
+      "finiteCapTruncationRejected": true,
+      "progress": {
+        "receivedBytes": 104857600,
+        "windows": 50,
+        "lastWindowMs": 1261
+      },
+      "firstWindowMs": 3456,
+      "fullRead": {
+        "passed": true,
+        "bytes": 104857600,
+        "sha256": "bfe2c08e9123d8b198f238ca91cf28ffeb8a5908eae2897bcb754ea97ccaa1e0",
+        "windows": 50,
+        "targetRangeHashMatched": true
+      },
+      "completedReadBytes": 104857600,
+      "completedReadWindows": 50,
+      "adapterCloseKeptCallerSession": true
+    },
+    "nativePings": 7,
+    "nativePongs": 7,
+    "unexpectedDisconnects": 0,
+    "observationErrors": 0,
+    "privateArtifactCountVerified": 7,
+    "privateManifestSha256": "f27ab99070ff30a295203d715ebfc4b9ca3dbb2452aef6f9057a39b269275c4f",
+    "outputBytesCapAppliesPerStream": true,
+    "streamStdin": false,
+    "streamStdoutStderr": false
+  },
+  "protocolFacts": {
+    "fsReadFileOnlyAcceptsPath": true,
+    "fsReadFileRangeVerified": false,
+    "historicalHundredMiBReader": "four concurrent buffered command/exec Python readers, not fs/readFile Range",
+    "historicalElapsedIncludedUpload": true,
+    "historicalScriptsWithDisabledOutputCapNotReused": true
+  },
+  "limitations": [
+    "缓冲方案只在仓库外探针验证，未修改RemoteFiles；现产品read仍未通过官方100MiB验收。",
+    "默认20秒、最高180秒的同一总期限未延长；100MiB回读109317毫秒为单次样本，不是P95。",
+    "只有当前Mac实际目标；Windows、产品取消/迟到响应/版本竞争/资源限额和未知提交跨进程恢复仍须后续验证。",
+    "50毫秒采样的RSS/external/arrayBuffers是最大观测值，不代表精确峰值，也不证明逻辑64MiB预留覆盖整个OS进程。",
+    "原100MiB自有目标文件及精确提交收据暂留供产品修复后复验；无100MiB上传重放。",
+    "原首轮夹具失败、两次产品读取失败及全部原始私有证据保留，不以可行性成功覆盖产品失败。"
+  ],
+  "effects": {
+    "newAuthorizationOrEnrollment": false,
+    "productionChanged": false,
+    "clientBuilt": false,
+    "testChatsCreated": 0,
+    "modelInferenceRequestsSent": 0,
+    "productImplementationChanged": false,
+    "pushedMain": false
+  },
+  "bufferedCancelWithStdinFeasibility": {
+    "passed": true,
+    "productFilesPassed": false,
+    "startedAt": "2026-11-14T02:28:14.849Z",
+    "finishedAt": "2026-11-14T02:28:27.390Z",
+    "authPrepares": 1,
+    "defaultPermissionViolations": 0,
+    "nonfiniteOutputCapViolations": 0,
+    "rpcCounts": {
+      "account/read": 7,
+      "remoteControl/status/read": 6,
+      "command/exec": 2,
+      "command/exec/write": 2,
+      "command/exec/terminate": 1,
+      "model/list": 1
+    },
+    "serializedRpc": {
+      "maximumBytes": 4292,
+      "totalBytes": 5974,
+      "sentByMethod": {
+        "initialize": 1,
+        "initialized": 1,
+        "command/exec": 2,
+        "command/exec/write": 2,
+        "command/exec/terminate": 1,
+        "model/list": 1
+      }
+    },
+    "result": {
+      "passed": true,
+      "productFilesPassed": false,
+      "readOnly": true,
+      "cancellationProbeOnly": true,
+      "ownTargetStartedBeforeTerminate": true,
+      "ownTargetTerminatedBeforeWatchdog": true,
+      "noEndMarker": true,
+      "terminateEmptyAck": true,
+      "originalExecActuallySettled": true,
+      "streamStdinWithBufferedStdoutSupported": true,
+      "ownOutputNotifications": 0,
+      "startToSettledMs": 3249,
+      "terminateToSettledMs": 702,
+      "adapterCloseKeptCallerSession": true
+    },
+    "nativePings": 0,
+    "nativePongs": 0,
+    "unexpectedDisconnects": 0,
+    "observationErrors": 0,
+    "privateArtifactCountVerified": 7,
+    "privateManifestSha256": "933fc65182c6deb1719c55a76cbd62425fa1c21b4555efdb54ec893b36d545d3"
+  },
+  "bufferedCancelFeasibility": {
+    "passed": true,
+    "productFilesPassed": false,
+    "startedAt": "2026-11-14T02:37:06.583Z",
+    "finishedAt": "2026-11-14T02:37:19.038Z",
+    "authPrepares": 1,
+    "defaultPermissionViolations": 0,
+    "nonfiniteOutputCapViolations": 0,
+    "rpcCounts": {
+      "account/read": 7,
+      "remoteControl/status/read": 6,
+      "command/exec": 3,
+      "command/exec/write": 1,
+      "command/exec/terminate": 1,
+      "model/list": 1
+    },
+    "serializedRpc": {
+      "maximumBytes": 4292,
+      "totalBytes": 6414,
+      "sentByMethod": {
+        "initialize": 1,
+        "initialized": 1,
+        "command/exec": 3,
+        "command/exec/write": 1,
+        "command/exec/terminate": 1,
+        "model/list": 1
+      }
+    },
+    "result": {
+      "passed": true,
+      "productFilesPassed": false,
+      "readOnly": true,
+      "cancellationProbeOnly": true,
+      "sameConfigurationAsHundredMiBRead": true,
+      "ownTargetStartedBeforeTerminate": true,
+      "ownTargetTerminatedBeforeWatchdog": true,
+      "noEndMarker": true,
+      "terminateEmptyAck": true,
+      "originalExecActuallySettled": true,
+      "sameReadConfigurationStreamStdinFalse": true,
+      "bufferedProcessIdTerminateSupported": true,
+      "ownOutputNotifications": 0,
+      "startToSettledMs": 2831,
+      "terminateToSettledMs": 829,
+      "finiteCap": {
+        "requestedPerStreamCap": 128,
+        "exitCode": 0,
+        "originalStdoutBytes": 4201,
+        "capturedStdoutBytes": 128,
+        "stderrFullOutputHashProofMatched": true,
+        "truncatedResultRejected": true
+      },
+      "adapterCloseKeptCallerSession": true
+    },
+    "nativePings": 0,
+    "nativePongs": 0,
+    "unexpectedDisconnects": 0,
+    "observationErrors": 0,
+    "privateArtifactCountVerified": 7,
+    "privateManifestSha256": "560a37c26adcfe2c89b3029c04611afa2bad52bcefd66f8d39e0f405684cded3"
+  }
+}

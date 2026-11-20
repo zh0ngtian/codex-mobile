@@ -1,6 +1,9 @@
 # 常驻 Remote 网关 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+2026-11-17 本轮状态：Task4公开装配/观察器与Task5手机接线源码及本地验证已完成，固定实现`b52c82fe`，见[脱敏收据](evidence/2026-11-17-remote-gateway-completion-validation.json)。基线main为`1f274d286d2da128404c6ff390a1f37282479af1`。Task6官方全功能和8小时/P95仍待，不将源码完成等同官方验收通过。自2026-11-16起由主执行者直接核对，不再安排独立agent复审；此前分阶段审查及失败记录原样保留。
+
+
+> **现行执行规则（2026-11-16 用户修订）：** 按任务逐项实施并保留 TDD 与必要验证，由主执行者直接检查代码和需求；不再安排独立 agent 规格或质量复审，不以独立复审放行为交付门槛。下文历史审查结果和失败记录保持原结论；未完成任务均遵循本规则。进度使用复选框（`- [ ]`）记录。
 
 **Goal:** 在现有多网关客户端中接入网关持有的官方 Remote 连接，保留本地模式，并实现共享持久队列与离线恢复。
 
@@ -17,8 +20,8 @@
 ## 验证约定
 
 - Node 26 的原生 Web Storage 与现有 jsdom 环境冲突；测试命令设置 `NODE_OPTIONS=--no-experimental-webstorage`，不为环境问题修改产品逻辑。
-- 每项行为先写失败测试并实际观察预期失败，再写实现，最后运行对应测试与 `npm run build:server`；必要客户端任务运行 `npm run typecheck`、`npm run build`。
-- 实现任务依次执行；每项完成先规格复审，再质量复审。提交使用中文 Conventional Commits，正文含“新增功能”和“主要修改”。
+- 每项行为先写失败测试并实际观察预期失败，再写实现，最后运行对应测试、源码与含测试的两种严格检查（`tsconfig.npm.json`、`tsconfig.server.json`）及 `npm run build:server`；必要客户端任务运行 `npm run typecheck`、`npm run build`。
+- 实现任务依次执行；每项完成由主执行者直接检查代码与需求并核对必要验证结果，不再使用独立 agent 复审。既有失败必须修复并验证，保留历史证据。提交使用中文 Conventional Commits，正文含“新增功能”和“主要修改”。
 - 官方探针凭据、密钥和原始数据仅存仓库外私有目录；只提交脱敏收据，测试会话完成后及时归档。
 
 ## Task 1：官方 relay 协议、复用和安全恢复
@@ -38,7 +41,7 @@
 
 ## Task 2：网关自身身份、授权管理和目标目录
 
-文件：新增 `server/remote/auth.ts`、`server/remote/controller.ts`、`server/remote/device-key.swift`、`server/remote/cli.ts` 及对应 `tests/server/remote-auth.test.ts`、`tests/server/remote-controller.test.ts`；修改 `bin/codex-mobile.mjs`、`package.json` 的源码打包清单。
+文件：新增 `server/remote/auth.ts`、`server/remote/controller.ts`、`server/remote/device-key.swift`、`server/remote/admin*.ts`、`server/remote/owner.ts`、`bin/remote.mjs`及对应测试；修改 `bin/codex-mobile.mjs`、`server/index.ts`。CLI复用既有bin与编译后服务端打包目录，不增加开发源码加载回退。进程归属衔接所需的受管启动取消与退出跟踪位于 `server/app-server-manager.ts` 和 `server/model-upload-routing.ts`；有界管理期限、精确清理和实际连接收尾分别放在小型内部助手中。
 
 本任务依次拆为2a（私有存储、网关密钥、认证协议与 provider）和2b（控制器、目标目录、OAuth 与 Mac CLI），各自完成红绿验证和两轮审查。2b 按依赖顺序细分为2b.1（有界 RPC session 与 canonical 受管认证 loader）、2b.2（账号绑定控制器、client 可见目录、本机身份证明与配对）、2b.3（OAuth、Mac CLI 及运行配置衔接）；各子项单独红绿验证和两轮审查，避免授权、目录与命令行混在同一模块。新增 `rpc-session.ts`、`managed-auth.ts`、`oauth.ts` 均为本任务内部职责拆分，不改变已确认的连接和授权架构。
 
@@ -54,9 +57,9 @@
 
 - [x] 2b.1 有界管理RPC session与canonical受管认证loader。
 - [x] 2b.2 账号绑定控制器、client可见目录、本机身份证明与配对。
-- [ ] 2b.3 OAuth、Mac CLI及运行配置衔接。
+- [x] 2b.3 OAuth、Mac CLI及运行配置衔接（源码与隔离入口已验证，综合性能继续Task6）。
   - [x] 2b.3a 一次性OAuth模块及隔离回调/交换验证。
-  - [ ] 2b.3b Mac CLI、唯一控制器运行配置及显式恢复/关联；第44/45项已确认。
+  - [x] 2b.3b Mac CLI、唯一控制器运行配置及显式恢复/关联；第44/45项源码已验证。
 
 2b.3继续按内部依赖顺序拆为两项：先完成有界、一次性的PKCE/state OAuth流程及其隔离回调/交换测试，再接入Mac CLI、唯一控制器的运行配置与显式恢复/重新关联。每项均先红绿验证，再规格和质量复审；OAuth子项只返回已核验的短期step-up结果，不自行登记、迁移既有身份或创建Remote主连接，CLI子项完成前不将2b.3或Task2整体标为完成。
 
@@ -70,7 +73,7 @@
 
 - [x] 2b.3b.1 `server/remote/identity-registry.ts`及测试：独立私有候选记录、完整绑定校验、活动身份指针CAS和崩溃后只采用已提交身份，保留旧身份。
 - [x] 2b.3b.2 `server/remote/runtime.ts`、`server/remote/runtime-state.ts`、`server/remote/runtime-lifecycle.ts`、`server/remote/login.ts`及测试，必要时扩充controller的显式重新关联/目标预绑定接口：同一网关串行管理canonical登录、首次授权/配对/恢复、停止旧主连接后准备新身份，原身份与目标复核及暂停保留。暂停名单单独持久化，以完整tuple保留旧installation，不因配对或重启清除；取消、绝对期限与资源清理边界独立为内部助手，不增加产品API。
-- [ ] 2b.3b.3 `server/remote/admin.ts`、`bin/remote.mjs`及测试，修改`server/index.ts`、`bin/codex-mobile.mjs`等入口：当前用户私有有界管理通道、单网关进程归属、CLI仅连接已运行实例，使用实际canonical地址；Local启动与既有URL不受授权状态影响。
+- [x] 2b.3b.3 `server/remote/admin.ts`、`bin/remote.mjs`及测试，修改`server/index.ts`、`bin/codex-mobile.mjs`等入口：当前用户私有有界管理通道、单网关进程归属、CLI仅连接已运行实例，使用实际canonical地址；Local启动与既有URL不受授权状态影响。
 
 各项独立红绿、规格与质量审查；只有运行入口、CLI及隔离生命周期全部通过后才标记2b.3b完成。不启动现役服务、不执行真实授权撤销或登记、不构建客户端。
 
@@ -81,6 +84,10 @@
 2b.3b.2完成记录：最终源码 `335ed58f1e3bea240299dcaccf6a74e4dbecd487`，全部16个Remote文件492项通过，1项既有硬件opt-in跳过；严格服务端类型检查、服务端构建和独立规格/质量复审通过。运行层串行管理普通canonical登录、首次授权、独立候选恢复与显式重新关联；完整tuple暂停持久保留，旧主连接停止及存储收尾前不准备新身份。审查复现并修复恢复取消后迟到启动、离线目标误清暂停、本机重新关联冲突、登录最终清理取消、健康目标被其他目标拒绝关闭及已兑现未交付资源回收，磁盘reason严格要求白名单字符串。见[运行层隔离验收记录](evidence/2026-11-13-remote-runtime-validation.json)。
 
 同一最终源码的正式Remote隔离探针复用此前已授权的网关自有身份，禁止新密钥、OAuth和登记：5次并发start只准备1条主连接，3条管理流RPC通过；主动断线至原3流顺序model/list全部完成4380ms；关闭逻辑流后35秒主连接保留，prepare次数不增加。仅隔离登记变化触发暂停，恢复记录并重建runtime仍不自动连接；显式恢复原完整tuple至RPC完成7938ms，无新登记。首次启动至3流RPC全完成12980ms。见[脱敏运行层收据](evidence/2026-11-13-remote-runtime-product-probe.json)。实例重建不是OS进程重启，这些单次耗时和短时保活不代表P95或8小时验收；未创建聊天、执行模型推理、修改现役服务或构建客户端。私有管理通道、Mac CLI与入口继续2b.3b.3，不能标记整个Task2完成。
+
+2026-11-13开始2b.3b.3时记录已推送并核对main为 `b28a24af2cd3ce5fa2fd6a715753d43d34e3a5c1`。本项按私有路径/进程归属、版本化有界IPC、CLI和实际入口三块内部职责实施，继续真实临时Unix及OS子进程红绿验证和两阶段独立审查；不读取真实凭据，不操作现役服务或发布渠道。
+
+2b.3b.3完成记录：最终源码为 `700c7c7d96c5fc7cadf58913d5f855d1c731ed5a`，31文件717项通过、7项跳过，源码及含测试的两种严格服务端类型检查与构建通过。原候选 `2ea6630` 已通过规格复审，但质量审查以实际index复现root整体替换后的归属断链；现固定最初祖先/root及实际锁/owner身份，贯穿存储克隆、候选、受管启动、Runtime/Relay和admin，失效永久取消并实际收尾，补充6种真实入口和4种managed阶段替换回归。`1d9f1cb`规格复审再发现5处同步阻塞后的最终期限缺口，已逐项红绿修复，原独立5例和新增9项永久回归通过。QUALITY已以实际OS确认原root替换修复；含测试配置的导入类型错误在`b773c0f`最小修复。统一审计另确认Runtime、ManagedAuth、Controller、Login、ownedFetch及key helper六处在proof耗时后仍可跨原期限创建资源；`700c7c7d`以内部guard保留原父操作及短阶段预算，六份原脚本均实际触发延迟并验证相关资源创建为零，Controller适配门闩副本先在旧551确认RED再验证GREEN。成功交付后的真实Relay挑战签名、零流保活和重连，以及失败/取消/超时的迟到canonical实际settled均通过。首次FS期限、精确捕获清理、多回收者竞争与当前/旧/迟到/失败连接实际关闭继续回归。最终固定源码已获原SPEC与QUALITY独立复审通过。见[隔离验收记录](evidence/2026-11-13-remote-admin-isolated-validation.json)与[Mac管理说明](../../remote-gateway-management.md)。同一冻结源码的[官方Remote实际OS入口探针](evidence/2026-11-13-remote-admin-product-probe.json)通过：3个实际OS进程各完成RPC与CLI核验；正常重启、SIGKILL后恢复及健康owner下第二进程零Runtime/prepare均通过；零逻辑流25秒后新增RPC成功，认证prepare仍1。三次启动至RPC/CLI就绪为11789、14244、10065ms。共4次只读model/list，无模型推理、新授权/登记、测试聊天或现役服务修改。2b.3源码与入口现已完成；下列整个Task2的综合性能、凭据周期及队列联动要求继续Task4/6，不将三次样本或25秒保活记为P95/8小时通过。
 
 2b.1完成记录：最终源码 `797fef5d21eeb026d40334b535e5f713c3dc2cc9`，38项新增专项测试、9文件211项相关回归通过，1项既有硬件opt-in跳过；严格服务端TypeScript检查、服务端构建和独立规格/质量复审通过。RPC使用已核验JSON快照，canonical待写字节与数量独立有界，未完成写入超时关闭并清理；loader按连接隔离refresh/singleflight，文件读取超时关闭关联会话，保留原绑定，旧结果不得污染新连接。最终隔离实测39次loader加载保持账号绑定，三条管理流复用一条官方物理连接，同流主动断线至三次顺序模型RPC全部完成5015ms，新provider恢复磁盘身份的RPC为1224ms，无重新授权或生产改动。首次实际验证曾在初始化前发生连接离线，旧session按设计终止；探针改为online后新建初始逻辑流，失败记录一并保留，未重放请求。见[脱敏受管认证/RPC收据](evidence/2026-11-13-remote-managed-auth-rpc-probe.json)。该阶段未覆盖controller/目录与产品路径，不代表P95、真实网关进程重启或8小时验收。
 
@@ -97,7 +104,7 @@
 - [ ] 实现当前 client 可见目标目录，绑定 env+installation，canonical `remoteControl/status/read` 证明本机身份；不按名字/IP 合并。
 - [ ] 控制器设置恢复退避上限并核对实际耗时，以满足已确认的上游恢复后首个轻量 RPC P95≤10秒目标；库的可配置上限不作为已达标证据。
 - [ ] 在隔离实例使用用户已授权的网关身份验证 RPC、会话刷新及同 stream 恢复；不重启生产服务。
-- [ ] 运行对应 Vitest 与服务端构建；规格/质量复审并提交。
+- [ ] 运行对应 Vitest 与服务端构建；由主执行者直接检查代码与需求、核对验证结果并提交。
 
 ## Task 3：目标权限内的文件与 Git 适配
 
@@ -107,43 +114,312 @@
 
 2026-11-13用户已批准的例外：仅固定计量读取命令使用官方 `sandboxPolicy: { type: "readOnly", networkAccess: true }`，其余文件、Git与业务操作继续默认权限。隔离实例已通过socket连接、目标codexHome归属、私有权限/owner/inode及精确canonical来源hash校验；未重新授权、未修改现役服务、未发送模型请求。见[脱敏例外验证收据](evidence/2026-11-13-remote-meter-readonly-network-probe.json)。此验证仅证明当前Mac的hello/来源读取能力，统计快照、持续更新与产品接入仍待Task3实现验收；不得将例外开放为客户端任意脚本或沙箱参数入口。
 
-- [ ] 先在临时目录真实验证 `fs/readFile`、`fs/writeFile`、`command/exec` 和 stdin/stdout 分块；100MiB 文件校验 SHA-256，视频范围读取核对长度与内容，失败恢复不提交半文件。
-- [ ] 测试目标路径只交给目标适配器，远程读写/Git 绝不能调用网关同路径本地 fs/exec。
-- [ ] 实现有界、带背压、临时文件+校验+原子提交的上传下载和范围读；目标执行使用默认配置权限；只有用户已批准的固定统计读取命令可使用上述只读加网络例外。
-- [ ] 实现项目/rollout 元数据与 Git 统计的目标读取，保留现有时间戳、生成图错误与临时 index 语义。最新 main 的桌面项目归属、置顶、项目 worktree、独立标题总结、网页引用与模型上传计量也纳入目标隔离与功能验收；读取目标元数据，不借用网关本机的对应缓存或 IPC。
-- [ ] 测试附件上限、引用文件保留、断线中断、输出截断、路径特殊字符和临时文件清理。
-- [ ] 运行相关服务端回归、真实 Remote 文件验收及服务端构建；规格/质量复审并提交。
+后续前置只读事实：当前目标官方环境中的 `CODEX_APP_RUNTIME_CLI_PATH` 指向既有私有计量启动层，其JSON配置含实际 `upstreamUrl/socketPath`；只读解析得出的地址与此前明确canonical完全一致。随后联合探针在同一次固定统计读取中证明祖先、owner/权限、句柄及前后inode，再以推导来源校验socket hello；两秒收到198条既有usage帧、共49958字节。无需向其他目标借用网关Mac地址或猜端口；未触发新模型请求，不代表快照完整性、持续更新或产品统计接入通过，也不代表未安装计量的其他目标可用，见[目标来源发现收据](evidence/2026-11-13-remote-meter-source-discovery-probe.json)。
+
+2026-11-13开始3a时记录最新已推送并核对的main为 `4539494e4bcd8f57412a96c7834719fa23d54974`；此前Mac私有管理入口的717项回归、独立双审和正式Remote实际OS探针通过。继续仅开发服务端，不构建客户端或部署现役服务。
+
+Task3按内部依赖分项验证，不改变已确认的权限、功能或目标隔离要求；每项先红绿验证，再规格与质量复审，全部完成才勾选Task3整体：
+
+- [x] 3a 目标命令与能力基础：绑定实际初始化元数据，强制检测Python3；默认权限、有界命令、完整输出证明、取消与结果未知分类，不增加物理连接或本地回退。
+- [x] 3b 目标文件基础：分块、背压、版本与SHA-256校验、100MiB上限、Range、临时文件及原子提交；已发送写入不重放。冻结f455772通过新独立双审与一次官方整套Files验收，详见下方最新记录。
+- [x] 3c 固定统计读取：通过目标自己的官方环境证明既有计量来源，严格核验私有路径与socket；固定只读加网络例外仅用于统计，核验hello与实际usage/remove、断线及失效清理；无快照结束标记，不以静默推导完整或零。
+- [x] 3d 现有功能注入：项目、rollout、图片/附件/视频、Git、标题总结、Sidechat、Bark与统计全部使用目标能力，保留各自原有边界并完成真实Remote验收。
+  - [x] 3d.1 下载、图片/视频、InlineImages与Sidechat历史图片：最终58362ad0本地、独立双审及官方B通过，正式目标路由尚未装配。
+  - [x] 3d.2 rollout时间/引用/线程分类/图像生成失败与Bark元数据：冻结04169410本地、独立双审及官方B通过，公开路由尚未装配。
+  - [x] 3d.3 项目、Git、置顶与标题总结：冻结180cf6c8本地、独立双审及官方自有夹具A/B通过，公开目标路由尚未装配。
+  - [x] 3d.4 统计失效通知与消费者装配：7f468源码双审/官方A及最终9f0d原生验收通过，公开路由仍归Task4。
+
+3a完成记录：最终源码 `8e3a1214c300bd20b215ac253a2032ce7ea04077`，114项命令/RPC专项和完整服务端1145项通过、7项既有opt-in跳过；源码与含测试的两种严格检查及服务端构建通过，独立规格与质量复审均通过。初版`cba1d973`的正常后台后代残留及已发送probe错误归类由独立复现驱动修复；后续`a1478df`质量审查再发现较大输出上限的单字节越界检查迟到、Windows业务DWORD退出码误拒绝，均保留RED并以`8e3a121`最小修复。正常结果须确认精确terminate空ACK与原exec实际结束，再校验完整字节/长度/SHA；输出读取按当前可用字节及剩余额度加一，Windows业务范围独立于外层signed32。全部默认权限、Python3必需、完整账号/目标绑定，无本地/SSH回退；全局最多4命令与64MiB缓冲预留，不代表整个进程RSS上限。见[隔离验收记录](evidence/2026-11-13-remote-commands-isolated-validation.json)。
+
+同一冻结源码的[正式Remote命令探针](evidence/2026-11-13-remote-commands-product-probe.json)通过：实际网关入口仅1次认证prepare，3次默认权限command/exec（1次Python能力证明、2次固定业务探针），验证特殊argv、cwd、env删除、二进制两路输出及业务非零退出23；自有后台进程已证明实际运行且未自然结束，命令收尾后停止且临时目录清除，关闭命令适配器后原session的model/list仍可用。零逻辑流25秒后新增RPC成功且未重新prepare；健康owner竞争和正常SIGTERM清理通过。无新授权/登记、模型推理、测试聊天、客户端构建或现役服务修改。首次基础探针通过后，补充上述子进程启动与未自然结束断言再验通过；两次合计6次command/exec及4次只读model/list，首次记录保留在收据中。Windows仅协议测试；这些短时样本不代表文件层、Task3整体、P95或8小时验收。
+
+2026-11-13开始3b时记录已推送并核对main为 `5dd68552be70a011c923b068469527539b0b4983`，目标命令层双审与正式Remote探针已通过。文件层仍仅开发服务端源码和测试；当前服务、客户端及渠道保持原有版本。
+
+3b首轮源码 `af9d7db08108dbbc93dc5df1cdc91de9b5798748` 尚未通过独立规格审查。审查在真实临时Python/RPC中复现四项问题：重复路径分隔符误拒绝、跨记录的大通知误判超限、查询改写提交历史版本、清理捕获后进程中断使原收据无法定位。原实现者以 `7ce83a928ed4edd8a5b9f4a5d772f484724d5f4b` 修复四项问题，79项专项、完整服务端1224项通过/7项跳过及两种严格检查和构建通过；首次完整回归的超时阶段断言失败与定向红绿记录保留，未将未证实原因归因于负载。第二轮独立规格审查原P01–P13全部通过，但新探针发现中间子项捕获仍用普通rename，可能覆盖检查后出现的未知目标文件；原实现者以 `a523b47225c5c9ee296aa6003590ff101179df6d` 统一所有自有捕获的原子拒覆盖，补齐捕获未移动、清理已移位后的事实查询与钩子命中证明；130项文件专项、完整服务端1275项通过/7项跳过及两种严格检查和构建通过。首次完整回归的既有认证测试回调未赋值失败与原命令复跑记录保留。2026-11-14已整合最新main `40b0171f7e0c625e3e0656a2ed3e9b4e8d3bdcb0` 的发布元数据，固定候选为 `cd248991c2d08509d3d604f61cfd85c62925b6a9`；第三轮独立规格复审的原P01–P14、22项阶段恢复、4项最后收据保护及48项目的位点矩阵通过，但组合两次拒绝捕获后，已删除空commit目录会遮蔽仍在entry且身份/散列正确的payload，查询误为unknown，原实现者以 `b6040ccdb866b4326af1f497968c41b981d6d811` 根据真实清理意图有限重证存活暂存，未知替换、无意图及实际已删源仍返回unknown；新增7项组合及反例，137项文件专项、完整服务端1282项通过/7项跳过、两种严格检查和服务端构建首轮通过。第四轮独立规格97组及所有本地验证首轮通过。新的质量审查在实际unlink边界用受控wrapper模拟同账号非合作替换，私有receipt、writer-lock及最终journal三个位点的未知替换物均被删除，最终journal还返回成功；用户目的文件均未动。本轮未启动独立外部竞态进程。阶段QUALITY为NEEDS_CONTEXT且未完成，相关Remote866项通过/1项跳过不能抵销新失败。用户随后在第46项选择A：信任当前系统账号，私有暂存/收据路径只由遵守协议锁的网关操作，不承诺抵御该范围内的非合作主动篡改；公开路径、未知捕获目标、正常多清理者和中断恢复保护继续保留。见[保护范围补充](../specs/2026-11-14-remote-file-cleanup-boundary-proposal.md)。随后恢复开发，先独立确认规格边界并完成剩余质量审查，再做官方文件实测。没有改动原工作区main引用或暂存区。首次失败记录保留，当时质量与官方gate未放行；当前后续状态见下一段。
+
+第46项A后的当前状态：`d202927e554236413b4f5d5955bb16240acdb68d` 的规格补充及新质量审查PASS，7组独立生命周期验证、完整服务端1282项/7项跳过、两种严格检查及服务端构建通过；主代理完整读取报告并核对2939份证据无差异。原三位点RED及原NEEDS_CONTEXT报告保留。官方100MiB上传74508毫秒通过；首次回读2MiB后disconnected，原因未定；新OS进程只查询原提交再读，180秒期限到期只交付26MiB，12次原生ping/pong均完成，无已观测协议错误或意外断线。因此文件官方gate仍未放行，3b不勾选。
+
+仓库外单进程、2MiB窗口、3MiB有限输出cap的短command缓冲读取在109317毫秒完成原100MiB的逐字节/总SHA及四组Range；截断拒绝、精确terminate与原session存活另验通过。此为可行性，非产品修复或验收。官方fs只有path整文件读，历史分段成功也来自短command；不得以未存在的fs Range或关闭cap实现替代。用户已在[第47项读取方式补充](../specs/2026-11-14-remote-file-buffered-read-proposal.md)选择A：固定短命令、2MiB窗口，每文件单活动读取进程，保留原期限、权限、完整性、版本与全局预留，取消后精确收尾，不增加回退。现进入先RED后实现、独立规格与质量复审及最终源码官方实测阶段；3b继续未验收。开始修改前重新核对的main基线为 `40b0171f7e0c625e3e0656a2ed3e9b4e8d3bdcb0`。见[脱敏调查收据](evidence/2026-11-14-remote-files-read-investigation.json)。
+
+第47项A的最新状态：固定源码 `41dd5a751aab5fa26d124419a396e6510fcbf780` 已整合当时最新main `0c8c86badf0016300d656b04d40f629ffe62f1c7`，完成固定2MiB短命令读取和两项质量反证的TDD修复。170项文件专项、完整服务端1315项/7项跳过、双strict及服务端构建通过；最终独立SPEC与QUALITY均PASS，完整报告与工件已由主代理复核。官方第一轮原100MiB产品读回180003毫秒交付80MiB后超时（12次原生ping/pong完成），第二轮60874毫秒交付64MiB后由10秒原生pongTimer主动断开；断开前195毫秒仍记录到文件分块。直接触发已确定，pong迟到与第一轮耗时根因未知。两轮查询原提交均成功，未重放原上传，未开始新上传，原夹具/收据及失败证据保留。见[两轮产品收据](evidence/2026-11-14-remote-files-buffered-product-attempts.json)。用户已选择[第48项传输存活方案](../specs/2026-11-14-remote-heartbeat-progress-proposal.md)A：当前连接严格校验后的新增有效进度可以续传输存活计时，重复/错路由/旧连接/ACK不续期，原期限及失效语义保留。开始修改前HEAD为 `001db49ff168be8e0830f49ad764e05133879979`，已重新fetch核对main仍为 `0c8c86badf0016300d656b04d40f629ffe62f1c7`。进入真实WebSocket RED→GREEN及新源码SPEC→QUALITY、官方实测；3b继续未验收，3c及后续依赖保持未开始。未推送文件候选到main、发布或部署。
+
+第48项A本地实现完成：`e16e5482a711d8ab48b326389c282657806e9b32` 仅修改relay、分块组装及对应测试。首RED证明4片新分块仍被原计时器断开、组装结果未区分进度；另有旧ping失败回调误断新轮次的独立RED，均保留并最小修复。最终70项专项、完整服务端首轮1334项通过/7项跳过、双strict与服务端构建通过；验证后再次fetch，main仍为 `0c8c86badf0016300d656b04d40f629ffe62f1c7`。冻结新源码 `d235b6d1de013f56a1f9d3cec2e2335e0835200f` 的独立SPEC→QUALITY已通过：SPEC另有24组真实WebSocket、129项相关回归和7项Files约束，QUALITY另有70项专项及4组生命周期反证。主代理完整读取报告并核对16/12份工件无差异；探针初始断言格式失败保留，未算作产品RED。官方首轮原100MiB读回仍在180秒交付74MiB后超时，12次原生ping/pong完成且无意外断开；新上传、未知提交和OS重启恢复未开始。三个2MiB只读Range均通过，但耗时3.8–4.9秒，主要观测于回复等待/分段到达；本地公平交错比较82.66/81.93毫秒，暂无已证实的局部修复。见[新源码验证及耗时收据](evidence/2026-11-14-remote-heartbeat-progress-validation.json)。用户已在[第49项](../specs/2026-11-14-remote-file-read-budget-proposal.md)选择A：仅read可显式最高600秒，默认20秒、其他操作/单窗口RPC最高180秒，开始真实RED→最小实现→新SPEC→QUALITY→官方验收；修改起点5c0fdcb，fetch核对main仍0c8c86b。3b及后续仍未放行，未推送文件候选到main。
+
+- [x] 在临时目录真实验证目标所需的官方fs/command能力及有界传输；100MiB文件校验SHA-256，范围读取核对长度与内容，失败恢复不提交半文件。现官方fs无Range参数，分段读取不得假设未知参数生效。
+- [x] 测试目标路径只交给目标适配器，远程读写/Git 绝不能调用网关同路径本地 fs/exec。
+- [x] 实现有界、带背压、临时文件+校验+原子提交的上传下载和范围读；目标执行使用默认配置权限；只有用户已批准的固定统计读取命令可使用上述只读加网络例外。
+- [x] 实现项目/rollout 元数据与 Git 统计的目标读取，保留现有时间戳、生成图错误与临时 index 语义。最新 main 的桌面项目归属、置顶、项目 worktree、独立标题总结、网页引用与模型上传计量也纳入目标隔离与功能验收；读取目标元数据，不借用网关本机的对应缓存或 IPC。
+- [x] 测试附件上限、引用文件保留、断线中断、输出截断、路径特殊字符和临时文件清理。
+- [x] 运行相关服务端回归、真实 Remote 文件验收及服务端构建；规格/质量复审并提交。
 
 ## Task 4：目标路由、持久队列和会话观察
 
 文件：新增 `server/targets.ts`、`server/operation-queue.ts`、`server/thread-observer.ts` 及相应测试；修改 `server/gateway.ts`、`server/http-session.ts`、`server/follow-ups.ts`、`server/followed-thread-notifications.ts`、`server/index.ts`。
 
-- [ ] 测试本地保持旧 API，内部 Remote 请求携带模式和目标；无效目标、账号改变、未授权均显式拒绝，网关 Mac 的 Remote 路径同样走 relay。
-- [ ] `/api/host` 报告版本化能力/授权/配对/临时离线状态，目录仅列有权限目标；CORS 与所有文件/事件/WS 路由一致。
-- [ ] 测试 fsync 后才 ACK、固定 UUID 幂等/冲突、共享队列 CAS、每会话顺序、停止/审批优先、绑定原 turn/request、失败/待确认阻塞；已发送写入绝不自动重发。
-- [ ] 测试网关重启恢复、元数据和条数容量、控制预留、附件引用、离线新会话占位、读合并/导航取消。
-- [ ] 将所有需要上游的操作接入同一目标级 durable ledger，读取可合并或取消过时导航，写入逐条保留；HTTP/WS 与 hosted/Bark/关注共享目标身份而隔离会话；不破坏 Sidechat 私有临时生命周期。
-- [ ] 测试已打开会话空闲 60 秒/活跃 3 秒、并发最多 4、前台优先、离线不清理、实际内容指纹时钟跨重启、24 小时释放但主连接保留。
-- [ ] 运行所有服务端回归与构建；规格/质量复审并提交。
+Task4 按内部依赖顺序实施：4a 可信目标身份基础 → 4b 持久队列与传输路由装配 → 4c 会话观察器；随后 Task5 手机接入。该拆分不改变已确认架构，也不代表整个 Task4 已完成。
+
+- [x] 4a：固定随机网关/本机身份、Mac 归属校验及可信目标 resolver/旧句柄 guard 已完成源码验证与独立双审；Local非枚举字段和关闭监听重入的两项P2均先RED后修复，见[收据](evidence/2026-11-16-remote-target-identity-validation.json)。未接公开Remote路由，整个Task4继续未完成。
+- [x] 4b.1：内部 durable ledger 最终 ae62ff00 通过原 SPEC→原 QUALITY 及 root 全工件核验；相关 7 文件 211 项、双 strict/build:server 通过。原授权/控制及容量缺口均修复，见[收据](evidence/2026-11-16-remote-operation-queue-validation.json)，尚未接公开路径。
+- [x] 4b.2a：内部真实 Runtime/Target 队列授权及持久显式恢复证明通过源码验证、独立 SPEC→QUALITY 和 root 全工件核验；旧句柄跨代永拒，公开装配未接，见[收据](evidence/2026-11-16-remote-runtime-queue-authorization-validation.json)。
+- [x] 4b.2b 内部实现：可信 Session/HttpSessions rawstream、显式投影/replay 来源及交付/创建/关闭/侧边栏原调用预算，通过513项、双strict/build、独立规格与质量复审及root全工件核验，见[收据](evidence/2026-11-16-remote-session-transport-validation.json)。现有 WAL 保留，公开 mode/host/index、完整消费者目标图和唯一ledger调度未接，不能视为 Remote模式可用。
+- [x] 4b.2c 内部可信 Session 执行结果：固定 `44fb339f`，40项可信边界、10文件369项、双strict/build及原 SPEC→原 QUALITY 限定复审通过，见[收据](evidence/2026-11-16-remote-session-dispatch-validation.json)；复用原 Session／requestId／hosted WAL，原结果对象与原 attempt／invocation 绑定真实零发送证明，不接 ledger 或增加派发 owner。公开 4b.2 仍待。
+- [x] 4b.2d 内部原收据读取：固定 `b63ad1d8` 的493项相关回归、双strict/build及全新SPEC→QUALITY通过；两审各亲跑49项及独立12／7项边界探针，root核全部小工件，见[收据](evidence/2026-11-16-remote-original-operation-validation.json)。按原context／Session／requestId只读原namespace，最终await后核验原预算，不创建Session／RPC／写WAL。公开装配和整个4b.2仍待。
+- [x] 4b.2e 原操作context／WAL与当前有效Session传输装配：固定 `d7d700d8`，5文件217项必要回归（含49项专项）、双strict/build及原SPEC→原QUALITY复验通过，root核固定源码及全部小工件，见[收据](evidence/2026-11-16-remote-recovered-session-validation.json)。原context/UUID/namespace保持，当前同Runtime真实句柄及完整恢复proof受检，后台加载旧批实际结束后仅由新授权重扫；completed不重发，pending/uncertain仍未知。仅内部依赖完成，公开4b.2仍待。
+- [x] 4b.2h 内部 FollowUps 唯一 owner 接管：固定a3e07a33的620项（h103）、双strict/build及主执行者直接检查通过，见[验收记录](evidence/2026-11-16-remote-follow-ups-ledger-validation.json)。原失败证据保留；公开默认gateway/host/index与完整消费者仍待，不勾整个4b.2/4c/5/6。
+- [x] 4b.2i 公开入口统一模式校验与能力探测：固定237f1906已通过6文件281项回归、双strict／build:server及主执行者直接检查，见[验收记录](evidence/2026-11-16-remote-public-routing-validation.json)。Remote误走Local已拦截，旧URL／本地传输保持；真实目标消费者与公开队列未激活。
+- [x] 4b.2：已实现 HTTP/WS/hosted/Bark/关注公开装配、内存 Sidechat、附件 bytes、原 UUID 对账和共享创建占位，已通过本轮本地验证，见本轮收据。
+- [x] 4c：已实现真实业务时钟、后台快照和原 UUID 逻辑释放，已通过本轮本地验证，见本轮收据。
+
+4a 修改基线为已推送 `d8ae4c97a877af5f68a96a1aeff7e7d196e24823`；开始前 fetch 核对远端未变。2026-11-15 用户确认固定身份 A，详见设计说明。内部默认持久目录 `~/.codex-mobile/gateway-identity`，独立实例可可信注入不同目录；新目录及父目录项同步后才交付身份。读取只复验现有运行 owner 的 loader/provider 和 controller 已接受 binding，不以 client 可见目录代替授权，不新建物理 Relay、密钥、授权或配对。仅有效已接受的暂时离线目标可解析，执行仍拒绝；无效引用、账号变化、重装、缺目录、暂停及 pendingResume 保留原因。共享业务 key 仅归组，完整账号/网关/tuple/generation 的 authorizationKey 及实时 guard 是后续列表可见性与发送必须边界。必要依赖修复使 RPC settled 跟踪逻辑流实际 close Promise，包括关闭监听抛错后重取同一 Promise；不等待业务 ACK、不关闭共享主连接。本步无客户端操作改动，不构建 Web/APK/IPA，不部署。
+
+4a最终源码验收（2026-11-16）：冻结 `5a7d1a85ff9540067c07c753d5d775f89db64c0f`，RPC42项/目标43项、双strict与build:server通过；SPEC→QUALITY均通过，root核对全部封存工件。完整server1733/7跳过保留原31ca执行绑定，未改动的身份/target/Runtime/Relay复用原验证；原并发夹具失败、非枚举P2、关闭重入P2和工具错误均保留，不重写历史或冒称全新完整执行。4b内部先做持久ledger基础，再接公开传输装配，每步独立红绿和双审；不新增产品决定。
+
+4b.1本地实现记录（2026-11-16，修改基线 `f266d7b6b858191efa54d648c90460c8ae87e01d`）：新 operation-queue 专属大文件使用既有 PrivateStore 跨进程锁，每事务重读，不以旧内存覆盖已 ACK 项。文件/rename/目录链耐久后才返回，发布后同步故障保留未知提交并封住实例；幂等原签名与 CAS revision 分开，普通 128/64MiB、控制 128/2MiB、终态 UUID 65536 cap 均显式拒绝超限。共享列表与状态边界冻结完整 managed（含 userId 有无/codexHome）、gateway/tuple/generation/settings/attachment refs；可信授权只读副本；本轮修复要求异步授权返回完整身份/真实权限版本的同步只读断言，全部 FS/异步授权后无 await 统一检验全部断言，再交付任何正文/claim/ACK，缺失/无效/异步断言明确拒绝；4b.2 由 Target/Runtime 接入真实 guard。控制优先且仅领取同会话第一条未终态控制，其 claimed/uncertain/failed 阻塞后控制和下一轮，普通失败/未知队首不阻断其他已授权会话；claim 唯一 token/CAS，先耐久 uncertain 再交传输，只有可信 neverSent 可回队，releaseClaim 只能处理未跨发送标记项。Sidechat memoryOnly 进入正文序列化/耐久 API 前拒绝；不提供跨 generation 恢复证明、不改 RemoteRuntime。39 项专项覆盖多实例、真实 OS 并发/SIGKILL、同步 gate/故障、坏存储保留与授权隔离；首轮夹具超时/类型错误和历史 TDD 日志保留。首轮 `95dedae571f6d36142e20ee36d71cd3a3336f8c8` SPEC 的混合列表自身 await 撤权与控制队首三状态反例均实际 RED；本轮最小修复后原时序全部 GREEN，新增 24 项永久回归（包括全部内部 API 的最终授权失效、无效/异步断言、控制成功/到期释放及其他会话继续）后专项 63 项和双 strict 预检通过。旧失败与新轮源码字节 overlay 分别保留，待最终固定源码限定回归/build:server、原 SPEC 复审及全新 QUALITY；尚未开始 4b.2，不勾选下面公开合同为已完成。
+
+4b.1 质量修复记录（2026-11-16）：83f1d6a 的 SPEC 已通过，随后独立 QUALITY 用正常 API 证实临界容量 ACK 后 claim、potentialSend 和 failed revision 9→10 被 429 阻断。原两探针及新增永久回归在旧源码实际 RED；本轮对所有现存非终态记录按生命周期最坏元数据预留计费，包含最长状态、完整 token、安全整数 PID/revision 位数，收费至少实际 bytes，终态保持实际最小收据；仍在普通64MiB/控制2MiB 内，预留不落新字段。6 项真实 API 边界已通过，覆盖接收前拒绝、最大合法输入的完整推进、全部现存三状态预留、revision跨位及释放/compact对照。原探针修复后在 edit 前置拒绝而 exit1，明确保留且不报无改脚本全绿。首次大 Buffer 深比较 OOM 属测试工具问题，改 Buffer.equals 后默认 heap 通过，原失败保留。待最终新 HEAD 限定验证及原 SPEC→原 QUALITY 复审，不能转绑 83 的通过；无迁移框架、Runtime/公开入口或发布改动。
+
+4b.1最终源码验收（2026-11-16）：冻结 `ae62ff00f609897d38d6d4b938e4cd5dfc53dabc`。相关7文件211项（队列69项）、双strict及build:server通过；新SHA原SPEC与原QUALITY独立限定复审通过，root实际核验全部封存工件。两审各独立69项，SPEC原四反例通过；QUALITY另有正常API最大合法控制容量下的多项完整推进。原容量模块在edit前置拒绝，wrapper成功且明确originalModuleCompleted=false；原失败和早期证据限制保留。公开合同仍未勾选，接下来串行实施4b.2a真实Runtime/Target授权及持久显式恢复证明，再装配公开传输与其余4b.2能力。仅源码交付，无官方访问、客户端构建或生产部署。
+
+4b.2a 本地实现记录（2026-11-16，修改基线 `fce2c5df32bc8d03b7c3d91d36084303886d089f`）：TargetResolver 构造完整冻结 OperationContext 并提供 queue authorizer 与独立 online 执行 guard；Runtime 异步核验真实 managed/provider 后返回最终同步只读 fence，复验 active/bundle/owner/完整 tuple/accepted/pending/暂停等状态。授权只读分类绑定真正接受的 Operation，不使用每次查询增长的 epoch；管理 mutation 从起点拒绝旧 guard，readonly/同 owner 管理资源不自废，原 queryStatus 未决提交例外不扩大。只读核验发现完整身份变化后同步锁存内存暂停并沿现有 save/stop 耐久暂停及自有收尾；还原原凭据再 start 或实例重建不能自动读/claim，实际 OS 子进程另验证持久 paused。全局撤权关闭本 owner 共享 Relay 并阻止已建 rawstream 物理发送，迟到 session 仍等逻辑 close gate；健康 owner 的目标级失效仍发自身关闭帧并保留共享 Relay，两者以真实管理 session 分别验证。最终交付同步 FS proof 后复核原父 deadline/live；Relay 每物理片真实 owner proof 后同样复验，实际延迟零发送有回归。当前代逐 tuple 显式 resume 成功且耐久后记录 resumed，registry 校验完整已提交祖先链/revision/完整身份与本机 tuple，沿原期限与 visited 有界，不设任意代数 cap。旧 Target 句柄永久拒绝旧 generation，原队列 context/正文保留，uncertain/failed 不自动重排。多代/实际 OS 新进程、取消/存储失败/缺链/未提交/重装、同代离线 settle/release/neverSent、混合批量及最终 fence 行为均有验证。早期 directory→store 夹具误用导致默认根新增 5 条 synthetic 记录，由 root 持锁可逆隔离保全，缺逐 UUID trace；早期 green01/02 不算隔离通过。已修正显式目录与测试私有 HOME，并增加构造器缺 directory 真实 RED→拒绝。全部原失败、源码 overlay 与最终固定 SHA 独立证据保留；待 root 实审与全新双审，不能勾选公开合同。未改 index/host 能力/HTTP/WS/客户端，未访问官方凭据或现役服务，无发布部署。
+
+- [x] 测试本地保持旧 API，内部 Remote 请求携带模式和目标；无效目标、账号改变、未授权均显式拒绝，网关 Mac 的 Remote 路径同样走 relay。
+- [x] `/api/host` 报告版本化能力/授权/配对/临时离线状态，目录仅列有权限目标；CORS 与所有文件/事件/WS 路由一致。
+- [x] 测试 fsync 后才 ACK、固定 UUID 幂等/冲突、共享队列 CAS、每会话顺序、停止/审批优先、绑定原 turn/request、失败/待确认阻塞；已发送写入绝不自动重发。
+- [x] 测试网关重启恢复、元数据和条数容量、控制预留、附件引用、离线新会话占位、读合并/导航取消。
+- [x] 将所有需要上游的操作接入同一目标级 durable ledger，读取可合并或取消过时导航，写入逐条保留；HTTP/WS 与 hosted/Bark/关注共享目标身份而隔离会话；不破坏 Sidechat 私有临时生命周期。
+- [x] 测试已打开会话空闲 60 秒/活跃 3 秒、并发最多 4、前台优先、离线不清理、实际内容指纹时钟跨重启、24 小时释放但主连接保留。
+- [x] 运行所有服务端回归与构建；由主执行者直接检查代码与需求、核对验证结果并提交。
 
 ## Task 5：客户端多网关模式、机器和离线 outbox
 
 文件：修改 `src/backends/types.ts`、`registry.ts`、`probe.ts`、`connection-manager.ts`、`http-transport.ts`、`file-upload.ts`、`follow-ups.ts`、`src/features/backends/BackendManagerSheet.tsx`、`src/App.tsx`、`src/native-ui/device-panel.ts`、`src/native-ui/protocol.ts`、`mobile/ios/AgentUI/Devices/DeviceConnectionForm.swift` 和当前机器菜单；新增目标路由/outbox 模块与对应测试。
 
-- [ ] 测试旧配置迁移默认本地，保留多网关与各自模式；URL 格式、token 规则不变。
-- [ ] 测试选模式不生效，“测试并保存”先验证后提交；旧网关/未配对/未授权报错不破坏原状态，已配置 Remote 临时离线可保存。
-- [ ] 测试目录和按网关分组机器、同物理机不同来源不合并、同网关本地/Remote 本机共用草稿关注、跨网关独立、目标消失不替换。
-- [ ] 实现全部 RPC、事件、文件、图片、视频、通知 URL 的统一内部路由；持久 session/operation namespace 防止模式串线。
-- [ ] 实现手机 outbox 字节和冻结上下文持久化，交接 ACK 丢失查收据不重发；所有手机看到共享排队内容，CAS 编辑取消冲突有提示。
-- [ ] 模式成功切换回列表并保留草稿/阅读位置；删除配置仅暂停该手机 outbox，不取消网关队列。
-- [ ] 同步中文/现有多语言文本与原生桥接，保持单一 Web 业务连接；iOS picker 同表单，Android 使用共用界面逻辑。
-- [ ] 运行相关 UI/桥接/outbox 回归、typecheck 和开发 Web 构建；iPhone 17 Pro 竖屏正常字号验收；规格/质量复审并提交。
+- [x] 测试旧配置迁移默认本地，保留多网关与各自模式；URL 格式、token 规则不变。
+- [x] 测试选模式不生效，“测试并保存”先验证后提交；旧网关/未配对/未授权报错不破坏原状态，已配置 Remote 临时离线可保存。
+- [x] 测试目录和按网关分组机器、同物理机不同来源不合并、同网关本地/Remote 本机共用草稿关注、跨网关独立、目标消失不替换。
+- [x] 实现全部 RPC、事件、文件、图片、视频、通知 URL 的统一内部路由；持久 session/operation namespace 防止模式串线。
+- [x] 实现手机 outbox 字节和冻结上下文持久化，交接 ACK 丢失查收据不重发；所有手机看到共享排队内容，CAS 编辑取消冲突有提示。
+- [x] 模式成功切换回列表并保留草稿/阅读位置；删除配置仅暂停该手机 outbox，不取消网关队列。
+- [x] 同步中文/现有多语言文本与原生桥接，保持单一 Web 业务连接；iOS picker 同表单，Android 使用共用界面逻辑。
+- [x] 运行相关 UI/桥接/outbox 回归、typecheck 和开发 Web 构建；iPhone 17 Pro 竖屏正常字号验收；由主执行者直接检查代码与需求、核对验证结果并提交。
 
 ## Task 6：集成验收、文档和源码交付
 
-- [ ] 更新 `docs/interaction-alignment.md` 现行条款、验收和变更记录；更新 README/文档索引与 Mac 授权运维文档，各阶段状态准确区分待实现/待验收/已验证。
-- [ ] 运行完整相关回归和服务端/客户端开发构建；全量功能以官方 Remote 真实目标核验，无能力降级。
+- [x] 更新 `docs/interaction-alignment.md` 现行条款、验收和变更记录；更新 README/文档索引与 Mac 授权运维文档，各阶段状态准确区分待实现/待验收/已验证。
+- [x] 运行完整相关回归和服务端/客户端开发构建。
+- [ ] 全量功能以官方 Remote 真实目标核验，无能力降级。
 - [ ] 隔离网关完成 8 小时、跨凭据刷新、手机重入、网络断开、网关重启；Mac 睡眠唤醒在可控时段实施，不干扰现役工作。保存脱敏延迟分位数和收据，及时归档测试会话。
-- [ ] 规格审查后进行全量质量审查，修复后复审；未达到验收目标不得标成通过。
-- [ ] 遵守 `codex-mobile-main-production` 互斥，fetch 最新 main；变化时对整合结果相关回归，无变化复用已完成验证。保护主工作区已有暂存改动。
-- [ ] `git diff --check`、准确提交并推送 main；核对远端包含本次 SHA。只交付源码，不触发发布协调批次、APK/IPA 或生产部署。
+- [x] 主执行者直接核对完整需求与代码质量，修复问题并完成必要验证；不安排独立 agent 复审，未达到验收目标不得标成通过。
+- [x] 遵守 `codex-mobile-main-production` 互斥，fetch 最新 main；变化时对整合结果相关回归，无变化复用已完成验证。保护主工作区已有暂存改动。
+- [x] `git diff --check`、准确提交并推送 main；核对远端包含本次 SHA。只交付源码，不触发发布协调批次、APK/IPA 或生产部署。
+
+第49项A实现提交 `9bed636dd9cfee63869194abc8d63e1c40ac829c` 已完成19项新增（Files共189项）、6文件372项回归、末次SHA原期限专项、完整服务端首轮1353项/7项既有跳过、双strict及服务端构建。[新验证收据](evidence/2026-11-14-remote-file-read-budget-validation.json)记录真实旧capacity RED与不足1ms RED→GREEN；冻结d1c82e4首轮SPEC为FAIL：独立27项通过、1项真实RPC发送边界RED，原期限已到仍发出一条读取命令。原实现者已补齐read→RPC→Relay物理发送前期限检查并完成本地验证；修复新冻结253aa0b的独立SPEC→QUALITY已通过；官方原100MiB首轮仍失败，后续Range、新上传、未知提交跨OS进程恢复未开始。3b和后续依赖未放行，不以本地通过替代官方验收。
+
+第49项发送屏障修复 `8e2cef904783d82a4367490ebe2c0ad366474fb3` 已完成7项RPC/Files、4项Relay真实RED→11项GREEN，原独立探针实现者复跑28项通过；六文件384项相关回归、完整server唯一修复轮1364项/7项既有跳过、双strict及服务端构建通过。真实物理零发送不消耗序号、部分发送停止剩余帧，资源/计时器回收与后续共享session RPC均有断言。新冻结253aa0b已另获独立SPEC→QUALITY通过，不能将实现者探针复跑计为审查通过；官方和Task3b仍未放行，未推送main。
+
+第49项冻结 `253aa0b0fdce441959fc0fb20108573457f1c26b` 已通过独立SPEC36项、QUALITY6项，root核验67/123工件；官方首轮原收据查询成功，但在68MiB、296509毫秒后由既有30秒绝对分块组装期限断开。失败响应28片仅收到13片，断开前211毫秒仍有新分片；未达到read600秒或窗口180秒，未触发pongTimer。见[官方失败收据](evidence/2026-11-14-remote-file-assembly-window-validation.json)。现有30秒绝对期限专项1项通过/17项未选中，本地Python512KiB响应约为2MiB的四分之一，不代表官方性能通过。
+
+用户已明确选择[第50项固定窗口方案](../specs/2026-11-14-remote-file-window-size-proposal.md)A：固定512KiB单块，上传512KiB块/4窗口保持；30秒绝对组装及read默认20秒/显式最高600秒不变。修改起点ff92678，重新fetch核对main仍0c8c86b。真实Python/RPC RED→GREEN、本地回归、新冻结源码独立SPEC→QUALITY及一次官方完整Files验收现均通过；第49项旧gate与失败证据不覆盖。原上传只查询不重放，本轮结束已精确释放原收据并清理原夹具；Task3b已勾选，继续3c及后续，未部署或发布。
+
+第50项实现 `b876ffb115470761826265b0e22d997dac9347de`、冻结 `f455772d2eee34cfa357402abd16720a179ff353` 已完成相关297项、完整server1367项/7项既有跳过、双strict及服务端构建；[本地与新双审收据](evidence/2026-11-14-remote-file-window-size-validation.json)保留首RED/GREEN、200窗与原期限、夹具失败及root核验。新独立SPEC→QUALITY均PASS，root核对622/195份工件。
+
+第50项冻结源码的[一次官方Files验收](evidence/2026-11-14-remote-files-single-window-product-probe.json)已通过：原100MiB查询/完整读取279045毫秒；新100MiB上传76003毫秒/完整读取175937毫秒；各200窗、字节/独立总SHA和四组Range、旧版本拒绝、producer失败保持原文件、未知提交跨实际OS新进程只查询原操作、收据释放及精确清理均通过。默认权限/有限输出cap违规零，读取417+1窗、峰值单活动读取进程；25秒零流后再次RPC无新prepare，两个SIGTERM均退出0且管理资源清理。无新授权/登记、模型推理或测试聊天，未构建客户端或部署发布。Task3b通过；该约12分钟样本不代表P95、8小时或睡眠唤醒验收，3c及后续依赖现可继续。
+
+2026-11-14文件层及验收文档已在共同main锁下推送 `e292e592133469c20bbcb4efb863f6ca4e2a5961`，远端精确核对通过，原工作区main引用与暂存区未动。开始3c前再次fetch，main与本工作区HEAD均为该提交，作为新修改基线。现由新实现者顺序TDD固定统计来源，随后另行SPEC→QUALITY及冻结源码官方只读验证；3c尚未完成。继续仅固定脚本的readOnly/networkAccess例外，来源取同session实际目标环境，普通命令/文件/Git无权限扩展。IPC没有快照结束标记，只有实际收到的usage可用，remove/断线清缓存、不伪零；现有ModelUploadSource没有失效通知，该产品传播链继续3d/5核验。本轮仅源码，不部署或构建发布客户端。
+
+
+Task3c本地实现完成：`e42be25c81e7b4bc3f83905d951a6c4e38021812` 新增固定来源证明、有界通道与ModelUploadSource，首次窗口从准备入口计时；只统计固定脚本使用例外，通用操作默认权限。真实Python/临时Unix及WS新增82项通过，完整server1449项通过/7项既有跳过，双strict与服务端构建通过；原RED、夹具观察错误及测试类型检查失败分开记录，root核对报告与617工件无差异，见[本地收据](evidence/2026-11-14-remote-model-upload-source-validation.json)。物理业务分片消费live guard，Commands/Files的自有精确清理使用独立有限预算；空ACK/拒绝不当作进程实际终结。3c仍未勾选，下一门禁是新独立SPEC→QUALITY和同一冻结源码官方只读验证；产品消费者、队列与手机后续未完成。
+
+Task3c首轮SPEC（冻结c03d8bf）为ISSUES，原82项相关回归通过、新探针2通过/3失败及2918份工件保留。原实现者修复来源URL空分隔符与正常收尾精确清理，并以真实WS/Python反证覆盖健康延迟、成功预算检查失败、父状态恢复及取消等待延迟ACK；正常收尾保留原remaining，失败后独立有限清理、保留原错误且单次terminate。修复提交 `80e4e37b399fc8cee983de607dfff7d0b5faf726` 的最终完整server1470项通过/7项既有跳过，新增相关103项、Commands/Files283项和原独立5探针通过，双strict及服务端构建通过；root核对4343工件及12份最终运行快照无差异。新冻结独立双审/官方验收仍待完成，3c继续不勾选。
+
+第二轮SPEC（冻结 `df5152556720321c8799f560716031463c3803aa`）为ISSUES：原5独立反证、103相关及新增11边界通过；新增真实WS/Python反证失败，空terminate ACK后逐条取消导致4个仍活wrapper的许可已释放，第5个命令被物理发送。实际exec被业务abort替代、finally无条件回收全局计数/内存是直接路径；sharedRPC仍ready可用。原实现者继续TDD修复，业务失败有限返回而已发送执行预留保持至实际终结证明或原期限，不改限额/权限/共享连接。原失败与所有旧候选证据保留；QUALITY、官方验收和3c整体继续未放行。
+
+本轮实现者复制验证探针时发生绝对输出路径替换未命中的证据处理错误，第二轮SPEC原5探针的5份trace被覆盖。原manifest、ISSUES报告、首个Commands许可失败的代码/命令/结果/日志/trace及其余2946工件仍匹配；覆盖前root曾全量核对2951，现不能再称旧目录完整。未找到可按原散列恢复的备份；原manifest不改，保留覆盖文件和散列差异，后续新冻结独立复审重新取证，不补写成原始证据。代码修复与本地回归继续，门禁保持未放行。
+
+2026-11-14第二轮SPEC的执行预留缺口以 `f89937df05da3143b01b246487803944b6a8b26f` 完成本地修复：业务取消与实际exec观察分离，有限返回后已发送执行仍保留全局4命令/64MiB保守逻辑预留，直到有效实际终结证明或原绝对期限；未发送立即释放。新增7项真实WS/Python预算回归，旧夹具及容量恢复断言改为等待真实收尾；完整server1477通过/7跳过，双strict及服务端构建通过。root核对6637份工件与14份最终变更快照；原失败、夹具错误及5份trace损失均保留说明。实现者新目录复制17探针通过不替代独立审查，下一步新冻结SPEC→QUALITY及官方只读验收，3c仍待验收。
+
+
+2026-11-14冻结 `99f595b24a84bc79af7882253d4060461552ab49` 已通过第三轮独立SPEC与新QUALITY：SPEC的23项独立反证、181项相关回归，以及QUALITY新增5项独立边界和157项回归通过；root分别核对2964、2960工件与14份实际源码。首轮SPEC的3项夹具期限超时、QUALITY的3项Unix路径超长失败均保留，未算作产品RED；复用的完整server1477通过/7跳过、双strict与服务端构建对应同一运行源码。
+
+同一冻结源码的首次官方Task3c验收实际失败，不能以双审通过替代：既有授权与RPC成功，统计命令实际启动并收到READY，但来源verified/usage均为0，真实子进程已结束、隔离根目录已清理，未进行后续持续读取或25秒零流验证。165份原工件和失败回执完整保留。随后单独默认权限只读官方诊断确认目标codexHome为0755、当前账号所有且无group/other写，既有私有计量目录0700/socket0600/launcher0700；脚本将普通受信home误按私有叶目录检查是确定的阻断点。按原信任合同修复，不修改生产目录权限、不增加例外或fallback；新候选须重新冻结、独立SPEC→QUALITY后再执行新的官方验收。无新授权/登记、模型推理或测试聊天，未部署或发布。
+
+
+首次官方来源失败的home角色已以 `93e99eb0edbc35633f0cfd1d261b19ed3031263f` 修复：当前uid拥有、无symlink及group/other写的0700或0755家目录均可；launcher和计量目录/socket仍要求私有，所有祖先和连续身份校验保留。真实WS→RPC→Python与产品Unix publisher先得旧0755失败/0700通过的RED，随后18项GREEN；错误owner仅受控lstat分支，没有真实chown。最终完整server1495通过/7既有跳过、两种strict和服务端构建通过，相关11文件526项包含其中。root全量核对912工件，以及15份变更与完整测试、两strict、构建、提交和final-source六组快照一致；无新夹具失败。新冻结独立SPEC→QUALITY与官方B仍待完成，不沿用99f595历史审查放行，新候选和3c继续待验收，未推送main或部署发布。
+
+
+2026-11-15家目录角色修复的新冻结 `b38a0e61e5d58f00b0a93c1c0dbfe109f29a26c4` 已通过独立SPEC与全新QUALITY：SPEC新增7项、相关103项，QUALITY新增3项、相关7项全部通过。root逐项核对2944和2963份工件及冻结源码；完整server1495通过/7既有跳过、双strict及服务端构建复用已逐字节核对的同一源码结果。SPEC两次审计夹具错误保留，未算作产品RED；QUALITY首失败分类见封存报告和本地收据。
+
+同一冻结源码的[官方B只读验收](evidence/2026-11-15-remote-model-upload-product-probe.json)通过：目标hello/真实usage可读、返回副本及未知thread为null，连续观察20002ms；关闭来源立即清缓存，实际自有命令收尾后重新创建本次来源并重新证明。两次计量读取、实际终结2次，最多同时1个计量进程、1条物理Relay、认证prepare1次；通用命令默认权限，仅精确固定脚本使用readOnly/networkAccess例外，权限及禁止操作违规均0。全部本次逻辑流关闭后实际零流等待25002ms，再次RPC成功且无新prepare；实际OS入口SIGTERM退出0、私有admin及隔离根目录清理通过。root全量核对163份私有工件，首个A失败与单独诊断均原样保留。仅当前Mac短时证明，不代表P95、8小时、睡眠唤醒、自动断网恢复或手机完成；未新授权、推理、创建测试会话、部署或发布。Task3c完成，继续3d消费者注入与后续共享队列/手机接入。
+
+
+2026-11-15开始Task3d.1时记录最新已推送并核对main为 `a3a05e75e57ae9c290e4b17ff5f8a1556387c920`，Task3c来源层已完成新双审与官方B。3d按内部消费者职责串行实施：先附件下载、图片/视频预览与Sidechat历史图片，再rollout/Bark、项目/Git/标题、统计装配；每项TDD及SPEC→QUALITY，保留Local接口/行为、完整来源namespace及Remote默认权限。当前仅开始服务端消费者依赖注入，尚未完成路由、共享队列、手机模式或真实Remote媒体验收，不构建客户端或部署。
+
+
+Task3d.1完成记录：Task3d.1媒体消费者已在冻结 `58362ad0bb1b494e3a13256b18d576e76605b99f` 完成源码验收：可信文件来源绑定完整目标身份与网关，下载/图片/视频、InlineImages和Sidechat注入保留Local默认。附件下载仍GET/HEAD完整、普通Range忽略；视频保持原GET与单Range；目标和网关缓存由受信引用区分，显式resolver丢映射拒绝，原data/http(s)与Local兼容保留。媒体超过100MiB按同版本有界分段，不新增总文件限制；版本变化不能完整混拼，取消只清理自有读取。ImagePreviews原64MiB/40M像素、128条8MiB、2active/16waiting维持。正式网关路由仍Local，目标路由、rollout/Bark、Git/标题、统计消费者、共享队列和手机模式继续待实现/验收。
+
+本次测试同步修复后的完整媒体测试文件与相关7文件75项通过；产品及其他测试字节未变，复用cd60e421完整server1518通过/7既有跳过、源码strict及build:server，本轮测试strict实际重跑通过，实际执行范围见收据；新独立SPEC→QUALITY均PASS，root全量核验2934/2954份审查工件及最终源码。独立实际HTTP/RPC/Python证明跨来源缓存/取消隔离、末窗后替换不能完整成功、resolver-only两来源字节重建与丢映射422；offset7且长度100MiB+17的视频Range经201窗完整SHA一致。首轮SPEC真实缺陷、四种修复RED、coalesce与QUALITY queued等待缺口、测试类型错误和长TMPDIR Unix socket EINVAL的首失败均保留并分类；短路径复验后才使用最终完整回归。
+
+冻结源码的官方B通过：实际OS入口经同一常驻Relay/默认权限读取自有UTF8附件、视频完整及3组有效/2组无效Range、PNG与JPEG缩略图、HEAD/ETag304、InlineImages可信引用和resolver-only Sidechat真实字节，丢映射明确拒绝。实际command/exec 38次、实际终结38次、活动归零，权限及禁止操作违规均0；关闭适配器后原session RPC可用。全部逻辑流关闭后实际零流25003ms，再次RPC成功且prepare仍1次、物理Relay1条；SIGTERM退出0、自有目标文件/HTTP/admin/隔离根清理通过。首轮A因探针sharp旧入口解析失败在Runtime初始化前退出1，175工件保持封存；修正仅限探针，离线完整加载通过后另开B，产品源码未改。root全量核验175份官方工件及85份归档源码，执行前绑定工件均未改变。仅当前Mac小媒体短时样本；没有Windows实机、P95、8小时、睡眠唤醒、手机、部署或发布结论；未新授权、推理或创建测试会话。 见[脱敏验收收据](evidence/2026-11-15-remote-media-consumers-validation.json)。下一项顺序实施3d.2，Task3整体继续未完成。
+
+
+2026-11-15开始Task3d.2时记录已推送并核对的main为 `54ab9543c01e9224aae411864d7a88725649f536`。媒体消费者3d.1已完成本地、独立双审和官方B，现按既定顺序注入rollout时间戳、网页引用、线程元数据、图像生成失败分类及Bark目标读取；Bark订阅/去重仍属网关。活动JSONL使用有界读取并允许追加与半行补完，区分截断/替换/改写、真实来源失败与普通missing，保持目标时区、完整来源namespace和Local默认兼容，不新增产品总大小限额或本地回退。先TDD，再串行独立SPEC→QUALITY及官方仅自有随机UUID日志验收；当前实现与验收均待完成，3d/Task3不勾选。仅服务端源码，不构建客户端、发布或部署。
+
+
+2026-11-15第51项已选择A：固定目标Python逐条解析，仅投影消费者所需字段并有界回传；网关传输/缓存有界，目标单记录解析内存随记录大小增长。不新增单记录上限或流式JSON框架，原绝对期限、取消与完整来源/前缀校验保留。恢复Task3d.2 TDD实现，独立双审与官方验收仍待完成。
+
+
+2026-11-15官方A冻结4fb5d9fc实际退出1：元数据、时间戳已通过，引用全候选遍历达到原180秒期限；自有日志和隔离根清理通过。失败证据封存181普通工件/87来源文件，未进入图像与25秒零流验收，不标Task3d.2完成。再次fetch核对main仍54ab9543c01e9224aae411864d7a88725649f536，继续定位器TDD修复：目标内枚举固定范围并筛选同thread候选，有限窗口回传，保留完整冲突检查、每目录10000条、原期限和默认权限；之后重新独立SPEC→QUALITY，再新官方验收。
+
+
+Task3d.2完成记录：Task3d.2已在冻结 `04169410009d24cbdcd7e5601f1ef78235c079da` 完成消费者源码验收：固定目标内筛选候选、有界回传的rollout定位、时间戳、网页引用、线程元数据、图像失败及Bark分类复用同目标RPC/Commands，Local默认保留。Bark订阅与去重仍存网关，目标实际时区/完整身份namespace隔离；追加/半行补完可继续读取，截断/替换/原地改写重建有效前缀，不混版本。正常missing和真实权限、能力、绑定、超时错误区分，投影解码失败归脱敏protocol并报告Bark诊断；已排除候选不继续业务解析，图像首matching输出包括unknown/畸形null在整次读取终止，不能被下一文件覆盖。第51项A仍是目标标准Python逐记录解析、仅必要投影，目标解析内存随记录增长，网关传输与缓存有界，不新增记录限额、流式JSON框架或Local回退。 定位结果全部窗口证明后按序交付；后继目录错误在继续消费时报告，保持首结果读取和引用完整扫描的语义。直接受信路径及fallback子目录的既有符号链接规则保留，受控Windows的32个消息摘要与续页token参数回归通过。
+
+最终完整server1605通过/7跳过，相关195项、双strict和服务端构建通过；独立SPEC→QUALITY与官方自有随机UUID日志验收均通过，root逐条核验来源和全部证据。官方A引用遍历达到原180秒期限、首轮整数资源失败误作missing、候选排除后解析、图像单文件及跨文件终止遗漏、投影解析错误越过诊断边界等真实RED与修复前证据保留；一次完整server未留下最终exit、原因未知，不计通过，同字节root恢复验证及后续最终完整回归分开记录。
+
+修复后官方B实际OS入口验证自有日志metadata/时间/引用/image、半行补完/追加/替换、wrong-session和missing，默认权限command/exec 25次、实际终结25次、活动归零，权限及禁止操作违规均0。来源关闭后caller RPC仍可用；全部逻辑流关闭后实际零流25002ms，再RPC成功且认证prepare1次、物理Relay1条；SIGTERM退出0，目标自有fixture、私有admin与隔离根清理完成。只证明当前Mac短时小日志，不代表Windows实机、P95、8小时、睡眠唤醒或手机完成；官方A失败保留，修复候选筛选仅减少无关目录项的RPC传输，不跳过冲突检查、不延长期限；没有新授权/登记、模型推理、测试聊天、部署或客户端构建发布。 见[脱敏验收收据](evidence/2026-11-15-remote-rollout-consumers-validation.json)。下一项顺序实施3d.3，Task3整体继续未完成。
+
+
+2026-11-15开始Task3d.3前，已在共同main锁下推送并核对main `2334cc2ed74c39a9072c22dc6d212999864dae14`，作为本项修改基线。项目状态、Git变更与快照、桌面置顶和独立标题总结仅新增可信目标能力注入，保留Local默认及各自现行边界；目标路径和Git必须在目标执行，标题总结复用同一物理Relay下的独立逻辑RPC。先真实受控TDD与服务端验证，再独立SPEC→QUALITY及官方自有夹具验收；当前待实现、待验收，公开路由、客户端和持久共享队列不在本项完成范围。仅交付源码，不部署或构建发布客户端。
+
+
+Task3d.3完成记录：Task3d.3已在冻结 `180cf6c8802c5a3e883adb73de0b99fc33e693c6` 完成项目、Git、桌面置顶和独立标题总结的可信目标能力注入。项目读取目标实际codexHome的必要六字段，Local JSON语义和目标OS路径保持；Git使用默认权限及自有临时index，完整差异和按完整目标namespace的网关持久化保持。标题复用同一物理Relay下的独立逻辑RPC，完整用户历史分页、固定gpt-6-luna/low/priority、never/read-only、ephemeral，4并发/120秒/16MiB与未知结果不重放保持。正式公开目标路由、统计失效装配、共享队列和手机模式继续待实现。
+
+最终15文件419项相关回归、完整server1677通过/7既有跳过、双strict与服务端构建通过；独立SPEC最终39项、全新QUALITY最终188项相关与6项独立边界通过，root逐字节核对全部封存工件与源码。首SPEC的深层合法项目JSON拒绝已真实红绿修复，仅在固定项目脚本内使用局部容器状态栈定位，原子仍标准JSONDecoder，不改变第51项rollout逐记录方案或添加新限额。QUALITY早期共享.vite-temp链接遗漏修正后以私有缓存同范围复跑，首轮记录保留并标注；不以早期通过代替最终隔离验证。
+
+官方A通过目标项目读取、Git快照/持久化/取消和用户index、暂存差异保持，35次默认权限命令均实际终结。官方B通过独立标题、源会话名称/上下文保持、仅自有测试会话置顶/取消置顶与回读；1个合成源会话、2次推理，完成后已归档，summary自有逻辑会话关闭且caller仍可RPC。两轮均为prepare1次/物理Relay1条，全部逻辑流关闭后实际零流25001ms，再RPC成功且无新prepare，SIGTERM退出0、自有夹具/私有admin/隔离根清理通过；权限与禁止操作违规均0。root各核对271份官方工件及87份归档来源，预绑定工件均未变。仅当前Mac短时样本，不代表Windows实机、P95、8小时、睡眠唤醒、公开路由或手机完成；未新授权/登记、部署或构建发布客户端。 见[脱敏验收收据](evidence/2026-11-15-remote-projects-git-titles-validation.json)。下一项顺序实施3d.4，Task3d与Task3整体继续未完成。
+
+
+2026-11-15开始Task3d.4前，已在共同main锁内推送并核对main `9a75c1707883cec1b5b7f7a7086b15b5ad46cd4e`，作为本项修改基线。继续统计失效通知与消费者装配：Local/Remote来源明确remove、失效、关闭和淘汰要传播至HTTP/WS事件与当前网页/原生界面，缺失显示暂无数据，真实0才显示0；当前连接迟到读与旧来源事件不能复活旧数字，Token/额度保持。复用既有source和原生投影边界，不新增公开目标路由、队列或模式。先TDD、独立SPEC→QUALITY和真实自有小样本及iPhone17Pro正常字号竖屏验收；当前待实现、待验收，仅源码，不发布客户端或部署网关。
+
+
+Task3d.4完成记录：Task3d.4统计失效装配已完成源码验收：冻结 `7f468f97646162b2c1cf34a7b699c08da95d1f0b` 将 Local/Remote remove、关闭、断线和淘汰传播至 HTTP/WS 及网页/原生，明确 null 显示“暂无数据”，真实零仍显示零；旧连接和迟到读取不复活旧值，Token/额度保持。完整server1686通过/7既有跳过、相关UI/桥接286项、双strict、服务端/开发Web构建及独立SPEC→QUALITY通过。官方自有只读A通过真实统计源→隔离网关HTTP/WS读取及关闭失效，20秒观察65个usage帧，实际remove帧0；remove由本地真实IPC覆盖，不伪称官方已观察。1条Relay、1次prepare，精确收尾后全部逻辑流为零实际25001ms，再RPC无新prepare；SIGTERM退出0，自有资源清理，权限/禁止操作违规均0。
+
+验收同时发现既有首次设备保存跨引导切换丢失真实ACK，用户批准A。`46a6f541524ba2fcc3cd8963c2dedde1d65e252a` 将唯一NativeRuntime移至现有AppBootstrap；`9f0d136403325f3927b7db75479de1eb6ebb39b4` 补齐父owner在StrictMode重放后的首份投影。最终100项原生相关回归、19项实际桥接、独立SPEC140项和QUALITY仓库12项/独立1项通过，类型检查和开发Web构建通过；原始RED及误设可删最后设备的独立测试失败均保留说明。最终9f0d的iPhone17Pro正常字号竖屏实际首次保存1项、统计失效/恢复1项通过，4张截图已核对：320KB/1.8MB→暂无数据→640KB/3.6MB，Token保持。原生/服务端协议字节未变，官方gate继续绑定7f468；不改绑旧证据。
+
+公开目标路由、共享持久队列、手机模式和长期/P95/睡眠唤醒验收继续Task4/5/6；当前仅源码验收，未发布客户端、未打APK/IPA、未部署生产网关。见[脱敏验收收据](evidence/2026-11-15-remote-upload-invalidation-validation.json)。
+
+2026-11-16 4a 源码整合：合入最新 main `6dcb5558`，仅验收文档追加处需同时保留两方记录。整合冻结 `605d4d78c672c65c080a3cc3aaf2c5c5dea62c3d` 在独立目录通过RPC42项、目标43项、图片UI44项、发布适配器42项、双strict及服务端构建；server与tests/server相比双审冻结字节不变，未构建客户端或部署。
+
+
+4b.2a最终源码验收（2026-11-16）：冻结 `e4e9923b5aca3736e569a76a08dcc5a54f226cab`，相关9文件451项、双strict及build:server通过；独立SPEC→全新QUALITY通过，root实审完整封存工件。SPEC独立8项通过；原相关回归449/451的两项长socket环境失败与短TMP受影响文件59项通过分开记载。旧失败、夹具隔离事故与证据限制均保留，未将green13或少worker旧验证算作门禁。下一步串行完成4b.2内部Session传输注入，再接公开目标图与统一调度；4b.2/4c/5/6继续待实现或验收。仅源码交付，无官方访问、客户端构建、发布或部署。
+
+
+4b.2b 本地实现记录（2026-11-16，修改基线 `eeccc1eb212ab4670211fbb2ab4aaf7224875ea4`）：Session 复用真实 ResolvedRemoteTarget.createRawStream，Remote 网关 Mac 也走同一 owner Relay，按逻辑流独立初始化和收尾；每次实际发送、缓存/投影与 WAL await 后交付保留原绝对期限、真实授权及 epoch fence。缓存 RPC 等待期间关闭或 epoch 变化拒绝本次交付，历史已完成收据语义保留。hosted ID 区分数字/字符串；嵌套 hosted 与 Sidechat/replay 不续期。物理首帧同步 seq commit 承接 mayHaveBeenSent，真实 callback hold/响应先到/投影超时和嵌套外层超时均不误删已发送写；真正 neverSent 仍可删除 WAL，重连不重放。close 在监听重入前固定实际 Promise，等待迟到 stream 及真实 client_closed callback，不误关共享健康 Relay；全局撤权沿既有 owner 收尾。Remote 必须显式提供原四 consumer 与 SidechatReplayOptions，namespace 等于 target.transportNamespace，Local 诱饵证明 RPC/通知图片、rollout 与 Sidechat 附图来源隔离。Sidechat 内容及操作缓存断线清空，所有入口保持 memoryOnly。同物理 Runtime 的多 Resolver/HttpSessions 并发核验真实 RED 后，必要依赖仅为 Runtime.readTargetBinding 私有串行 tail；每次真实 run/lifecycle 核验，预算从入队计时，原 ALS/父期限不延长，取消及时拒绝、轮到零 run，真实 flight/finally 后才释放后项，其他 mutation/query busy 保持，业务 ACK/投影/close 不持锁。最终本地必要回归、双 strict 与 build:server 的固定源码结果以封存报告为准，待 root 实审及独立双审；原失败/夹具错误全留存，不冒称公开合同或官方长期验收通过。未改公开 mode/host/index/客户端，未接 ledger/统一 scheduler，不访问官方凭据、不构建客户端、不发布部署。
+
+4b.2b 初次 SPEC 修复记录（2026-11-16，以 `bea321c8b36abd1e60b8e9120d63e355047e46cd` 为修复基线，另建提交保留原候选）：独立真实探针确认三项 P1，直接 hostedOperation 缓存读取、RPC observer 实际输入和 voice 客户端响应缺交付前授权。最小修复 Session.operation 的原预算/父 guard/await 后身份与本次 epoch，Remote raw response 不提前喂 history，派生 observer 移到最终 WAL await/真实授权之后；voice exchange 与客户端 send 沿同一原调用 guard、真实身份/epoch 再核验。历史完成收据跨健康逻辑重连可读，业务写不重放，Sidechat memoryOnly 与 Local 原行为保留。原 probe 缓存/observer 项已绿；voice 因正确关闭而无响应导致原等待 timeout，保留原字节及日志，另做允许关闭的有界等价验证。同步 usage 仅未来可信 producer 装配边界，不新增第四修复。新私有短根从第一 RED 起排除 Vite/cache 外链；原封存证据绝对不写。固定源码最终原12相关文件（475+实际新增项）、双 strict/build:server 以新报告为准；root 审计→原 SPEC 复审→全新 QUALITY 尚待完成。公开模式、完整消费者图、ledger/scheduler、手机及后续 Task4c/5/6 保持未完成。
+
+4b.2b 同核验队列创建修复（2026-11-16，保留 `e38989c` 原候选另建提交）：原484项的483通过/1并发失败保留；下一真实 proof 受控挂起证明已核验前项创建会被下一 operation 拒绝。Target 专用同步创建入口复用 Runtime 原 read tail，在真实 run/finally 后、下一 proof 前检查完整 reference 与 binding.assertCurrent，再同步注册 stream；不放宽 executable/run/query/mutation。注册后同步/微任务取消真实 RED 后补实际 close 等待，父 guard 收尾、排队取消/撤权/关闭/原期限零创建和 query busy 作为控制。业务 ACK、投影、close 不持 read lane。最终固定源码门禁与封存以报告为准，root→原 SPEC→全新 QUALITY 待完成；公开 Remote、消费者图、ledger/scheduler、手机及 Task4c/5/6 保持待。
+
+4b.2b QUALITY 预算修复（2026-11-16，以 `fc7c37e639038113df1267b0d034b614bcc637b4` 为基线另建提交）：原 QUALITY 探针原字节 RED 后，为现有 sidebar index 增加可选可信请求上下文，让 Remote summaries/read、includeRunning/loaded 分页、projectless 游标与排队承接同次 deadline/signal；Remote 各 caller pending 独立、完成缓存共享，Local 原合并与双读取上限保持。取消/超时仅结束自身，不补发未发送读取，迟到不更新缓存，其他共享 Relay 流继续。12项永久回归及原探针3项/v2六项已分别 GREEN（v2含原3项）；原失败与预提交类型检查失败保留。最终固定提交相关13文件、双 strict/build:server 以新封存为准，root→原 SPEC→原 QUALITY 仍待完成；仅源码，公开装配、ledger/scheduler、手机及 Task4c/5/6 保持待。
+
+
+4b.2b最终源码验收（2026-11-16）：冻结 `aeb75e65dc35b84851994b870023d54ca3326b0f`，13文件513项、原QUALITY探针3项及扩展版6项（含原3项）、双strict/build:server通过；原SPEC与原QUALITY复审通过，root实审固定字节和完整封存工件。原3项P1、并发创建和取消资源、侧边栏P2已修复；历史失败、voice旧观测timeout、cache外链及夹具限制保留。仅内部Session依赖完成，公开目标消费者图、唯一ledger调度及旧FollowUps迁移、4c/5/6仍待。无官方访问、客户端构建、发布或部署。
+
+
+4b.2c 本地实现记录（2026-11-16，修改基线为远端 main `40b1a04093d21f05715a688e81d99a154cebc294`）：Session 本次新执行在真实发送边界和 WAL／内存清理完成后记录可信 neverSent，HttpSessions 仅向可信内部返回 response／neverSent／unknown。证明弱引用绑定原结果对象、原 attempt 对象及本次 invocation，固定 UUID／Session／完整 context／namespace／claim token／原预算；最后授权 await 后再次核对原字段，复制或重用对象不能挪用旧证明。已有 uncertain／重启 pending／previous.promise 不发 fresh 证明，RPC error 仍是确定响应，签名冲突保持409；Local submitted 不放宽，Remote 依据真实 seq 和物理回调，send 成功不作为 ACK。真实零发送后同代离线的签发／验明两个窗口实际 RED→GREEN，沿原目标 transition 非执行授权，逻辑断线 epoch 可变化，但对象关闭／撤权／重装／pendingResume／取消／过期仍拒绝。hosted 复用旧固定 Session 和原 UUID／WAL，Sidechat 仍 memoryOnly。新增24项相关回归及初始 RED、复制 attempt、hosted、离线与末次 UUID 变更的原失败保留；独立私有短根验证，不复制依赖或改历史证据。最终相关10文件353项回归、双 strict 和 build:server 均通过，见本轮小型实施报告；root 实审及独立 SPEC→QUALITY 尚待。本步未接公开 mode／host／index、ledger／scheduler，不暂停或迁移旧 FollowUps，不改变 generation 或原 operationId／WAL，不访问官方、构建客户端、发布或部署。
+
+
+4b.2c 创建前授权补充修复（2026-11-16，保留首候选 `7c98418`）：root 实读后四项真实 RED 证实原调用过期／取消或 Remote 已撤权仍提前创建 Session，可能触发旧 WAL 扫描和历史图片读取记录清理。将取得 Session／捕获 epoch 放到原 withCall 真实授权后，创建前同步核验原期限、父 guard 及 namespace。补充后共24项新边界，最终验证及固定提交见小型实施报告；公开装配、唯一 scheduler 和旧 FollowUps 均未接，root 实审及独立 SPEC→QUALITY 尚待。
+
+4b.2c 首次 WAL 发布后同步失败修复（2026-11-16，保留候选 `a7460aa84928c0f72541868a7a5fb0137ff4082f`）：独立 SPEC 原样探针在新私有根重放为1失败／2通过，真实 rename 后目录 fsync EIO 留 pending WAL 却能签证明并回 queued。最小在 rename 前标记可能发布，首次 save 未完成则 unknown／不出证明；保留原 pending 和公开错误，健康容量507及 Remote 真实零发送仍可验明。永久故障回归加1项（本步共25项），原样双探针3项、相关10文件354项、双 strict／build:server通过；日志、源文件和工件 hash 见本次小型修复报告，旧封存不变。原 SPEC 复审及独立 QUALITY 尚待，4b.2公开合同仍不勾选。
+
+4b.2c 可信 Local 原预算发送前修复（2026-11-16，保留候选 `65ce99af622be73cc6595e911f5744ad716bb898`）：原 QUALITY beforeStart 后 signal／deadline／父 guard 失效的真实 WS 三项 probe 原样 RED→GREEN。仅可信 dispatch 的内部标记随原 call 进入 helper／hosted，submitted 前和序列化后最后同步物理发送边界核验原期限／signal／父 ALS；进入 submitted 后仍保守 uncertain／unknown。新增15项永久回归实际11失败／4通过→15通过，内部可信边界共40项通过；最终固定 archive、自有逐项依赖链接及完整私有环境的369项相关回归、双 strict／build、原双审 probe 结果见本次报告，待原 SPEC／QUALITY 限定复审。未改公开 Local API、Remote 授权或旧 FollowUps，不接 scheduler／公开模式，4b.2仍不勾选。
+
+4b.2c最终源码验收（2026-11-16）：冻结 `44fb339f1ddf5d02ef460e2fd243189fc7fa1857`，固定archive相关369项、原6项probe、双strict/build:server通过；原SPEC与原QUALITY各独立原字节6项及40项可信边界通过，root实审最小源码与全部小工件并独立复跑6项。三个真实缺陷与原失败保留，已修复创建前授权、首次WAL发布后EIO误签证明和可信Local失效后迟到发送。见[验收记录](evidence/2026-11-16-remote-session-dispatch-validation.json)。下一步原上下文WAL读取与当前传输分离，再接公开装配和统一调度；4b.2/4c/5/6仍待。仅源码，无官方访问、客户端构建、发布或部署。
+
+4b.2d 本地实现记录（2026-11-16，修改基线为已推送 main `3d1ac25650edfcb5579937b7ac6c42eb17a22c1d`）：仅在 http-session 提取原单条 WAL parser，新增可信内部 `readOriginalOperation`，保留原 HTTP operation／hostedOperation 路径。完整原 context 与调用参数在首个 await 前快照；Local 使用原网关目录，Remote 使用原 authorizationKey 的 transport-v1 hash，目标 home 不作为网关目录。同代离线可读；跨代仅既有真实逐 tuple 耐久 resume、完整已提交父链及本机 tuple 允许，不改 Runtime／Target 恢复政策，旧 handle 永拒。读取前后真实 read 授权，最外层 guard Promise 的最后 await 后复核原／新同步 fence、原 deadline／signal 与父 guard。读取只触及单条原 WAL，不 scan／删旧图片、创建 Session、RPC、WAL改写或新 owner；pending→uncertain，坏记录／IO失败与真正404分开，404不作 neverSent。真实 LocalWS／Remote Session 生成的 hosted WAL沿原operationId读取，Sidechat拒绝耐久收据。49项内部定向验证已通过，包含包装Promise微任务撤权先RED后修复；首次夹具问题及原失败保留，最终固定archive相关回归、双strict/build与小工件见本轮实施报告。待root实审与全新SPEC→QUALITY，不勾4b.2d或整个4b.2；不接公开mode／host／index、ledger scheduler／旧FollowUps迁移，不访问官方、构建客户端、发布或部署。
+
+
+4b.2d最终源码验收（2026-11-16）：冻结 `b63ad1d8b87ebe69a1b9ee655a8a87d0532e730c`，独立固定archive相关11文件493项、双strict/build通过；全新SPEC→QUALITY各亲跑49项和独立12／7项探针。root核验全部45／11／9项小工件及固定源码，原失败、微任务修复与引用范围如实保留，见[收据](evidence/2026-11-16-remote-original-operation-validation.json)。下一步4b.2e补齐原context与当前有效Session传输装配；旧context、requestId、原WAL不改写，已发送未知写入不自动重放。4b.2、4c、5、6仍待；仅源码，无官方访问、客户端构建、发布或部署。
+
+
+4b.2e 本地实现记录（2026-11-16，main 基线 `b2bc47432e26c558f8380274d6a2b4042a0e7991`）：最小复用 HttpSessions／Session，冻结完整原 context 及 target／resolver／namespace 容器；同代严格约束保留，跨代 WAL 仍为原 authorizationKey 的 transport-v1 namespace。每次调用真实核对当前 handle 的完整 managed，以及 resolver 当前真实 descriptor 的 generation／authorizationKey，再执行原 context 的既有完整恢复与在线证明。旧 handle、双 Runtime 拼接、未 resume／坏链／身份或目标变化均拒绝，不改 Runtime／Target 的恢复政策。completed只复用原确定收据；pending／uncertain不重发；真实neverSent仍绑定原attempt／invocation／namespace。
+
+真实 RED→最小 GREEN 同时修复最终包装 Promise 微任务撤权、dispatch response／neverSent 与其证明的末 await、HTTP 正文最终交付、hostedOperation Session 创建前授权、caller 改写原 call 与后台 load 退休后的迟到旧图片删除。新 Session 的 load 独立保留首次原 call 与同步真实 fence，传输 ALS 继续只放无 FS live 检查；Local helper 验收在真实响应门闩释放前同步失效原 deadline，保留原 unknown／零后续发送断言与先前计时器窗口失败证据。保留内部 submitted 回调与 hosted 固定 Session／原 operationId、Sidechat memoryOnly。定向验证通过；最终固定 archive 相关服务端回归、双strict/build:server、逐命令cwd/env/exit与首次失败日志见本轮私有实施报告，待root实审→全新SPEC→全新QUALITY，不勾4b.2e或整个4b.2。未接公开mode／host／index、消费者图、ledger scheduler或旧FollowUps迁移，未访问官方、构建客户端、发布或部署。
+
+
+4b.2e SPEC P1 修正记录（2026-11-16，基线为候选 `178c92c27add34d8ac16fd8d1c8dee5b97dc0bc1`）：独立真实 HTTP probe 在父 guard 成功退休、实际原 deadline 耗尽后释放后台 load 扫描，原图片被删除且零业务帧。自己的全新私有归档复制同一实际 deadline probe 得到真实 RED；新增实际 deadline／父 signal 的两项永久 RED 与一项正常新调用预算正例。operation-guard 只增加显式父同步检查快照，保存原检查函数与 guard 引用，后续 failed 仍有效；withCall 在首次 await 前捕获，复用同次 authorize 闭包传给当次新 Session，不将原预算强加给所有未来调用，不改变普通成功退役或物理 send guard。定向 GREEN 后冻结新提交，必要5文件相关回归、双strict/build与逐命令日志见本轮私有小报告。保留178c全部证据及独立SPEC原目录只读；4b.2e待原SPEC复审→全新QUALITY，4b.2整项不勾验收。
+
+
+4b.2e QUALITY P2 修正记录（2026-11-16，基线候选 `5155aa495140a855e1a13c55346c1697631d0282`）：原SPEC复验通过后，独立QUALITY在真实Runtime／健康单owner／loopback HTTP中复现失败load永久阻塞后续新调用，以及同gen／key的独立Runtime句柄可拼接两项P2。自己的新私有归档复制原探针真实3 FAIL／1 PASS，最终永久夹具在原产品为5 RED／2原有IO及坏记录PASS，7项定向GREEN。加载仅授权中断可由真实新调用在旧批全部实际settled后重扫原WAL，保留原Session／operations／socket和失败Promise；并发不重复扫描，完成后发布计数，真实IO／解析失败不忽略。Target最小比较真实Runtime引用，保留descriptor、旧handle失效与完整原context proof，不增加owner／身份政策。原busy互斥不放宽，两个initialize并发的先前夹具失败与诊断保留；并发新initialize和真实HTTP helper共享同一扫描，随后真实thread/read成功且completed／pending／uncertain不重发。固定源码必要相关服务端回归、双strict／build及逐命令日志另存本轮小报告；5155的154项、178c的362项仅引用旧freeze。本步待root实审→原SPEC→原QUALITY复验，4b.2e与整个4b.2仍不勾验收。无公开装配、客户端构建、push、发布或部署。
+
+
+4b.2e最终源码验收（2026-11-16）：固定 `d7d700d8049dd6a2373eba66736a908cc31a0de9`，217项必要服务端回归、双strict/build及原SPEC→原QUALITY串行复验通过，root亲核全部专项断言、源码和实际验证证据。原父预算P1与加载恢复/同代Runtime两项P2先RED后修复，旧验证只属原freeze；详见[收据](evidence/2026-11-16-remote-recovered-session-validation.json)。整个4b.2、4c、Task5/6仍待；下一步继续公开目标消费者和唯一持久队列接线，旧Local FollowUps正常升级保留原归属，不因缺新字段全量暂停。无客户端构建、发布或生产部署。
+
+
+### 4b.2f：内部 ledger 重启发现（源码验证与独立双审已完成）
+
+修改基线：已推送 main `34ff5fb9b4440002bad0ac9361847083f4f3e8ee`。沿现有 OperationQueue 增加 `inventory()`，仅返回 `{ context, conversationId, operations: [{ id, revision, receiveOrder, state }] }`。完整 context/会话精确分组，不以 businessKey 合并 mode、managed.userId 存在性/codexHome、generation/key 或目标；按 receiveOrder 保留原 id，排除现有 terminal，完整 load/原 gateway 校验不放宽。内部无正文目录不要求全部业务先获授权；后续 scheduler 按原 id 独立调用现有 read，再走原上下文执行或原 WAL 对账。无新框架、持久表或派发 owner。
+
+- [x] 新增真实磁盘/OS 子进程恢复与精确分组/原收据/状态过滤的永久回归；首次16项缺入口 RED 后最小实现16项 GREEN。
+- [x] 验证返回不含正文/settings/附件/claim，返回对象不能回改 ledger；坏数据/权限/软硬链/文件读取边界注入 synthetic EIO 明确失败，真实 Runtime 撤权组仍可发现无正文目录但 read/list 拒绝，Local 独立读取保留。
+- [x] 固定 `a7c66783` 归档190项必要回归、双strict/build:server及全新SPEC→QUALITY通过，root实读全部专项及验证工件，见[验收记录](evidence/2026-11-16-remote-queue-inventory-validation.json)。
+
+本步仅源码，不改 claim/可信读分类/FollowUps/公开入口或 Runtime；不访问官方或真实凭据，不构建客户端、不 push/main、不发布部署。唯一 scheduler、旧 FollowUps 迁移、公开完整消费者/host/index 及整个4b.2继续待实现；4c/Task5/6不勾选。最终固定源码验证与原失败记录见本轮私有实施报告。
+
+4b.2f最终源码验收：仅内部无正文inventory完成，原context/全部原id和接收顺序保留；两审各独立16项及SPEC两组补充断言通过，历史RED/GREEN封存。整个4b.2继续未完成，下一步接实际调度和旧FollowUps唯一owner迁移，再完成目标消费者及公开入口；不构建客户端、不发布或部署。
+
+
+### 4b.2g：内部唯一 RPC 调度与真实 Session 闭环（源码验证与原双审复审已完成）
+
+- 修改基线：已推送 main `ba1b2aaf41c6822e4eb89ce45d614c463e305000`；复用已有独立 worktree，不接公开 mode/host/index，不迁移旧 FollowUps，不启动双 owner。
+- 新增单一具体 OperationScheduler：完整原 RPC/context/settings/附件快照沿原 ledger 耐久后 ACK；原业务键/会话跨 mode FIFO、控制专用槽/原 turn/request 绑定、可信读单一分类与指定 queued 导航取消。旧未知正文默认写屏障，excluded 只限制本轮尝试，不能绕过普通写/控制 head。
+- 原 inventory→逐组锁外真实授权→原 id 正文/原 WAL→CAS/耐久潜在发送→实际 HttpSessions.dispatchRpc。Remote 只从同一真实 Resolver/Runtime 取当前 handle、保留完整原身份及原 WAL namespace；缺 consumer 明确失败，绝无 Local 回落。同代离线能只读对账，unknown/pending/failed 不重放；实际 RPC error 保留原错误及 failed 屏障，重复相同失败不反复 settle。
+- 零发送证明保留原结果/attempt/invocation/Session/namespace/预算/真实授权，异步证明恢复在锁外，CAS 内同步复核。原控制 expiresAt 同时收紧 dispatch 有限期限并经同步 wall-clock guard 传至真实 Local/Relay 物理 send，覆盖 mark 后原 Session WAL/授权/发送等待；潜在发送后过期而无真零发送证明继续 uncertain，只由原 WAL 确定结果结算。有效期已有确定响应时，ledger 结算跨期仍按原 WAL 正常收尾。后续执行用新有界真实预算，原提交取消不删除已 ACK 写。前台 ACK/取消/结果最后 await 后核原授权/父预算；close 先固定 Promise，取消并等所有自有入口/scan/逻辑流实际结束，不关共享 Relay，不迟到发送或 ACK。
+- 同一 HttpSessions 内 protocol/events 提供真实普通 Session initialize/initialized 与原 pending/epoch 审批（数字 id 按 typed-id/epoch 控制键匹配，实际消息保留原类型），协议不入业务 ledger；已实际成功原协议快照仅作为同正文传输恢复元数据，容量照实计费、终态清理。rpcReceipt 可选但存在即严格校验 Session/requestId/WAL hash，原提交签名计入；终态按最小原定位/hash取已授权原 WAL，旧无字段记录兼容不猜。恢复快照变化不影响业务 UUID 幂等，重交不覆盖原快照；真正原业务变化409。queued 合法编辑冻结 Session/requestId/epoch/初始化/控制绑定，实际发送 hash 同事务更新，原 UUID 提交指纹不变。
+- 真 PrivateStore/Runtime/loopback Relay/Local WS/Session WAL 主闭环 TDD 覆盖离线恢复、跨 mode 顺序/其他会话继续、控制优先/过期/编辑、可信读、unknown 对账与 WAL 复用/替换防串、真实 neverSent/锁外恢复、原 generation 显式 resume、无手机重建、普通 Local/Remote Session 与审批、取消/微任务撤权/实际继承失效父 ALS、双实例 CAS、close 前台及发送等待、坏盘和既有 API/容量。首次失败及精确 overlay/hash/argv/cwd/env/exit/full logs 保留私有短根；最后固定 SHA git archive 无 overlay 亲跑必要相关服务端回归、双 strict/build:server，以本轮小报告为准。
+
+原候选 bed56566 的490项/双strict/buildserver通过后，SPEC真实控制迟发反例仍FAIL；已在新隔离根原字节亲跑RED并补8项Local/Remote stop/approval真实WAL/物理send等待跨期回归、4项wall-clock前跳且单调预算有效的物理边界、4项确定原WAL结算跨期边界，前轮证据原样保留。控制期限补修后又经QUALITY发现claim清理Q1；最终6120f3bb已通过517项/双strict/buildserver及原SPEC→原QUALITY复审，root核验完成；不勾整个4b.2。下一闭环继续旧 Local FollowUps 正常升级：公共 id 与 operationId 区分，原 HOSTED_SESSION_ID+operationId 对账，fingerprint/revision/顺序/restoreState/状态/附件/settings保留，手动retry/steer公共id稳定而新upstreamUUID；缺新字段不能全量暂停，Local404兼容不扩 Remote。公开消费者/host/index 与唯一 owner 激活、4c/Task5/6仍未完成；本步不访问官方/真实凭据、不构建客户端、不发布部署；子任务分支提交由root完成双审后按仓库规则合入main。
+
+
+4b.2g QUALITY Q1 补修（2026-11-16，修改基线 `41782107317ce8f694866d71d43a3dfe2771fa17`）：控制期限 F1 原 SPEC 复审通过后，新 QUALITY 在真实 PrivateStore fsync 后最终预算/close 拒绝复现 claim 结果丢失，同 PID 重建永久 claimed。新完整私有 archive 亲跑预算与修正 close 两份原字节 probe 均 FAIL；6项补充矩阵4 FAIL/2原有保护 PASS，永久新增共10项。原领取准备回调只同步捕获无正文 context/id/revision/token，原最终 fence 不减；领取/execute 已放弃后才保留按 canonical directory/gateway/完整身份及精确 token/revision 隔离的进程内清理事实。原 transition 授权与 claimed CAS 释放，授权暂拒或 IO 失败不丢责任，同实例和关闭后新实例在真实 recover/显式 resume 后可重试；共享 in-flight Promise、每轮一次有限 jobs、close 等实际清理。同完整 context 的 cleanup 复用原 authorizing 集合，避免与自身 claim 预检争用真实 Runtime；不改变 busy/授权政策。其他活 owner 不接管，mark 已耐久 uncertain 或 rev/token/state 失配只丢弃旧事实，绝不回 queued/重复发送；没有新耐久 owner/WAL。定向与固定新 SHA 无 overlay 的必要回归、双 strict/buildserver、准确环境/命令/sourcehash及所有首次失败另封存 `e4b2g-qfix` 小报告。最终6120f3bb的517项/双strict/buildserver及原SPEC→原QUALITY复审通过，root已实读和核验证据；不启公开/旧 FollowUps，不勾整个4b.2/4c/5/6，不构建客户端或发布部署。
+
+本轮自审补齐领取最终失败后的 attempted：永久断言按不同 token/revision 统计真实领取；同实例固定1000ms预算，仅首次 claim 真实 fsync 后延迟1100ms。去除 attempted 的旧产品在同次 scan 得到2个不同绑定而 FAIL，修正后只领取1次、零 mark/dispatch/物理发送，撤去注入后的同实例下一 runOnce 成功且仅发送1次。新增永久项累计10项。原整数同步计数可能重复观察同一 claim，旧 `908c1934` 固定归档516 PASS/1 FAIL不能视作通过；该计数夹具及恢复仍用100ms造成 uncertain 的首次失败均保留。临时完成计数因去除后门闩仍通过而删除，不把未杀死 mutation 记为产品 RED；首次门闩自锁及修正记录保留。旧候选 `38181497b3e45242b785ee2cadb26bdf0eb07194` 的516项/双strict/buildserver仅属原归档，最终6120f3bb已完成独立固定归档517项/双strict/build:server及原SPEC→原QUALITY复审，root核验通过。
+
+4b.2g最终源码验收：固定6120f3bb，11文件517项（专项70项）、双strict/build:server与原SPEC→原QUALITY复审通过，见[验收记录](evidence/2026-11-16-remote-rpc-scheduler-validation.json)。F1/Q1与全部首次失败保留；原正确探针永久回归，精确未发送清理和同轮不重领已验证。内部RPC调度闭环完成，下一步仍为旧FollowUps及完整消费者/公开装配，整个4b.2/4c/5/6未完成；仅源码，不构建客户端、不发布部署。
+
+### 4b.2h：内部 FollowUps 唯一 owner 接管（固定源码验证与主执行者直接检查通过）
+
+修改基线为 `64d7519ad0c51a548ed8de50b7fbc389f3723684`。复用现有 OperationQueue/PrivateStore 和 OperationScheduler；可选可信注入的 FollowUps.open 在任何旧订阅、timer 或首次 tick 前核 canonical 源 home 与显式 gatewayCodexHome，一事务导入完整 v1 记录及 marker，原文件保全。ledger 为状态/revision/顺序/context 唯一真相，元数据仅保必要追问字段。原公共 id 与 upstream operationId 分离，指纹保留编辑前原值，终态按实际旧收据保全；retry/steer 公共 id 稳定而新 upstream UUID。marker 已存在不会因保全源文件后来变化重导，来源/context冲突、非法 v1、普通 RPC UUID 碰撞、容量和同步故障明确拒绝，不启动旧 owner。
+
+旧 sending 只按原 HOSTED_SESSION_ID + operationId 对账；真实 completed/error 结算，pending/uncertain 不重发，只有旧 Local 真404恢复queued/原steer restoreState。新 ledger/Remote 不放宽 neverSent。用户 A 的显式 B-steer 先查实际 turn 再 CAS 耐久绑定，越过普通 queued/failed A，A 继续排队；发送前原 turn 失效明确失败。已绑定引导对外 sending，claimed/uncertain 普通写继续阻同会话其他写，读旁路、其他会话、停止/审批优先及专用槽保持。普通追问等实际 idle，同完整 context/thread/真实 epoch 的并发 resume 共用在途过程但各调用预算独立，迟到/关闭响应不缓存成功，thread/read 不读全 turns。
+
+真实 PrivateStore、HTTP/action→HttpSessions/Session/WAL/LocalWS 的 TDD 包括原最小终态、附件/settings/编辑指纹、中间态、实际原WAL矩阵、并发进程接管及两次重启、同步故障/容量拒绝、唯一发送、Session accepted 输入语义、普通 RPC 混合顺序/控制优先，以及实际 response.end 前撤权/关闭。近64MiB按确定必要的 receipt/method/claim/revision 字节计费；steer 按真实原turn及确定失效提示实际字节接收，新完整错误沿既有原WAL授权读取，旧error保留，不新增上限/截断或第二WAL。最初全部产品/夹具/报告失败和被否定的预留版本保留，最终以固定 SHA 无 overlay git archive 的必要回归、双strict/build:server及本轮私有报告为准。原未注入路径23项保留；旧 uncertain cancel 为历史行为，新注入路径 queued-only/unknown cancel 409 明确覆盖。
+
+完成实施后 STOP，由 root 直接检查代码、核对需求并完成必要验证，不再安排独立agent复审；未勾整个4b.2/4c/5/6，未接公开 gateway/host/index 或完整消费者，未访问官方/真实用户队列凭据，未构建客户端或发布部署。仅在本分支提交，由 root 后续按仓库规则整合。
+
+4b.2h SPEC F1补修（基线3cfa91b0）：首轮fresh SPEC真实旧HTTP enqueue/cancel形成带附件计数且已compact正文的cancelled，正常升级被重算空数量而503；原591项/双strict/build记录保留，不视作双审通过。正确原探针1340字节逐字永久保留，新私有根原候选实际RED后仅改单处导入校验：终态缺省计数保持缺省，实际合法非负safeint保留，完整原payload才比较真实数量，非终态仍严格。核真实旧成功finish最小sent不带计数，另补真实cancelled/sent/queued同批不被阻、公共id/UUID/指纹/revision/顺序、幂等/冲突和重开、非法计数及完整payload不一致拒绝。新固定SHA无overlay必要回归/双strict/build与原始命令/环境/hash另封存，待root实读→原SPEC复验→fresh QUALITY；不接公开装配、不勾整个4b.2/4c/5/6，不push/merge/发布部署。
+
+4b.2h QUALITY Q1/Q2补修（基线`8edf86a0181ae0e4b9f7289882988866c445128d`）：F1的594项/双strict/build及原SPEC复验已通过，fresh QUALITY仍发现准备receipt耐久新rev后最终预算拒绝丢精确claim，以及真实旧failed-steer→retry清method却保restoreState导致导入后load503。产品仅两文件：准备update捕获新可能版本，放弃后按新→旧原fullcontext/id/rev/token独立授权claimed CAS清理，IO/撤权保留原事实跨同PID重建；旧restoreState独立原枚举，目的followUpValid在导入marker前复用，非法整批不污染原ledger/源文件。既有unknown/活owner/终态、potential-send/neverSent与最后await保护不减。
+
+原两项3518字节合块和增强Q1 2439字节块/完整原探针保全私有工件与SHA记录。一次原Q1意外sendsBefore=1后，固定8次观察未复现；随后一次受控真实inventory owner.sync抢全局门闩而receipt在原deadline内正常发送，证明原故障注入不唯一归属，不把历史首份已被同名outcome覆盖的失败追认为已证原因。经root技术确认，永久两Q1只加测试专用ALS事务条件，700/850及行为/计数断言保持；共享Q2 1556字节块仍逐字保留。新边界同样精确区分准备/清理事务；正确门闩对原8edf再RED→当前GREEN，未耐久、IO/授权恢复、同PID重建、其他owner/uncertain/终态与目的拒绝/旧实际后续状态均覆盖。首次setup语法错误、夹具收尾/取消时点/原fence与API进入误判、poison同轮storage/reopen-required两个既有503表示及全部原失败如实封存；不改产品预算或原断言掩盖。
+
+新固定SHA无overlay相关回归/双strict/buildserver及完整argv/cwd/env/exit/stdoutstderr/sourcehash由`e4b2h-qfix`私有报告封存。实施后STOP→root工件审计→原SPEC→原QUALITY依次复验；不勾h或整个4b.2/4c/5/6，不启公开装配，不push/merge/main或客户端构建/发布部署。
+
+4b.2h SPEC Q3补修（基线`fb93bf22fe3aee526b29d565f19ff167e1411c9f`）：前轮606项/双strict/build及89专项通过保留；原SPEC用真实旧HTTP threadId控制字符复现已写marker后GET503，正确原1964字节测试块逐字永久保留，新私有根原产品RED→导入目的text检查GREEN。原首probe缺count的400与首seal实目录.vite误判属夹具/证据工具错误，原工件不改写。随后真实新facade enqueue也证实503前已写坏ledger，GET继续503且0RPC；root核对后批准同规则enqueue入口text检查，原RED块永久加入。产品仅queue两处，不改load/fence/既有256 HTTP限制，不转义thread或新增政策。
+
+补充已有ledger与合法前项/控制字符或4097坏后项整批无写入（ledger/source原字节、marker/部分项保全），手构旧源4096合法边界GET和重开可读；不声称原HTTP接受4096。Q1纠正ALS与原Q2/F1字节块保持，新固定SHA无overlay相关回归、双strict/build:server及完整命令/env/sourcehash另封存`e4b2h-q3fix`报告。STOP→root审计→原SPEC→原QUALITY复验，不勾h/整个4b.2/4c/5/6，不启公开装配、不push/merge/main、客户端构建或发布部署。
+
+首Q3候选`090dc822`固定归档实际609PASS/1FAIL，服务端strict另有新测试两处response.json unknown类型错误（npm strict/build通过），原日志封存不算通过。旧pending WAL夹具只等磁盘pending便断言WS已收到；实际save先于send，受控原WS门闩证实pending/0帧后释放才收到1帧，未归因负载或fsync。永久仅在原100×10ms等待内同时等pending且真实turn/start已收到1次，原1000ms deadline及随后精确1次/不重发断言不变；两处json仅补类型。首诊断因drop分支不调用afterMessage而5s超时属夹具错误，纠正直接观察received后通过，原工件保留；不增加产品改动。新固定候选重新归档验证，待root审计及原双审复验。
+
+4b.2h QUALITY Q4补修（Q3候选c5fa9e3f历史610项/双strict/build与SPEC复验通过，历史QUALITY Q4 FAIL）：真实HTTP的保留128图片+新引用合并129、合法文件包装正文导致attachmentCount变化均会写坏ledger；原4项探针2FAIL/2PASS、原2541字节块逐字保全。产品仅scheduler编辑CAS内校验合并输入、重算实际计数并刷新既有准备收据的RPC signature；queue changeFollowUp在update/revision/compact后复用现有followUpValid与原receipt约束，非法400且不写整ledger/source，不改原接收指纹/UUID/顺序/context。
+
+真实准备700/850事务ALS门闩证明mark/dispatch均0、queued原receipt仍在，原产品合法编辑RED；真实pending WAL在物理发送前断WS后先成功discard，实际confirmNeverSent才恢复queued，旧WAL/缓存不作为新内容的成功或失败；两链编辑、重开/随后一次真实发送GREEN。合法128/实际count、129原字节原子拒绝、CAS/幂等/冲突及可信写边界共新增10项定向通过，保留F1/Q1ALS/Q2/Q3/newenqueue精确块及原pending等待修正。
+
+规则提交b9c5d91a按用户最新决定取消独立agent复审；本轮新固定候选无overlay必要相关回归/双strict/buildserver与完整私有证据另封存e4b2h-q4fix，完成STOP交root直接代码/需求检查与必要验证。历史双审结果不改写，不称新候选独立复审通过；不勾h/整个4b.2/4c/5/6，不启公开装配，不push/merge/main、客户端构建、发布部署。
+
+4b.2h最终源码验证：固定源码`a3e07a338890672ce3bb1ec9322b8e6ec951129f`已通过12文件620项相关回归（FollowUps ledger 103项、原调度70项、旧追问23项）、双strict及build:server；主执行者直接检查代码、需求、原失败与修复验证结果并通过。Q4编辑在原CAS内验证最终合并输入、重算实际附件数并同步既有准备收据的内容签名，非法修改在落盘前拒绝；合法编辑保留公共id、上游UUID、接收指纹和上下文。F1/Q1/Q2/Q3历史修复和原失败证据保留。按用户2026-11-16新规则，本候选未安排独立agent复审，不将旧候选的审查结果转绑本提交。仅内部可选接管已验证，公开gateway/mode/host/index、完整消费者及4b.2/4c/Task5/6仍待；未访问官方或真实凭据，未构建客户端、发布或部署。见[验收记录](evidence/2026-11-16-remote-follow-ups-ledger-validation.json)。
+
+
+### 4b.2i：公开入口统一路由校验（固定源码验证与主执行者直接检查通过）
+
+修改基线为远端 main `45a75487a1303131212a573fb8bcb3be58ff5533`，开始前 fetch 已核对。先补 HTTP API、媒体／通知／上传和两个 WebSocket 升级入口的共用校验，避免内部 Remote 参数被旧 Local 处理器忽略；复用现有完整 target 引用解析，不增加 Runtime、owner、ledger 或通用框架。鉴权先于路由错误；已鉴权 CORS 预检不执行目标操作。host 探测允许不选择目标，版本1能力明确 supported=false，完整 Remote 消费者和唯一 scheduler 接线前不开放业务执行。
+
+隔离真实 HTTP／WS 反例已证实旧入口误用 Local。首轮41项有两项 Local 断言误写项目返回结构，原日志保留；修正并补充原 Session 复用和兼容测试后重新在未修改产品源码的基线 archive 上亲跑 RED。最终修复源码的必要回归、双 strict／服务端构建结果见本节末。用户新规则下仅主执行者直接检查，未安排独立 agent；当前只交付服务端源码，无真实凭据、官方探针或测试聊天，无客户端构建、发布或生产部署。整个4b.2、4c、Task5／6继续未完成。
+
+首次固定候选 `55127e25` 发现导出解析函数时遗漏 operationAuthorization 内旧函数名调用，导致25项 Remote 授权回归及双 strict／构建失败；本轮直接检查定位并补齐，原完整失败保留于私有证据目录。必须以修复后的固定源码重新验证，不引用前一候选的局部通过作为交付结果。
+
+最终固定 `237f190621ab7fd02dfa5a7c4842d2f22fe298da` 的6文件281项必要回归、双 strict／build:server全部通过，主执行者直接核对代码、已确认需求与完整最终日志；2910份归档源码测试前后未变。最终46项路由测试在原产品基线上40 FAIL／6 PASS，修复后全部通过；首次候选的真实遗漏及所有早期日志保留。仅此入口边界完成，整个4b.2、4c、Task5／6仍未完成，未访问官方凭据、未构建客户端或发布部署。
+
+2026-11-17 本地验收收尾：完整客户端121文件1467项通过；完整server87文件先得到2301通过/3失败/7既有跳过，修正追问普通功能夹具预算和上传合法202断言后，相关2文件106项通过，合并覆盖2304项。所有89个服务端产品文件与完整运行逐字节一致；完整首失败不改写为一次全绿。冻结实现与含测试双strict、build:server、开发Web构建及iPhone17Pro竖屏正常字号模式表单验收通过；原生/桥接378文件与模拟器测试源码一致。主执行者直接核对，无独立agent复审。Task4/5源码完成；Task6官方完整功能与8小时/P95/睡眠仍未通过。
+
+2026-11-17 源码交付：在`codex-mobile-main-production`互斥下fetch确认main仍为本轮基线，复用已完成验证，源码及收据已推送并从远端核对到`7e82aca7a5443b347a5ee36b8ef7ace4983660fe`。主工作区原main与index散列未变；本收尾仅补记文档，无产品代码变化。官方完整功能、8小时/P95/睡眠继续保留未勾选；无客户端发布或生产部署。

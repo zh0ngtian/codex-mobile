@@ -30,10 +30,9 @@ test("滚动候选列表后仍可选择 Skill", async ({ page }) => {
   await expect(input).toHaveValue("$skill-7 ");
 });
 
-test("最大化输入框支持触摸选择 Skill", async ({ page }) => {
-  await page.getByRole("button", { name: "最大化输入框" }).tap();
+test("长输入框支持触摸选择 Skill", async ({ page }) => {
   const input = page.getByRole("textbox", { name: "向 Codex 提问" });
-  await input.fill("@pdf");
+  await input.fill("多行草稿\n".repeat(8) + "@pdf");
   await page.getByRole("option").tap();
-  await expect(input).toHaveValue("$pdf ");
+  await expect(input).toHaveValue("多行草稿\n".repeat(8) + "$pdf ");
 });

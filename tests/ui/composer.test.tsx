@@ -13,7 +13,7 @@ function renderComposer(
         active: {
           id: "thread-1",
           cwd: "/tmp/project",
-          preview: "最大化输入框",
+          preview: "自适应输入框",
           turns: [{ id: "turn-1", items: [] }],
         },
         backendId: "mini",
@@ -59,7 +59,7 @@ function renderComposer(
         onRemoveFile: () => undefined,
         onSelectImages: async () => undefined,
         onSelectLocation,
-        onOpenAgentSettings: () => undefined,
+        availableControls: { model: true, effort: true, fast: true, permission: true }, onOpenModelSettings: vi.fn(), onToggleFast: vi.fn(), onOpenAgentSettings: () => undefined,
         onOpenPermissionSettings: () => undefined,
         onDraftChange: () => undefined,
         onInterrupt: () => undefined,
@@ -69,8 +69,8 @@ function renderComposer(
   );
 }
 
-describe("会话输入框最大化", () => {
-  it.each([false, true])("提交前同步取消输入焦点（最大化：%s）", (maximized) => {
+describe("会话输入框", () => {
+  it("提交前同步取消输入焦点", () => {
     let focusedAtSubmit = true;
     const onSubmit = vi.fn((event: FormEvent) => {
       event.preventDefault();
@@ -78,7 +78,6 @@ describe("会话输入框最大化", () => {
     });
     const { container } = renderComposer(onSubmit);
     const view = within(container);
-    if (maximized) fireEvent.click(view.getByRole("button", { name: "最大化输入框" }));
     const input = view.getByRole("textbox", { name: "向 Codex 提问" });
     input.focus();
     expect(document.activeElement).toBe(input);
@@ -115,45 +114,24 @@ describe("会话输入框最大化", () => {
     );
   });
 
-  it("在最大化与普通模式间切换时保留草稿", () => {
-    const { container } = renderComposer();
-    const view = within(container);
-    const form = container.querySelector(".composer-wrap");
-
-    fireEvent.click(view.getByRole("button", { name: "最大化输入框" }));
-
-    expect(form?.classList.contains("composer-wrap-maximized")).toBe(true);
-    expect(
-      (view.getByRole("textbox", {
-        name: "向 Codex 提问",
-      }) as HTMLTextAreaElement).value,
-    ).toBe("保留这段较长的草稿");
-
-    fireEvent.click(view.getByRole("button", { name: "还原输入框" }));
-    expect(form?.classList.contains("composer-wrap-maximized")).toBe(false);
-  });
-
-  it("最大化后支持按 Escape 还原", () => {
-    const { container } = renderComposer();
-    const view = within(container);
-    const form = container.querySelector(".composer-wrap");
-
-    fireEvent.click(view.getByRole("button", { name: "最大化输入框" }));
-    fireEvent.keyDown(form as HTMLFormElement, { key: "Escape" });
-
-    expect(form?.classList.contains("composer-wrap-maximized")).toBe(false);
-  });
-
-  it("最大化输入提交后立即还原", () => {
+  it("回车发送，Shift+Enter 和中文输入法确认不发送", () => {
     const onSubmit = vi.fn((event: FormEvent) => event.preventDefault());
     const { container } = renderComposer(onSubmit);
-    const view = within(container);
-    const form = container.querySelector(".composer-wrap");
-
-    fireEvent.click(view.getByRole("button", { name: "最大化输入框" }));
-    fireEvent.click(view.getByRole("button", { name: "发送" }));
-
+    const input = within(container).getByRole("textbox", { name: "向 Codex 提问" });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Enter" });
     expect(onSubmit).toHaveBeenCalledOnce();
-    expect(form?.classList.contains("composer-wrap-maximized")).toBe(false);
+  });
+
+  it("自然增高输入框不提供最大化入口，正文位于工具行上方", () => {
+    const { container } = renderComposer();
+    const view = within(container);
+    expect(view.queryByRole("button", { name: "最大化输入框" })).toBeNull();
+    const input = view.getByRole("textbox", { name: "向 Codex 提问" });
+    expect(input).toHaveValue("保留这段较长的草稿");
+    expect(input.nextElementSibling).toHaveClass("composer-tools");
   });
 });

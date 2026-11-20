@@ -2,6 +2,7 @@ import type {
   BackendConfig,
   BackendRegistry,
 } from "./types";
+import { gatewayBackends, readGatewayTargets } from './gateway-route';
 import { t } from "../i18n";
 import {
   collapseNewBackendProjects,
@@ -143,6 +144,11 @@ function normalizedBackends(value: unknown) {
       typeof source.order === "number" && Number.isFinite(source.order)
         ? source.order
         : result.length;
+    let remoteTargets: BackendConfig['remoteTargets'];
+    if (source.remoteTargets !== undefined) {
+      try { remoteTargets = readGatewayTargets(source.remoteTargets); }
+      catch { remoteTargets = []; } // 保留远程配置和管理入口；损坏目录不触发 Local 回退。
+    }
     result.push({
       id,
       ...(hostId ? { hostId } : {}),
@@ -151,6 +157,9 @@ function normalizedBackends(value: unknown) {
           ? source.name.trim()
           : new URL(baseUrl).hostname,
       baseUrl,
+      ...(typeof source.gatewayQueue === 'boolean' ? { gatewayQueue: source.gatewayQueue } : {}),
+      ...(source.gatewayMode === 'remote' ? { gatewayMode: 'remote' as const } : {}),
+      ...(remoteTargets ? { remoteTargets } : {}),
       token: typeof source.token === "string" ? source.token : "",
       enabled: source.enabled !== false,
       order,
@@ -231,7 +240,7 @@ function normalizedRegistry(
     typeof source.selectedBackendId === "string"
       ? source.selectedBackendId
       : "";
-  const selectedBackendId = backends.some(
+  const selectedBackendId = gatewayBackends(backends).some(
     (backend) => backend.id === requested && backend.enabled,
   )
     ? requested
@@ -326,6 +335,9 @@ export function upsertBackend(
     ...(hostId ? { hostId } : {}),
     name: value.name.trim() || new URL(baseUrl).hostname,
     baseUrl,
+    ...(typeof value.gatewayQueue === 'boolean' ? { gatewayQueue: value.gatewayQueue } : {}),
+    ...(value.gatewayMode === 'remote' ? { gatewayMode: 'remote' as const } : {}),
+    ...(value.gatewayMode === 'remote' && value.remoteTargets ? { remoteTargets: value.remoteTargets } : {}),
     token: value.token,
     enabled: value.enabled,
     order: value.order,
@@ -355,7 +367,7 @@ function withValidSelection(
     ...backend,
     order,
   }));
-  const selectedBackendId = normalized.some(
+  const selectedBackendId = gatewayBackends(normalized).some(
     (backend) =>
       backend.id === registry.selectedBackendId && backend.enabled,
   )

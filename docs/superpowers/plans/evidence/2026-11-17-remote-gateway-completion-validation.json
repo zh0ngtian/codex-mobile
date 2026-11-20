@@ -1,0 +1,260 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-17",
+  "timezone": "Asia/Shanghai",
+  "task": "Task4-5-remote-gateway-source-completion",
+  "baselineMain": "1f274d286d2da128404c6ff390a1f37282479af1",
+  "sourceCommit": "b52c82fe531259a8bca5aca712cc92225c745f69",
+  "scope": {
+    "sourceOnly": true,
+    "productionDeployment": false,
+    "clientRelease": false,
+    "formalApkIpaBuild": false,
+    "developmentWebBuild": true,
+    "iosSimulatorBuild": true,
+    "officialCredentialsAccessed": false,
+    "officialTestChatsCreated": 0,
+    "launchdChanged": false
+  },
+  "localGates": {
+    "serverRegression": true,
+    "clientRegression": true,
+    "strictServer": true,
+    "strictNpm": true,
+    "buildServer": true,
+    "developmentWebBuild": true,
+    "iphone17ProModeForm": true,
+    "rootDirectReview": true
+  },
+  "review": {
+    "executor": "当前主执行者",
+    "independentAgents": false,
+    "historicalReviewsPreserved": true,
+    "checks": [
+      "唯一既有Runtime/Relay及逻辑目标流，无Remote到Local回退",
+      "完整身份和最后授权边界、原WAL和UUID对账，不重放未知写",
+      "普通写FIFO与idle检查、控制优先槽、共享CAS和生命周期容量",
+      "公开HTTP/WS与托管消费者、Bark唯一writer、Sidechat内存隔离",
+      "真实业务指纹时钟跨重启、24小时逻辑释放与原UUID恢复",
+      "多网关同表单模式和测试保存、同Mac业务ID与独立传输namespace",
+      "手机写入/追问/上传/标题outbox及首条正文附件提前持久化",
+      "仅源码交付，保留历史失败，不使用独立agent复审"
+    ]
+  },
+  "validationRuns": [
+    {
+      "stage": "sv",
+      "sourceCommit": "bf13b34aa997ccab09c1b74e005fc7502eaefcab",
+      "overlay": false,
+      "commandsPassed": false,
+      "trackedSourcesUnchanged": true,
+      "privateRoot": "/private/tmp/eg-complete/sv",
+      "artifacts": {
+        "result.json": "40aebca9a8ecb6cb9aed7661dba6fdb1c35c8aa367b6a303fdd37f0a13b3a4bd",
+        "preparation.json": "1699f6cf87b3779f572b9e2cf0e624cccbcf92e9bd84c9597fac8fde70dc44d1",
+        "source-hashes-before.json": "a16ade50cbb731f8f60e2638c41be010583fbdabf5051553e5a21a9b3ec77f27",
+        "source-hashes-after.json": "a16ade50cbb731f8f60e2638c41be010583fbdabf5051553e5a21a9b3ec77f27",
+        "test.command.json": "81bc3ae71b6862ac8ac971e91411d0b93fcc0fece736f200a987cb86ab485da7",
+        "test.stdout": "46fb502f9f7804af687a3e30167a75b7552e109a3a417b316fb0bb8a76d3a112",
+        "test.stderr": "5a3e02b58f450c491dfbf79434fcc6be9532b18057cf1ba95de2c881ba1df8df"
+      },
+      "resultSummary": [
+        "\n Test Files  2 failed | 83 passed | 2 skipped (87)",
+        "      Tests  3 failed | 2301 passed | 7 skipped (2311)",
+        "   Duration  1171.49s (transform 1.81s, setup 1.82s, import 4.15s, tests 1149.74s, environment 6.65s)"
+      ],
+      "initialFailures": [
+        "B立即引导越过queued的A，返回真实turnId且A继续等待",
+        "已绑定steer仍让原stop与审批先发送，不占其专用优先槽",
+        "公开网关目录、HTTP、WS 与附件均沿唯一 Runtime，网关本机在 Remote 模式也不使用 Local"
+      ],
+      "resolution": "普通功能 fixture 预算由2秒改为10秒、文件默认测试上限15秒；所有显式短期限及HTTP未知发送原2秒预算保留，生产60秒预算不变。上传测试支持201完成或202受理并只查原UUID。FollowUps ledger与公开集成2文件106项补跑通过。"
+    },
+    {
+      "stage": "sd",
+      "sourceCommit": "7962d56c2a834416f6af3de945cba4c83749214a",
+      "overlay": true,
+      "commandsPassed": true,
+      "trackedSourcesUnchanged": true,
+      "privateRoot": "/private/tmp/eg-complete/sd",
+      "artifacts": {
+        "result.json": "89d0e52a4a388c5dc1f8651d021b19eaaedfe78a2d8816e68b303250b8114c35",
+        "preparation.json": "5cb7d346e48bf70cb0767507e547f364646fac8198d7c09f15655ea3eb3fea22",
+        "source-hashes-before.json": "24b6eae00a557d889eaaf66c653b020ded52f89a68146d05d54648339f56025f",
+        "source-hashes-after.json": "24b6eae00a557d889eaaf66c653b020ded52f89a68146d05d54648339f56025f",
+        "test.command.json": "337556071ceb151974cce3f1f33dfb84690a2bd56b0579e080ebb3d5ce06e28b",
+        "test.stdout": "02f6e43fd442a839c719f892a5ba72d3ac0d9d1ec2e770307a2e001e08062a76",
+        "test.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "testsPassed": 106
+    },
+    {
+      "stage": "uf",
+      "sourceCommit": "7962d56c2a834416f6af3de945cba4c83749214a",
+      "overlay": false,
+      "commandsPassed": true,
+      "trackedSourcesUnchanged": true,
+      "privateRoot": "/private/tmp/eg-complete/uf",
+      "artifacts": {
+        "result.json": "89d0e52a4a388c5dc1f8651d021b19eaaedfe78a2d8816e68b303250b8114c35",
+        "preparation.json": "8510a3a155017c09ef62e2214e82c5d00a484c2ee565f7a45477dc1d2ecef634",
+        "source-hashes-before.json": "1394e98c85f5af4dd446143b6d96777e1cf5dd7108961198cc6c05902033951b",
+        "source-hashes-after.json": "1394e98c85f5af4dd446143b6d96777e1cf5dd7108961198cc6c05902033951b",
+        "test.command.json": "a2882541503f03fb4430d55b9bc98cb2dfb318477d9cb5786843209051798c85",
+        "test.stdout": "df97647aabc3cde58c01936c56d34e0b609b08b9384da033fc5a256f3c279ea3",
+        "test.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "filesPassed": 121,
+      "testsPassed": 1467
+    },
+    {
+      "stage": "d3",
+      "sourceCommit": "bf13b34aa997ccab09c1b74e005fc7502eaefcab",
+      "overlay": true,
+      "commandsPassed": true,
+      "trackedSourcesUnchanged": true,
+      "privateRoot": "/private/tmp/eg-complete/d3",
+      "artifacts": {
+        "result.json": "63975a2e33797117fa4d226ca3869e3df84abbacb4bf0ee2f54561aad7c73de8",
+        "preparation.json": "2d29c456ba9cdd0b60a908d1a9ad2f27a3f3819920dbf9a9f0ab247e71307dbe",
+        "source-hashes-before.json": "1394e98c85f5af4dd446143b6d96777e1cf5dd7108961198cc6c05902033951b",
+        "source-hashes-after.json": "1394e98c85f5af4dd446143b6d96777e1cf5dd7108961198cc6c05902033951b",
+        "test.command.json": "a492acffedbae54ceb3eb26a01102b567509cb395a2187047ab41913e28e0353",
+        "test.stdout": "7f9f4b43ba48b7390719dc92fbdb0279c98d624ef336a1ff05bef0b8226f498b",
+        "test.stderr": "a2dfb83081828e5e2b232ea352c2a18572f90b111a0348739f0fbddfd74614e6"
+      }
+    },
+    {
+      "stage": "vb",
+      "sourceCommit": "bf13b34aa997ccab09c1b74e005fc7502eaefcab",
+      "overlay": false,
+      "commandsPassed": true,
+      "trackedSourcesUnchanged": true,
+      "privateRoot": "/private/tmp/eg-complete/vb",
+      "artifacts": {
+        "result.json": "63975a2e33797117fa4d226ca3869e3df84abbacb4bf0ee2f54561aad7c73de8",
+        "preparation.json": "7cee3ecf4cf12c1699bad8aaac473fe75d29fa0b19c4c2f12c58537a46de32c0",
+        "source-hashes-before.json": "a16ade50cbb731f8f60e2638c41be010583fbdabf5051553e5a21a9b3ec77f27",
+        "source-hashes-after.json": "a16ade50cbb731f8f60e2638c41be010583fbdabf5051553e5a21a9b3ec77f27",
+        "test.command.json": "429e814a4237f51a6658126c697f56bc96038955d6c25e0b60a27ea692933a8d",
+        "test.stdout": "8eef15c02b0a6e959eb252609c0b52c98a1dd3448668ea37ecd82a3e7a94e7b7",
+        "test.stderr": "a2dfb83081828e5e2b232ea352c2a18572f90b111a0348739f0fbddfd74614e6"
+      }
+    },
+    {
+      "stage": "bt",
+      "sourceCommit": "b52c82fe531259a8bca5aca712cc92225c745f69",
+      "overlay": false,
+      "commandsPassed": true,
+      "trackedSourcesUnchanged": true,
+      "privateRoot": "/private/tmp/eg-complete/bt",
+      "artifacts": {
+        "result.json": "4bae96e4104093ea77e0a781d61e97c4cca41fccdfca03ac3815ed36aee076ee",
+        "preparation.json": "964cc0ca40be45a0c36f753df0d4be5376aec28adec78e0d3e27015e73b77f74",
+        "source-hashes-before.json": "24b6eae00a557d889eaaf66c653b020ded52f89a68146d05d54648339f56025f",
+        "source-hashes-after.json": "24b6eae00a557d889eaaf66c653b020ded52f89a68146d05d54648339f56025f",
+        "test.command.json": "19ea2ecb8f62e226019c49538f1e869b46046c9e99e1df9739b57af847fea6e2",
+        "test.stdout": "5d522176222ee14927075f6790aa4cca356a2ca6ab0a9ad80461db994cc06107",
+        "test.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "combinedServerCoverage": {
+    "files": 87,
+    "testsPassed": 2304,
+    "testsSkipped": 7,
+    "singleAllGreenRun": false,
+    "basis": "完整运行2301通过/3失败/7既有跳过；仅修改失败文件的功能夹具与合法ACK断言后，相关2文件106项通过。89个服务端产品文件与完整运行逐字节一致，未将首轮失败改写为通过。"
+  },
+  "sourceEquivalence": [
+    {
+      "stage": "sv",
+      "prefixes": [
+        "server/"
+      ],
+      "matchedFiles": 89,
+      "passed": true
+    },
+    {
+      "stage": "uf",
+      "prefixes": [
+        "src/",
+        "mobile/",
+        "tests/ui/"
+      ],
+      "matchedFiles": 648,
+      "passed": true
+    },
+    {
+      "stage": "d3",
+      "prefixes": [
+        "src/",
+        "mobile/",
+        "server/"
+      ],
+      "matchedFiles": 616,
+      "passed": true
+    },
+    {
+      "stage": "sd",
+      "prefixes": [
+        "server/",
+        "tests/server/"
+      ],
+      "matchedFiles": 187,
+      "passed": true
+    },
+    {
+      "stage": "bt",
+      "prefixes": [
+        "src/",
+        "mobile/",
+        "server/",
+        "tests/"
+      ],
+      "matchedFiles": 985,
+      "passed": true
+    }
+  ],
+  "iosSimulator": {
+    "device": "iPhone 17 Pro",
+    "orientation": "portrait",
+    "textSize": "normal",
+    "resultBundle": "/private/tmp/eg-complete/i2-ui.xcresult",
+    "test": "testGatewayModePickerKeepsAddressAndDoesNotStartTesting",
+    "passed": 1,
+    "failed": 0,
+    "matchedNativeAndBridgeFiles": 378,
+    "scope": "模式/URL同表单、默认本地、切换保留输入、不自动测试；未运行官方完整原生连接流程",
+    "screenshot": "/private/tmp/eg-complete/i2-attachments/19FAAF08-9DE4-4089-A410-9CD2EE34B08A.png"
+  },
+  "failureHistory": {
+    "retained": true,
+    "privateRoot": "/private/tmp/eg-complete",
+    "notes": [
+      "首次完整UI漏译和目录刷新约束已修复；composer旧断言在原main同样失败，按实际横向12px修正测试，CSS未改",
+      "首次完整server的Unix socket隔离路径过长已缩短；会话重复查找和无initialize旧WS夹具已修正",
+      "首条持久草稿新增回归发现render对象重建误判，按实际内容与输入版本修复，d2的79项通过",
+      "最终server两项功能测试撞到夹具2秒预算、上传合法202被旧测试误报；首次补跑又发现普通功能5秒/2秒上限不足，所有失败原样保留，显式期限和未知发送预算及生产配置未放宽"
+    ]
+  },
+  "unverified": [
+    "官方Remote完整功能矩阵",
+    "官方连续8小时与跨凭据刷新",
+    "官方手机重入P95≤2秒与上游恢复P95≤10秒",
+    "真实Mac睡眠唤醒",
+    "正式安装、真机运行与生产部署"
+  ],
+  "delivery": {
+    "sourceMainPushed": true,
+    "sourceIntegrationCommit": "7e82aca7a5443b347a5ee36b8ef7ace4983660fe",
+    "previousMain": "1f274d286d2da128404c6ff390a1f37282479af1",
+    "sourceFreeze": "b52c82fe531259a8bca5aca712cc92225c745f69",
+    "verifiedAt": "2026-11-16T20:09:08.964118+00:00",
+    "lock": "codex-mobile-main-production",
+    "originalMainAndIndexPreserved": true,
+    "productionDeployment": false,
+    "clientRelease": false,
+    "note": "源码提交和验收记录已核对在main；后续仅文档收尾提交按同一互斥门禁推送，最终文档HEAD保存在本机journal和main-push.json，避免自引用SHA。"
+  }
+}

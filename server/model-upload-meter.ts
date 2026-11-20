@@ -11,7 +11,7 @@ export interface ModelUploadUsage {
 
 export interface ModelUploadSource {
   read(threadId: string): ModelUploadUsage | null;
-  subscribe(listener: (threadId: string, usage: ModelUploadUsage) => void): () => void;
+  subscribe(listener: (threadId: string, usage: ModelUploadUsage | null) => void): () => void;
 }
 
 export interface ModelRequestIdentity { threadId: string; turnId: string }
@@ -39,7 +39,7 @@ export class ModelUploadMeter implements ModelUploadSource {
   private sequence = 0;
   private revision = 0;
   private threads = new Map<string, Thread>();
-  private listeners = new Set<(threadId: string, usage: ModelUploadUsage) => void>();
+  private listeners = new Set<(threadId: string, usage: ModelUploadUsage | null) => void>();
   private evictionListeners = new Set<(threadId: string) => void>();
 
   read(threadId: string): ModelUploadUsage | null {
@@ -51,7 +51,7 @@ export class ModelUploadMeter implements ModelUploadSource {
     return new Map(Array.from(this.threads, ([threadId, thread]) => [threadId, { ...thread.latest.usage }]));
   }
 
-  subscribe(listener: (threadId: string, usage: ModelUploadUsage) => void) {
+  subscribe(listener: (threadId: string, usage: ModelUploadUsage | null) => void) {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
   }
@@ -59,6 +59,14 @@ export class ModelUploadMeter implements ModelUploadSource {
   subscribeEvictions(listener: (threadId: string) => void) {
     this.evictionListeners.add(listener);
     return () => { this.evictionListeners.delete(listener); };
+  }
+
+  private notify(threadId: string, usage: ModelUploadUsage | null) {
+    for (const listener of [...this.listeners]) {
+      const current = this.threads.get(threadId)?.latest.usage;
+      if (usage ? current?.epoch !== usage.epoch || current.revision !== usage.revision : current) break;
+      if (this.listeners.has(listener)) try { listener(threadId, usage ? { ...usage } : null); } catch { /* 订阅者不影响真实计量。 */ }
+    }
   }
 
   begin(identity: ModelRequestIdentity) {
@@ -81,7 +89,11 @@ export class ModelUploadMeter implements ModelUploadSource {
       while (this.threads.size > 2048) {
         const removed = this.threads.keys().next().value!;
         this.threads.delete(removed);
-        for (const listener of this.evictionListeners) listener(removed);
+        for (const listener of [...this.evictionListeners]) {
+          if (this.threads.has(removed)) break;
+          if (this.evictionListeners.has(listener)) try { listener(removed); } catch { /* 订阅者不影响真实计量。 */ }
+        }
+        this.notify(removed, null);
       }
     }
     turn.lastRequest = request;
@@ -98,7 +110,7 @@ export class ModelUploadMeter implements ModelUploadSource {
       if (ownedTurn.lastRequest === request) ownedTurn.usage.lastRequestBytes = requestBytes;
       ownedTurn.usage.revision = ++this.revision;
       if (ownedThread.latest === ownedTurn && this.threads.get(identity.threadId) === ownedThread) {
-        for (const listener of this.listeners) listener(identity.threadId, { ...ownedTurn.usage });
+        this.notify(identity.threadId, { ...ownedTurn.usage });
       }
     };
   }

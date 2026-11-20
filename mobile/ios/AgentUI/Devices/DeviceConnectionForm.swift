@@ -7,6 +7,7 @@ struct DeviceConnectionForm: View {
     let deviceID: UUID?
     @State private var name = ""
     @State private var address = ""
+    @State private var gatewayMode = "local"
     @State private var initialized = false
     @State private var scannerPresented = false
     @State private var localError: String?
@@ -30,6 +31,11 @@ struct DeviceConnectionForm: View {
                     .lineLimit(3...7)
                     .privacySensitive()
                     .accessibilityIdentifier("device.address")
+                Picker(preferences.text("连接模式", "Connection mode"), selection: $gatewayMode) {
+                    Text(preferences.text("本地模式", "Local")).tag("local")
+                    Text(preferences.text("远程模式", "Remote")).tag("remote")
+                }
+                .accessibilityIdentifier("device.gatewayMode")
             } header: {
                 Text(preferences.text("连接信息", "Connection details"))
             } footer: {
@@ -103,6 +109,7 @@ struct DeviceConnectionForm: View {
         .task { await initialize() }
         .onChange(of: name, clearErrors)
         .onChange(of: address, clearErrors)
+        .onChange(of: gatewayMode, clearErrors)
         .onDisappear(perform: cancelTest)
     }
 
@@ -118,6 +125,7 @@ struct DeviceConnectionForm: View {
             return
         }
         address = editableAddress
+        gatewayMode = session.nativeSnapshot.panel?.items.first(where: { $0.id == "gatewayMode" })?.value ?? "local"
         session.clearDeviceFormError()
         initialized = true
     }
@@ -144,7 +152,7 @@ struct DeviceConnectionForm: View {
             return
         }
         saveTask = Task {
-            let saved = await session.saveDevice(id: deviceID, name: trimmedName, address: trimmedAddress)
+            let saved = await session.saveDevice(id: deviceID, name: trimmedName, address: trimmedAddress, gatewayMode: gatewayMode)
             guard !Task.isCancelled else { return }
             saveTask = nil
             if saved { dismiss() }

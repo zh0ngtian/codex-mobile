@@ -160,7 +160,7 @@ function OpenConversationActionMenu({
     },
   ];
   const actions = [
-    ...(sidechatOnly ? [] : ordinaryActions),
+    ...(sidechatOnly ? [] : thread.gatewayPendingCreation ? thread.gatewayOperationState === 'queued' ? [{ id: 'cancel-creation', label: t('取消创建'), icon: 'archive' as const, onClick: onArchive, danger: true, requiresWrite: false }] : [] : ordinaryActions),
     ...sidechatActions.map(item => ({ id: item.id, label: item.title ?? 'Sidechat', icon: 'copy' as const,
       onClick: () => onSidechatAction?.(item.command!.name, typeof item.command?.params.id === 'string' ? item.command.params.id : undefined), requiresWrite: false, danger: item.command?.name === 'sidechat.close' })),
   ];

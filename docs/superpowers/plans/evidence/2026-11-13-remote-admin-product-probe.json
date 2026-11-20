@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "700c7c7d96c5fc7cadf58913d5f855d1c731ed5a",
+  "startedAt": "2026-11-13T13:24:56.230Z",
+  "passed": true,
+  "scope": "隔离实际OS网关入口、私有CLI与同runtime只读Remote RPC",
+  "runs": [
+    {
+      "index": 0,
+      "oneRuntimeStart": true,
+      "remoteReadOnlyRpcPassed": true,
+      "authPrepares": 1,
+      "startToRpcAndCliOnlineMs": 11789,
+      "actualBoundPortMatchedUrl": true,
+      "exitSignal": "SIGTERM"
+    },
+    {
+      "index": 1,
+      "oneRuntimeStart": true,
+      "remoteReadOnlyRpcPassed": true,
+      "authPrepares": 1,
+      "startToRpcAndCliOnlineMs": 14244,
+      "actualBoundPortMatchedUrl": true,
+      "exitSignal": "SIGKILL"
+    },
+    {
+      "index": 2,
+      "oneRuntimeStart": true,
+      "remoteReadOnlyRpcPassed": true,
+      "authPrepares": 1,
+      "startToRpcAndCliOnlineMs": 10065,
+      "actualBoundPortMatchedUrl": true,
+      "exitSignal": "SIGTERM"
+    }
+  ],
+  "productionChanged": false,
+  "newAuthorizationOrEnrollment": false,
+  "testChatsCreated": 0,
+  "modelInferenceRequestsSent": 0,
+  "concurrentLiveOwnerRejectedBeforeRemoteStart": true,
+  "zeroStreamDwellMs": 25000,
+  "lateReadOnlyRpcAfterCompletedInitializationPhase": true,
+  "noNewAuthPrepareDuringZeroStreamDwell": true,
+  "readOnlyModelListRequests": 4,
+  "osProcessRestartAfterCleanExit": true,
+  "deadOwnerRecoveryAfterSigkill": true,
+  "finishedAt": "2026-11-13T13:25:59.314Z",
+  "limitations": [
+    "探针在同一实际入口runtime上追加一次只读model/list；手机Remote路由尚未接入。",
+    "三次OS进程样本不是P95、8小时、跨过期或睡眠唤醒验收。",
+    "未执行新的真实OAuth、登记、密钥创建、模型推理或测试聊天；未启动现役launchd。"
+  ]
+}

@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { isClientForeground } from "../../native-ui/foreground";
 
 export function useSidebarRefresh(onRefresh?: () => void, initiallyOpen = true) {
   const [sidebarOpen, setSidebarOpen] = useState(initiallyOpen);
@@ -14,6 +15,13 @@ export function useSidebarRefresh(onRefresh?: () => void, initiallyOpen = true) 
   const refreshSilently = useCallback(() => {
     setSilentRefreshVersion((current) => current + 1);
   }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (isClientForeground()) refreshSilently();
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [refreshSilently]);
 
   const openSidebar = useCallback(() => {
     if (sidebarOpenRef.current) return;

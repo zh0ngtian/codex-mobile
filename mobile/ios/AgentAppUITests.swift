@@ -5,6 +5,31 @@ import Vision
 /// 独立界面夹具及本地网关验收；连接凭证不进入源码或测试附件。
 @MainActor
 final class AgentAppUITests: XCTestCase {
+    func testGatewayModePickerKeepsAddressAndDoesNotStartTesting() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-no-devices-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        defer { app.terminate() }
+        let addButton = app.buttons.matching(identifier: "devices.addFirst").firstMatch
+        XCTAssertTrue(addButton.waitForExistence(timeout: 8)); addButton.tap()
+        let mode = app.buttons["device.gatewayMode"]
+        XCTAssertTrue(mode.waitForExistence(timeout: 5))
+        let name = app.textFields["device.name"]
+        name.tap(); name.typeText("测试网关")
+        let address = app.textFields["device.address"]
+        address.tap(); address.typeText("http://127.0.0.1:1?token=test-only")
+        XCTAssertTrue(mode.label.contains("本地模式") || (mode.value as? String)?.contains("本地模式") == true)
+        mode.tap()
+        app.buttons["远程模式"].tap()
+        XCTAssertTrue(mode.label.contains("远程模式") || (mode.value as? String)?.contains("远程模式") == true)
+        XCTAssertEqual(address.value as? String, "http://127.0.0.1:1?token=test-only")
+        XCTAssertEqual(name.value as? String, "测试网关")
+        XCTAssertTrue(app.buttons["device.testAndSave"].exists)
+        XCTAssertFalse(app.staticTexts["正在连接测试…"].exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "远程网关模式-iPhone17Pro竖屏"; screenshot.lifetime = .keepAlways; add(screenshot)
+    }
+
     func testMermaidRendersArrivingSVGAndPreservesSourceActions() {
         let app = XCUIApplication()
         app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-mermaid-fixture", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
@@ -1211,9 +1236,9 @@ final class AgentAppUITests: XCTestCase {
         add(attachment)
     }
 
-    private func launchSidebarPolishFixture() -> XCUIApplication {
+    private func launchSidebarPolishFixture(extraArguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launchArguments = ["--native-ui-live", "--agent-conversation-fixture", "--agent-sidebar-polish-fixture", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL", "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"] + extraArguments
         app.launch()
         XCTAssertTrue(app.staticTexts["history-request-count"].waitForExistence(timeout: 8))
         return app
@@ -1256,7 +1281,7 @@ final class AgentAppUITests: XCTestCase {
     }
 
     func testSidebarTopRefreshMatchesMoreButtonAndRunsRefresh() {
-        let app = launchSidebarPolishFixture()
+        let app = launchSidebarPolishFixture(extraArguments: ["--agent-sidebar-pagination-fixture", "--agent-sidebar-refresh-fixture"])
         app.buttons["会话列表"].tap()
         let refresh = app.buttons["sidebar.refreshTop"]
         XCTAssertTrue(refresh.waitForExistence(timeout: 5), "侧栏左上角搜索右侧直接提供刷新")
@@ -1268,8 +1293,12 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertEqual(refresh.frame.height, more.frame.height, accuracy: 1)
         XCTAssertLessThan(refresh.frame.maxY, app.frame.height / 4)
         captureConversation("侧栏-顶部刷新与更多同尺寸", app: app)
+        let probe = app.otherElements["sidebar.refresh.continuity"]
+        XCTAssertTrue(probe.exists)
         refresh.tap()
-        XCTAssertTrue(app.staticTexts["navigation-refresh-count:1"].waitForExistence(timeout: 5), "复用真实 navigation.refresh 命令")
+        XCTAssertTrue(more.isHittable, "刷新期间更多按钮可点")
+        expectation(for: NSPredicate(format: "value BEGINSWITH 'finished;'"), evaluatedWith: probe)
+        waitForExpectations(timeout: 30)
         XCTAssertTrue(more.isHittable, "刷新后保留侧栏")
     }
 
@@ -1649,6 +1678,15 @@ final class AgentAppUITests: XCTestCase {
         XCTAssertLessThan(cancel.frame.minX, edit.frame.minX)
         XCTAssertLessThan(edit.frame.maxX, steer.frame.minX)
         captureConversation("队列按钮-同排", app: app)
+        edit.tap()
+        let save = app.buttons["保存"]
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        XCTAssertTrue(save.isEnabled)
+        XCTAssertTrue(app.buttons["取消编辑"].exists)
+        captureConversation("队列编辑-保存文字可见", app: app)
+        app.buttons["取消编辑"].tap()
+        XCTAssertTrue(edit.waitForExistence(timeout: 5))
+        XCTAssertFalse(save.exists)
     }
 
     func testUserBodyLongPressShowsMessageMenuThenSelectsText() {

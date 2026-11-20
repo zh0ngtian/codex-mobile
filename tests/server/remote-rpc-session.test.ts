@@ -1,9 +1,11 @@
 // @vitest-environment node
-import { afterEach, expect, it } from 'vitest';
+import { getEventListeners } from 'node:events';
+import { performance as nodePerformance } from 'node:perf_hooks';
+import { afterEach, expect, it, vi } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RemoteSendError, RemoteStream } from '../../server/remote/relay.js';
 import { encodeClientMessage, type JsonValue, type RpcMessage } from '../../server/remote/envelope.js';
-import { RemoteRpcSession } from '../../server/remote/rpc-session.js';
+import { RemoteRpcError, RemoteRpcSession } from '../../server/remote/rpc-session.js';
 
 const cleanup: (() => unknown | Promise<unknown>)[] = [];
 afterEach(async () => { for (const fn of cleanup.reverse()) await fn(); cleanup.length = 0; });
@@ -37,6 +39,53 @@ function remote(transmit?: ConstructorParameters<typeof RemoteStream>[2]) {
   cleanup.push(async () => { try { await stream.close(); } catch { /* fake transport 可同步失败。 */ } });
   return { stream, frames, released: () => released };
 }
+
+it.each(['canonical', 'RemoteStream'])('可信服务端在%s上发送真正JSON-RPC错误响应并保留caller', async transport => {
+  let session: RemoteRpcSession; let frames: RpcMessage[];
+  if (transport === 'canonical') { const f = await initialized(); session = f.session; frames = f.server.frames; }
+  else {
+    const f = remote(async (stream, message) => { if (message) { f.frames.push(message); if (message.method === 'initialize') queueMicrotask(() => stream.emit('message', { id: message.id!, result: {} }, { seqId: 1 })); } return { seqId: f.frames.length }; });
+    session = RemoteRpcSession.fromRemoteStream(f.stream); cleanup.push(() => session.close()); frames = f.frames; await session.initialize();
+  }
+  expect(session.replyError, '缺少正确RPC response能力').toBeTypeOf('function');
+  const before = frames.length; await session.replyError('server-request', { code: -32601, message: 'Unsupported' });
+  await until(() => frames.length > before);
+  expect(frames.at(-1)).toEqual({ id: 'server-request', error: { code: -32601, message: 'Unsupported' } }); expect(session.ready).toBe(true);
+  for (const id of [null, {}, 1.5, Infinity]) await expect(session.replyError(id as string, { code: -32601, message: 'Unsupported' })).rejects.toMatchObject({ code: 'capacity', mayHaveBeenSent: false });
+  await expect(session.replyError(7, Object.create({ code: -1, message: 'inherited' }))).rejects.toMatchObject({ code: 'capacity' });
+  await expect(session.replyError(7, { code: -1, message: 'x'.repeat(2 * 1024 * 1024) })).rejects.toMatchObject({ code: 'capacity' });
+  session.close(); await expect(session.replyError(7, { code: -1, message: 'closed' })).rejects.toMatchObject({ code: 'closed', mayHaveBeenSent: false });
+});
+
+it.each(['canonical', 'RemoteStream'].flatMap(transport => ['入口', '序列化', '登记pending后'].map(phase => ({ transport, phase }))))('可信绝对期限在$transport的$phase耗尽时零发送，清理等待并保留共享session', async ({ transport, phase }) => {
+  let session: RemoteRpcSession; let messages: RpcMessage[];
+  if (transport === 'canonical') {
+    const f = await initialized({ maxPending: 1 }); session = f.session; messages = f.server.frames;
+    f.server.sockets[0]!.on('message', raw => { const message = JSON.parse(raw.toString()) as RpcMessage; if (message.id) send(f.server.sockets[0]!, { id: message.id, result: true }); });
+  } else {
+    const f = remote(async (stream, message) => { if (message) { f.frames.push(message); if (message.id) queueMicrotask(() => stream.emit('message', { id: message.id, result: message.method === 'initialize' ? {} : true }, { seqId: f.frames.length })); } return { seqId: f.frames.length }; });
+    session = RemoteRpcSession.fromRemoteStream(f.stream, { maxPending: 1 }); cleanup.push(() => session.close()); messages = f.frames; await session.initialize();
+  }
+  let now = 600007; let jumped = false; const before = messages.length; const clock = vi.spyOn(nodePerformance, 'now').mockImplementation(() => {
+    if (phase === '入口' && !jumped && new Error().stack?.includes('RemoteRpcSession.submit')) { now = 600017; jumped = true; } return now;
+  });
+  const rpcTimers: ReturnType<typeof setTimeout>[] = []; const cleared = vi.spyOn(globalThis, 'clearTimeout');
+  const setTimeoutActual = setTimeout; const timer = vi.spyOn(globalThis, 'setTimeout').mockImplementation((...args: Parameters<typeof setTimeout>) => {
+    const result = setTimeoutActual(...args); if (new Error().stack?.includes('rpc-session.ts')) {
+      rpcTimers.push(result); if (phase === '登记pending后' && !jumped) { now = 600017; jumped = true; }
+    } return result;
+  });
+  try {
+    const params = phase === '序列化' ? { toJSON() { now = 600017; jumped = true; return {}; } } as unknown as JsonValue : {};
+    const options = { timeoutMs: 100, deadline: 600017 }; const failure = await session.call('deadline-barrier', params, options).catch(error => error);
+    expect(failure).toBeInstanceOf(RemoteRpcError); expect(failure).toMatchObject({ code: 'timeout', mayHaveBeenSent: false }); expect(jumped).toBe(true);
+    expect(messages.slice(before).filter(message => message.method === 'deadline-barrier')).toHaveLength(0);
+    const state = session as unknown as { pending: Set<unknown>; responses: Map<unknown, unknown>; writes: Map<unknown, unknown>; writingBytes: number };
+    expect([state.pending.size, state.responses.size, state.writes.size, state.writingBytes]).toEqual([0, 0, 0, 0]);
+    expect(rpcTimers).toHaveLength(phase === '登记pending后' ? 1 : 0); for (const rpcTimer of rpcTimers) expect(cleared).toHaveBeenCalledWith(rpcTimer);
+    timer.mockRestore(); cleared.mockRestore(); clock.mockRestore(); const next = session.call('after-barrier'); expect(await next).toBe(true); expect(session.ready).toBe(true);
+  } finally { timer.mockRestore(); cleared.mockRestore(); clock.mockRestore(); }
+});
 
 it('真实 canonical WS 仅初始化一次，initialized 写入后就绪并暴露真实 metadata', async () => {
   const { session, server } = await canonical();
@@ -280,4 +329,112 @@ it('显式close拒绝所有未完成写入的调用和通知，晚回调与旧�
   expect(session.closed).toBe(true); expect(server.frames).toHaveLength(4);
   await until(() => socket.readyState === socket.CLOSED);
   for (const event of ['message', 'error', 'close']) expect(socket.listenerCount(event)).toBe(0);
+});
+
+it('可信每调用预算可长于默认响应超时且不改变后续默认值', async () => {
+  const { session, server } = await initialized({ responseTimeoutMs: 20 });
+  const pending = session.call('longer', {}, { timeoutMs: 150 }).catch(error => error);
+  await until(() => server.frames.length === 3);
+  await new Promise(resolve => setTimeout(resolve, 40));
+  send(server.sockets[0]!, { id: server.frames[2]!.id, result: true });
+  expect(await pending).toBe(true);
+  await expect(session.call('default')).rejects.toMatchObject({ code: 'timeout', mayHaveBeenSent: true });
+});
+
+it('每调用取消只撤销自己的等待，不关闭共享会话且不重放', async () => {
+  const { session, server } = await initialized({ responseTimeoutMs: 100 });
+  const controller = new AbortController();
+  const pending = session.call('write', {}, { signal: controller.signal }).catch(error => error);
+  await until(() => server.frames.length === 3); controller.abort();
+  expect(await pending).toMatchObject({ code: 'cancelled', mayHaveBeenSent: true });
+  expect(session.ready).toBe(true);
+  send(server.sockets[0]!, { id: server.frames[2]!.id, result: 'late' });
+  const stopped = new AbortController(); stopped.abort();
+  await expect(session.call('never', {}, { signal: stopped.signal })).rejects.toMatchObject({ code: 'cancelled', mayHaveBeenSent: false });
+  expect(server.frames.filter(frame => frame.method === 'write')).toHaveLength(1);
+  expect(server.frames.filter(frame => frame.method === 'never')).toHaveLength(0);
+});
+
+it('每调用实际绝对期限覆盖同步传输阻塞和晚响应，notify保留兼容', async () => {
+  const frames: RpcMessage[] = [];
+  const f = remote(async (stream, message) => {
+    if (message) frames.push(message);
+    if (message?.method === 'blocked') {
+      const end = performance.now() + 40; while (performance.now() < end) { /* 模拟同步阻塞。 */ }
+      stream.emit('message', { id: message.id, result: true }, { seqId: 2 });
+    }
+    return { seqId: frames.length };
+  });
+  const session = RemoteRpcSession.fromRemoteStream(f.stream); cleanup.push(() => session.close());
+  const init = session.initialize(); await until(() => frames.length === 1);
+  f.stream.emit('message', { id: frames[0]!.id, result: {} }, { seqId: 1 }); await init;
+  await expect(session.call('blocked', {}, { timeoutMs: 10 })).rejects.toMatchObject({ code: 'timeout', mayHaveBeenSent: true });
+  await session.notify('compatible'); expect(session.ready).toBe(true);
+});
+
+it('取消已提交canonical调用仍保留未完成写入的额度和期限，实际回调才释放', async () => {
+  const { session, server } = await initialized({ maxPending: 1, responseTimeoutMs: 300 });
+  const socket = (session as unknown as { transport: WebSocket }).transport;
+  const sendActual = socket.send.bind(socket); const completions: (() => void)[] = [];
+  socket.send = (value, optionsOrCallback?, callback?) => {
+    const complete = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+    sendActual(value, error => completions.push(() => { if (typeof complete === 'function') complete(error); }));
+  };
+  const controller = new AbortController();
+  const pending = session.call('cancel-write', {}, { signal: controller.signal }).catch(error => error);
+  await until(() => server.frames.length === 3 && completions.length === 1); controller.abort();
+  expect(await pending).toMatchObject({ code: 'cancelled', mayHaveBeenSent: true });
+  await expect(session.call('capacity-held')).rejects.toMatchObject({ code: 'capacity', mayHaveBeenSent: false });
+  completions[0]!(); socket.send = sendActual;
+  const next = session.call('next'); await until(() => server.frames.length === 4);
+  send(server.sockets[0]!, { id: server.frames[3]!.id, result: true }); expect(await next).toBe(true); expect(session.ready).toBe(true);
+});
+
+it('取消后的迟到响应/写回调不能撤销原写入超时，signal监听器及时清理', async () => {
+  const { session, server } = await initialized({ maxPending: 1, responseTimeoutMs: 60 });
+  const socket = (session as unknown as { transport: WebSocket }).transport;
+  const sendActual = socket.send.bind(socket); const completions: (() => void)[] = [];
+  socket.send = (value, optionsOrCallback?, callback?) => {
+    const complete = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+    sendActual(value, error => completions.push(() => { if (typeof complete === 'function') complete(error); }));
+  };
+  const controller = new AbortController();
+  const pending = session.call('cancel-stuck', {}, { signal: controller.signal }).catch(error => error);
+  await until(() => server.frames.length === 3 && completions.length === 1); controller.abort();
+  expect(await pending).toMatchObject({ code: 'cancelled', mayHaveBeenSent: true }); expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
+  send(server.sockets[0]!, { id: server.frames[2]!.id, result: true }); await until(() => session.closed);
+  completions[0]!(); expect(session.closed).toBe(true);
+});
+it.each([false, true])('RemoteStream实际close发送未完成时settled不提前兑现（关闭监听抛错=%s）', async throws => {
+  let release!: () => void; let closing = false; const gate = new Promise<void>(resolve => release = resolve);
+  const f = remote(async (stream, message, control) => {
+    if (control === 'client_closed') { closing = true; await gate; }
+    if (message?.method === 'initialize') queueMicrotask(() => stream.emit('message', { id: message.id!, result: {} }, { seqId: 1 }));
+    return { seqId: 1 };
+  });
+  const session = RemoteRpcSession.fromRemoteStream(f.stream); await session.initialize();
+  if (throws) f.stream.on('close', () => { throw new Error('isolated observer'); });
+  let settled = false; const pending = session.settled().then(() => settled = true);
+  try { await until(() => closing); await new Promise(resolve => setTimeout(resolve, 20)); expect(settled).toBe(false); }
+  finally { release(); await pending; }
+  expect(f.stream.closed).toBe(true); expect(f.released()).toBe(1);
+});
+it.each(['session', 'stream'].flatMap(origin => ['stream', 'session'].flatMap(observer => [false, true].map(throws => ({ origin, observer, throws })))))('关闭监听重入settled等待实际发送（origin=$origin，observer=$observer，throws=$throws）', async ({ origin, observer, throws }) => {
+  let release!: () => void; const gate = new Promise<void>(resolve => release = resolve); let sends = 0;
+  const f = remote(async (_stream, _message, control) => { if (control === 'client_closed') { sends++; await gate; } return { seqId: 1 }; });
+  const session = RemoteRpcSession.fromRemoteStream(f.stream); let reentrant: Promise<void> | undefined; let settled = false; let closes = 0;
+  session.on('close', () => closes++);
+  const closed = () => { reentrant = session.settled().then(() => { settled = true; }); if (throws) throw new Error('isolated reentrant observer'); };
+  if (observer === 'stream') f.stream.on('close', closed); else session.on('close', closed);
+  let outerClose: Promise<void> | undefined; let caught: unknown;
+  try {
+    try { if (origin === 'session') session.close(); else outerClose = f.stream.close(); } catch (error) { caught = error; }
+    if (origin === 'stream' && observer === 'stream' && throws) expect(caught).toMatchObject({ message: 'isolated reentrant observer' });
+    else expect(caught).toBeUndefined();
+    expect(session.closed).toBe(true); expect(f.stream.closed).toBe(true); expect(reentrant).toBeDefined();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(sends).toBe(1); expect(f.released()).toBe(1); expect(settled).toBe(false);
+  } finally { release(); await Promise.all([reentrant, outerClose, f.stream.close(), session.settled()]); }
+  expect(settled).toBe(true); expect(closes).toBe(1); expect(sends).toBe(1); expect(f.released()).toBe(1);
+  expect(f.stream.eventNames()).toEqual([]); expect(session.eventNames()).toEqual([]);
 });

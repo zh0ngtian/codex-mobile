@@ -9,7 +9,7 @@ export function projectNativeBackends(backends: BackendConfig[], summaries: Reco
   try { const url = new URL(backend.baseUrl); if (['http:', 'https:'].includes(url.protocol)) gatewayAddress = `${url.origin}${url.pathname === '/' ? '' : url.pathname}`; } catch { /* 损坏地址只在显式编辑表单中显示。 */ }
   const summary = summaries[backend.id];
   const connectionState = backend.enabled ? summary?.connection ?? 'offline' : 'paused';
-  return { id: backend.id, title: backend.name, connected: connectionState === 'online', enabled: backend.enabled, gatewayAddress, connectionState,
+  return { id: backend.id, title: backend.name, connected: connectionState === 'online', enabled: backend.enabled, gatewayAddress, connectionState, gatewayId: backend.gatewayId,
    projects: snapshots[backend.id]?.projects?.filter(path => typeof path === 'string') ?? [],
    ...(summary?.approvalCount !== undefined ? { approvalCount: summary.approvalCount } : {}), ...(summary?.queuedCount !== undefined ? { queuedCount: summary.queuedCount } : {}) };
  });
@@ -27,7 +27,7 @@ export function projectDevicePanel(c: any): NativeSnapshot['panel'] {
  const items: NativePanelItem[] = [];
  if (confirmation) {
   items.push({ id: 'device-confirmation', kind: 'text', text: confirmation.message }, nativeAction('confirm', t('确认'), confirmation.name, { id: confirmation.id, confirmed: true }), nativeAction('back', t('取消'), 'device.cancel'));
- } else if (c.draft) items.push(field('name', t('设备名称'), c.draft.name), field('gatewayUrl', t('网关地址'), c.draft.gatewayUrl), nativeAction('scan', t('扫描网关二维码'), 'device.scan'), { ...nativeAction('save', t(c.testing ? '正在测试…' : '测试并保存'), 'device.save'), disabled: c.testing }, { ...nativeAction('cancel', t('取消'), 'device.cancel'), disabled: c.testing });
+ } else if (c.draft) items.push(field('name', t('设备名称'), c.draft.name), field('gatewayUrl', t('网关地址'), c.draft.gatewayUrl), { id: 'gatewayMode', kind: 'singleChoice', title: t('连接模式'), value: c.draft.gatewayMode ?? 'local', options: [{ id: 'local', value: 'local', title: t('本地模式') }, { id: 'remote', value: 'remote', title: t('远程模式') }], disabled: c.testing, command: nativeCommand('device.change', { field: 'gatewayMode', draftId: c.draft.id }) }, nativeAction('scan', t('扫描网关二维码'), 'device.scan'), { ...nativeAction('save', t(c.testing ? '正在测试…' : '测试并保存'), 'device.save'), disabled: c.testing }, { ...nativeAction('cancel', t('取消'), 'device.cancel'), disabled: c.testing });
  else {
   for (const [index, backend] of c.registry.backends.entries()) {
    const summary = c.summaries[backend.id];
@@ -60,7 +60,7 @@ export function projectDevicePanel(c: any): NativeSnapshot['panel'] {
    if (c.appUpdate.manualCheckSupported) items.push({ ...nativeAction('check-update', t(c.appUpdate.checking ? '正在检查…' : '检查更新'), 'settings.update.check'), disabled: c.appUpdate.checking });
   }
  }
- const prefixes: Record<string, string[]> = { devices: ['device', 'devices-error', 'name', 'gatewayUrl', 'scan', 'save', 'cancel', 'add', ...c.registry.backends.map((b: any) => b.id)], language: ['language'], font: ['font'], transport: ['transport'], notifications: ['push', 'bark'], updates: ['app-version', 'check-update'] };
+ const prefixes: Record<string, string[]> = { devices: ['device', 'devices-error', 'name', 'gatewayUrl', 'gatewayMode', 'scan', 'save', 'cancel', 'add', ...c.registry.backends.map((b: any) => b.id)], language: ['language'], font: ['font'], transport: ['transport'], notifications: ['push', 'bark'], updates: ['app-version', 'check-update'] };
  const page = c.page;
  const root = page === 'settings';
  const visible = root ? items.filter(item => ['language', 'font', 'font-error', 'transport', 'push', 'app-version', 'check-update'].includes(item.id)) : page && prefixes[page] && !confirmation ? items.filter(item => prefixes[page].some(prefix => item.id === prefix || item.id.startsWith(`${prefix}-`))) : items;

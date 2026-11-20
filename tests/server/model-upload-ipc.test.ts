@@ -115,7 +115,7 @@ describe('桌面模型计量本机 IPC', () => {
     expect((await lstat(directory)).mode & 0o777).toBe(0o700);
     expect((await lstat(socketPath)).mode & 0o777).toBe(0o600);
     const source = connectDesktopModelUsage({ socketPath, upstreamUrl, retryMs: 10 }); cleanup.push(() => source.close());
-    const notifications: ModelUploadUsage[] = []; const unsubscribe = source.subscribe((_threadId, value) => notifications.push(value));
+    const notifications: Array<ModelUploadUsage | null> = []; const unsubscribe = source.subscribe((_threadId, value) => notifications.push(value));
     await waitFor(() => source.read('thread-a')?.turnBytes === 23);
     add(7); await waitFor(() => source.read('thread-a')?.turnBytes === 30);
     expect(notifications.at(-1)?.turnBytes).toBe(30);
@@ -211,8 +211,9 @@ describe('桌面模型计量本机 IPC', () => {
     const { connectDesktopModelUsage } = await ipc(); const { socketPath } = await location(); let writer!: Socket;
     await peer(socketPath, socket => { writer = socket; socket.write(frame(hello) + frame(update())); });
     const source = connectDesktopModelUsage({ socketPath, upstreamUrl, retryMs: 1000 }); cleanup.push(() => source.close());
-    await waitFor(() => source.read('thread-a') !== null); writer.write(invalid);
-    await waitFor(() => source.read('thread-a') === null);
+    await waitFor(() => source.read('thread-a') !== null);
+    const removed: string[] = []; source.subscribe((id, value) => { if (value === null) removed.push(id); }); writer.write(invalid);
+    await waitFor(() => source.read('thread-a') === null); expect(removed).toEqual(['thread-a']);
   });
 
   it('接收端最多保留2048个线程', async () => {
@@ -325,4 +326,63 @@ describe('桌面模型计量本机 IPC', () => {
     await source.close(); let connected = false; await peer(socketPath, () => { connected = true; });
     await new Promise(resolve => setTimeout(resolve, 40)); expect(connected).toBe(false);
   });
+});
+
+
+it('真实IPC的remove、淘汰与close通知清空受影响线程，订阅异常和重入不会中断来源', async () => {
+  const { connectDesktopModelUsage } = await ipc(); const { socketPath } = await location(); let writer!: Socket;
+  await peer(socketPath, socket => { writer = socket; socket.write(frame(hello) + frame(update()) + frame(update(usage(), 'thread-b'))); });
+  const source = connectDesktopModelUsage({ socketPath, upstreamUrl, retryMs: 10000 }); cleanup.push(() => source.close());
+  await waitFor(() => source.read('thread-b') !== null);
+  const observed: Array<[string, ModelUploadUsage | null]> = [];
+  source.subscribe(() => { throw new Error('subscriber'); });
+  source.subscribe((id, value) => observed.push([id, value]));
+  writer.write(frame({ type: 'remove', threadId: 'thread-a' }));
+  await waitFor(() => source.read('thread-a') === null);
+  expect(observed).toEqual([['thread-a', null]]); expect(source.read('thread-b')?.turnBytes).toBe(10);
+  writer.write(frame({ type: 'remove', threadId: 'thread-a' }) + frame(update(usage(2))));
+  await waitFor(() => source.read('thread-a')?.turnBytes === 20);
+  expect(observed.filter(([id, value]) => id === 'thread-a' && value === null)).toHaveLength(1);
+  for (let index = 0; index < 2047; index++) writer.write(frame(update(usage(), `bulk-${index}`)));
+  await waitFor(() => source.read('bulk-2046') !== null);
+  expect(observed).toContainEqual(['thread-b', null]); expect(source.read('thread-b')).toBeNull();
+  let lateCalls = 0; let off = () => {};
+  off = source.subscribe(() => { off(); source.subscribe(() => { lateCalls++; }); });
+  await source.close(); expect(source.read('thread-a')).toBeNull();
+  expect(observed).toContainEqual(['thread-a', null]); expect(lateCalls).toBe(0);
+});
+
+it('内建计量器淘汰只发布一次null，监听错误不会丢失真正上传字节', () => {
+  const meter = new ModelUploadMeter(); const observed: Array<[string, ModelUploadUsage | null]> = [];
+  meter.subscribe(() => { throw new Error('subscriber'); });
+  meter.subscribe((id, value) => { if (id === 'first') observed.push([id, value]); });
+  meter.begin({ threadId: 'first', turnId: 'turn' })(42);
+  for (let index = 0; index < 2048; index++) meter.begin({ threadId: `next-${index}`, turnId: 'turn' })(1);
+  expect(observed.map(([, value]) => value?.turnBytes ?? null)).toEqual([42, null]);
+  expect(meter.read('first')).toBeNull();
+});
+
+it('来源close在null订阅回调重入时复用同一完成承诺', async () => {
+  const { connectDesktopModelUsage } = await ipc(); const { socketPath } = await location();
+  await peer(socketPath, socket => socket.write(frame(hello) + frame(update())));
+  const source = connectDesktopModelUsage({ socketPath, upstreamUrl }); cleanup.push(() => source.close());
+  await waitFor(() => source.read('thread-a') !== null);
+  let nested: Promise<void> | undefined; source.subscribe((_id, value) => { if (value === null) nested = source.close(); });
+  const closing = source.close(); expect(nested).toBe(closing); await closing;
+});
+
+it.each(['来源null', 'eviction'] as const)('内建meter的%s通知中重建同线程时，IPC不以旧remove清掉真正的新计数', async kind => {
+  const { connectDesktopModelUsage, publishDesktopModelUsage } = await ipc(); const { socketPath } = await location();
+  const meter = new ModelUploadMeter();
+  meter.begin({ threadId: 'first', turnId: 'turn' })(42);
+  for (let index = 0; index < 2047; index++) meter.begin({ threadId: `bulk-${index}`, turnId: 'turn' })(1);
+  const rebuild = (id: string) => { if (id === 'first') meter.begin({ threadId: 'first', turnId: 'new-turn' })(84); };
+  if (kind === 'eviction') meter.subscribeEvictions(rebuild);
+  else meter.subscribe((id, value) => { if (value === null) rebuild(id); });
+  const publisher = await publishDesktopModelUsage({ socketPath, upstreamUrl, meter }); cleanup.push(() => publisher.close());
+  const source = connectDesktopModelUsage({ socketPath, upstreamUrl }); cleanup.push(() => source.close());
+  await waitFor(() => source.read('first')?.turnBytes === 42);
+  meter.begin({ threadId: 'next', turnId: 'turn' })(1);
+  await waitFor(() => source.read('next')?.turnBytes === 1);
+  expect(meter.read('first')?.turnBytes).toBe(84); expect(source.read('first')?.turnBytes).toBe(84);
 });

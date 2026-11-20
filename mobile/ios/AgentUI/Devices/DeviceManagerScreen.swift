@@ -12,18 +12,18 @@ struct DeviceManagerScreen: View {
 
     var body: some View {
         List {
-            if session.devices.isEmpty {
+            if session.gatewayDevices.isEmpty {
                 NoDevicesView(addDevice: showAdd)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             } else {
                 Section {
-                    ForEach(session.devices) { device in
+                    ForEach(session.gatewayDevices) { device in
                         DeviceManagerRow(device: device, isReordering: editMode == .active)
                     }
                     .onMove(perform: move)
                 } header: {
-                    Text(preferences.text("已添加 \(session.devices.count) 台设备", "\(session.devices.count) devices added"))
+                    Text(preferences.text("已添加 \(session.gatewayDevices.count) 台设备", "\(session.gatewayDevices.count) devices added"))
                 } footer: {
                     Text(preferences.text("点击设备编辑连接。排序会同步到设备菜单。", "Tap a device to edit its connection. The device menu uses this order."))
                 }
@@ -38,7 +38,7 @@ struct DeviceManagerScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                if session.devices.count > 1 {
+                if session.gatewayDevices.count > 1 {
                     Button(editMode == .active ? preferences.text("完成", "Done") : preferences.text("排序", "Reorder"), action: toggleReordering)
                 }
             }
@@ -59,7 +59,7 @@ struct DeviceManagerScreen: View {
     private func toggleReordering() { editMode = editMode == .active ? .inactive : .active }
 
     private func move(from offsets: IndexSet, to destination: Int) {
-        var orderedIDs = session.devices.map(\.id)
+        var orderedIDs = session.gatewayDevices.map(\.id)
         orderedIDs.move(fromOffsets: offsets, toOffset: destination)
         session.reorderDevices(orderedIDs)
     }

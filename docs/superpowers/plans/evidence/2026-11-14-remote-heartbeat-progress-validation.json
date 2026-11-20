@@ -1,0 +1,663 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "d235b6d1de013f56a1f9d3cec2e2335e0835200f",
+  "implementationCommit": "e16e5482a711d8ab48b326389c282657806e9b32",
+  "scope": "第48项A的新源码独立双审、官方首轮失败及有界只读耗时调查；不表示Task3b通过",
+  "localValidation": {
+    "relayEnvelopeTestsPassed": 70,
+    "fullServerTestsPassed": 1334,
+    "fullServerTestsSkipped": 7,
+    "fullServerRuns": 1,
+    "strictSourcePassed": true,
+    "strictSourceAndTestsPassed": true,
+    "serverBuildPassed": true,
+    "implementationReportSha256": "f8f6faa94aa57db1cd37eae657cd627838f86ff438beee0bd715b68d605cd8f3",
+    "artifactsRootVerified": 28
+  },
+  "independentSpec": {
+    "passed": true,
+    "sourceCommit": "d235b6d1de013f56a1f9d3cec2e2335e0835200f",
+    "independentRealWsFirstGreen": 24,
+    "oldRuntimeRedPreserved": true,
+    "targetedTestsPassed": 129,
+    "targetedFileConstraintsPassed": 7,
+    "defaultAssemblyTimeoutObservedMs": 30002.7,
+    "reportSha256": "334223706ddb5cb67a5dca23f51e004e4b59e05078d43c5546c41ba9264e4098",
+    "manifestSha256": "9b479f121e2954a50ba0261f9c12f8e824ee5c76cf43ccd3c669325a13781ae2",
+    "artifactsRootVerified": 16
+  },
+  "independentQuality": {
+    "passed": true,
+    "sourceCommit": "d235b6d1de013f56a1f9d3cec2e2335e0835200f",
+    "targetedTestsPassed": 70,
+    "independentRealWsLifecycleCasesPassed": 4,
+    "initialHarnessAssertionFailurePreserved": true,
+    "productFailedRuns": 0,
+    "reportSha256": "c0215b160a79f98392924c84ef8652fe44cb7f5ec9847baeaf2ea188128a92f9",
+    "manifestSha256": "465d89bf3186f2c684e8622c256407e6434f403257c661e8698b6072b0737e01",
+    "artifactsRootVerified": 12
+  },
+  "firstOfficialAttempt": {
+    "schemaVersion": 1,
+    "sourceCommit": "d235b6d1de013f56a1f9d3cec2e2335e0835200f",
+    "startedAt": "2026-11-14T05:52:03.407Z",
+    "finishedAt": "2026-11-14T05:55:22.003Z",
+    "passed": false,
+    "scope": "Q48 A修复通过独立双审后的首轮官方产品原100MiB读回；后续阶段未执行",
+    "queryOriginalCommittedPassed": true,
+    "originalUploadNotReplayed": true,
+    "readDurationMs": 180000,
+    "receivedBytes": 77594624,
+    "receivedChunks": 148,
+    "failureCode": "timeout",
+    "nativePings": 12,
+    "nativePongs": 12,
+    "unexpectedDisconnects": 0,
+    "onlyCleanupClosed": true,
+    "bufferedRead": {
+      "execCalls": 38,
+      "completed": 37,
+      "rejected": 1,
+      "activeReadRpcs": 0,
+      "maximumConcurrentReadRpcs": 1,
+      "maximumStdoutBytes": 2797985,
+      "maximumStderrBytes": 128,
+      "unexpectedOutputDelta": 0,
+      "configurationViolations": 0,
+      "windows": [
+        {
+          "index": 0,
+          "window": 0,
+          "position": 0,
+          "originalRemainingRpcTimeoutMs": 179999,
+          "elapsedMs": 5516,
+          "completed": true,
+          "stdoutBytes": 2797957
+        },
+        {
+          "index": 1,
+          "window": 1,
+          "position": 2097152,
+          "originalRemainingRpcTimeoutMs": 174465,
+          "elapsedMs": 2796,
+          "completed": true,
+          "stdoutBytes": 2797976
+        },
+        {
+          "index": 2,
+          "window": 2,
+          "position": 4194304,
+          "originalRemainingRpcTimeoutMs": 171659,
+          "elapsedMs": 4281,
+          "completed": true,
+          "stdoutBytes": 2797976
+        },
+        {
+          "index": 3,
+          "window": 3,
+          "position": 6291456,
+          "originalRemainingRpcTimeoutMs": 167365,
+          "elapsedMs": 6271,
+          "completed": true,
+          "stdoutBytes": 2797976
+        },
+        {
+          "index": 4,
+          "window": 4,
+          "position": 8388608,
+          "originalRemainingRpcTimeoutMs": 161086,
+          "elapsedMs": 2936,
+          "completed": true,
+          "stdoutBytes": 2797977
+        },
+        {
+          "index": 5,
+          "window": 5,
+          "position": 10485760,
+          "originalRemainingRpcTimeoutMs": 158142,
+          "elapsedMs": 2957,
+          "completed": true,
+          "stdoutBytes": 2797983
+        },
+        {
+          "index": 6,
+          "window": 6,
+          "position": 12582912,
+          "originalRemainingRpcTimeoutMs": 155170,
+          "elapsedMs": 2842,
+          "completed": true,
+          "stdoutBytes": 2797983
+        },
+        {
+          "index": 7,
+          "window": 7,
+          "position": 14680064,
+          "originalRemainingRpcTimeoutMs": 152315,
+          "elapsedMs": 5887,
+          "completed": true,
+          "stdoutBytes": 2797983
+        },
+        {
+          "index": 8,
+          "window": 8,
+          "position": 16777216,
+          "originalRemainingRpcTimeoutMs": 146415,
+          "elapsedMs": 5669,
+          "completed": true,
+          "stdoutBytes": 2797983
+        },
+        {
+          "index": 9,
+          "window": 9,
+          "position": 18874368,
+          "originalRemainingRpcTimeoutMs": 140735,
+          "elapsedMs": 4670,
+          "completed": true,
+          "stdoutBytes": 2797983
+        },
+        {
+          "index": 10,
+          "window": 10,
+          "position": 20971520,
+          "originalRemainingRpcTimeoutMs": 136050,
+          "elapsedMs": 3693,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 11,
+          "window": 11,
+          "position": 23068672,
+          "originalRemainingRpcTimeoutMs": 132340,
+          "elapsedMs": 4612,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 12,
+          "window": 12,
+          "position": 25165824,
+          "originalRemainingRpcTimeoutMs": 127710,
+          "elapsedMs": 4358,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 13,
+          "window": 13,
+          "position": 27262976,
+          "originalRemainingRpcTimeoutMs": 123341,
+          "elapsedMs": 3413,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 14,
+          "window": 14,
+          "position": 29360128,
+          "originalRemainingRpcTimeoutMs": 119915,
+          "elapsedMs": 3437,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 15,
+          "window": 15,
+          "position": 31457280,
+          "originalRemainingRpcTimeoutMs": 116459,
+          "elapsedMs": 3581,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 16,
+          "window": 16,
+          "position": 33554432,
+          "originalRemainingRpcTimeoutMs": 112861,
+          "elapsedMs": 3191,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 17,
+          "window": 17,
+          "position": 35651584,
+          "originalRemainingRpcTimeoutMs": 109654,
+          "elapsedMs": 2813,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 18,
+          "window": 18,
+          "position": 37748736,
+          "originalRemainingRpcTimeoutMs": 106828,
+          "elapsedMs": 3189,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 19,
+          "window": 19,
+          "position": 39845888,
+          "originalRemainingRpcTimeoutMs": 103630,
+          "elapsedMs": 3743,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 20,
+          "window": 20,
+          "position": 41943040,
+          "originalRemainingRpcTimeoutMs": 99871,
+          "elapsedMs": 3001,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 21,
+          "window": 21,
+          "position": 44040192,
+          "originalRemainingRpcTimeoutMs": 96854,
+          "elapsedMs": 3594,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 22,
+          "window": 22,
+          "position": 46137344,
+          "originalRemainingRpcTimeoutMs": 93248,
+          "elapsedMs": 24191,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 23,
+          "window": 23,
+          "position": 48234496,
+          "originalRemainingRpcTimeoutMs": 69048,
+          "elapsedMs": 10063,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 24,
+          "window": 24,
+          "position": 50331648,
+          "originalRemainingRpcTimeoutMs": 58970,
+          "elapsedMs": 8638,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 25,
+          "window": 25,
+          "position": 52428800,
+          "originalRemainingRpcTimeoutMs": 50316,
+          "elapsedMs": 7597,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 26,
+          "window": 26,
+          "position": 54525952,
+          "originalRemainingRpcTimeoutMs": 42701,
+          "elapsedMs": 6973,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 27,
+          "window": 27,
+          "position": 56623104,
+          "originalRemainingRpcTimeoutMs": 35713,
+          "elapsedMs": 5174,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 28,
+          "window": 28,
+          "position": 58720256,
+          "originalRemainingRpcTimeoutMs": 30525,
+          "elapsedMs": 5224,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 29,
+          "window": 29,
+          "position": 60817408,
+          "originalRemainingRpcTimeoutMs": 25284,
+          "elapsedMs": 4144,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 30,
+          "window": 30,
+          "position": 62914560,
+          "originalRemainingRpcTimeoutMs": 21129,
+          "elapsedMs": 3460,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 31,
+          "window": 31,
+          "position": 65011712,
+          "originalRemainingRpcTimeoutMs": 17655,
+          "elapsedMs": 3662,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 32,
+          "window": 32,
+          "position": 67108864,
+          "originalRemainingRpcTimeoutMs": 13978,
+          "elapsedMs": 3106,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 33,
+          "window": 33,
+          "position": 69206016,
+          "originalRemainingRpcTimeoutMs": 10855,
+          "elapsedMs": 2848,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 34,
+          "window": 34,
+          "position": 71303168,
+          "originalRemainingRpcTimeoutMs": 7997,
+          "elapsedMs": 3104,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 35,
+          "window": 35,
+          "position": 73400320,
+          "originalRemainingRpcTimeoutMs": 4878,
+          "elapsedMs": 2450,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 36,
+          "window": 36,
+          "position": 75497472,
+          "originalRemainingRpcTimeoutMs": 2415,
+          "elapsedMs": 2398,
+          "completed": true,
+          "stdoutBytes": 2797985
+        },
+        {
+          "index": 37,
+          "window": 37,
+          "position": 77594624,
+          "originalRemainingRpcTimeoutMs": 5,
+          "elapsedMs": 5,
+          "completed": false,
+          "errorCode": "timeout"
+        }
+      ]
+    },
+    "windowTimingSummary": {
+      "completed": 37,
+      "minMs": 2398,
+      "medianMs": 3662,
+      "maxMs": 24191,
+      "sumMs": 179482
+    },
+    "serializedRemoteRpc": {
+      "maximumBytes": 32070,
+      "totalBytes": 263407,
+      "sentByMethod": {
+        "initialize": 1,
+        "initialized": 1,
+        "command/exec": 42,
+        "command/exec/write": 4,
+        "command/exec/terminate": 3
+      }
+    },
+    "authPrepares": 1,
+    "forbidden": 0,
+    "defaultPermissionViolations": 0,
+    "nonfiniteOutputCapViolations": 0,
+    "productionChanged": false,
+    "newAuthorizationOrEnrollment": false,
+    "testChatsCreated": 0,
+    "modelInferenceRequestsSent": 0,
+    "newUploadStarted": false,
+    "originalFixtureAndReceiptRetained": true,
+    "limitations": [
+      "传输连接未被原生pong计时器断开，不能证明原生pong迟到根因已经查明。",
+      "本轮仍因原180秒绝对期限失败，不放行Task3b及后续依赖。",
+      "窗口耗时原因待进一步诊断；canonical周期身份检查计数不能误当每个文件窗口的官方Remote开销。"
+    ]
+  },
+  "boundedReadLatencyProbe": {
+    "schemaVersion": 1,
+    "sourceCommit": "d235b6d1de013f56a1f9d3cec2e2335e0835200f",
+    "startedAt": "2026-11-14T06:08:27.922Z",
+    "finishedAt": "2026-11-14T06:08:58.860Z",
+    "passed": true,
+    "scope": "冻结源码原夹具三个2MiB范围的有界只读分段耗时诊断，不重跑全文件、不上传或删除原夹具",
+    "readLatency": {
+      "passed": true,
+      "readOnly": true,
+      "wholeFileRetried": false,
+      "originalUploadReplayed": false,
+      "newUploadStarted": false,
+      "windowBytes": 2097152,
+      "windowCount": 3,
+      "rows": [
+        {
+          "offset": 0,
+          "length": 2097152,
+          "lightRpcMs": 685.3255829999998,
+          "frames": 28,
+          "frameBytes": 3740222,
+          "receiveSyncWallMs": 149.9960399999909,
+          "receiveCpuMicros": 175631,
+          "receivedBytes": 2097152,
+          "passed": true,
+          "rpcStartedMs": 2.10358400000041,
+          "sentMs": 3.0662499999998545,
+          "firstChunkMs": 1506.3720420000009,
+          "lastChunkMs": 4892.664584,
+          "segmentCount": 28,
+          "messageBytes": 2798490,
+          "rpcFulfilledMs": 4912.084667000001,
+          "firstYieldMs": 4925.894624999999,
+          "totalMs": 4929.6118750000005,
+          "processCpuMicros": 393444
+        },
+        {
+          "offset": 46137344,
+          "length": 2097152,
+          "lightRpcMs": 579.1906249999993,
+          "frames": 28,
+          "frameBytes": 3740246,
+          "receiveSyncWallMs": 135.1601649999975,
+          "receiveCpuMicros": 151232,
+          "receivedBytes": 2097152,
+          "passed": true,
+          "rpcStartedMs": 1.0259589999986929,
+          "sentMs": 2.2025419999990845,
+          "firstChunkMs": 745.3591669999987,
+          "lastChunkMs": 3789.2681669999984,
+          "segmentCount": 28,
+          "messageBytes": 2798508,
+          "rpcFulfilledMs": 3806.1589999999997,
+          "firstYieldMs": 3820.4649169999975,
+          "totalMs": 3824.106749999999,
+          "processCpuMicros": 354348
+        },
+        {
+          "offset": 77594624,
+          "length": 2097152,
+          "lightRpcMs": 572.9294169999994,
+          "frames": 28,
+          "frameBytes": 3740246,
+          "receiveSyncWallMs": 141.0260809999927,
+          "receiveCpuMicros": 160644,
+          "receivedBytes": 2097152,
+          "passed": true,
+          "rpcStartedMs": 0.5928339999991294,
+          "sentMs": 1.5848340000011376,
+          "firstChunkMs": 692.2273339999992,
+          "lastChunkMs": 4275.935459,
+          "segmentCount": 28,
+          "messageBytes": 2798508,
+          "rpcFulfilledMs": 4293.494708999999,
+          "firstYieldMs": 4306.752499999999,
+          "totalMs": 4310.709041999999,
+          "processCpuMicros": 327731
+        }
+      ],
+      "originalQueryPassed": true,
+      "callerSessionUsableAfterAdapterClose": true,
+      "originalFixtureAndReceiptRetained": true
+    },
+    "nativePings": 1,
+    "nativePongs": 1,
+    "unexpectedDisconnects": 0,
+    "forbidden": 0,
+    "defaultPermissionViolations": 0,
+    "nonfiniteOutputCapViolations": 0,
+    "outputCaps": [
+      109228,
+      157286400,
+      3145728
+    ],
+    "authPrepares": 1,
+    "maximumConcurrentReadRpcs": 1,
+    "unexpectedOutputDelta": 0,
+    "configurationViolations": 0,
+    "productionChanged": false,
+    "newAuthorizationOrEnrollment": false,
+    "testChatsCreated": 0,
+    "modelInferenceRequestsSent": 0,
+    "limitations": [
+      "仅三个2MiB范围的现场只读诊断，不是100MiB、持续连接、8小时或产品验收。",
+      "接收耗时包含本诊断的有界观测开销；不能从轻量RPC推断大回复的固定吞吐。",
+      "没有新OAuth、密钥、登记、模型推理、聊天、上传、原收据释放或现役launchd变更。"
+    ],
+    "onlyCleanupClosed": true
+  },
+  "localLatencyInvestigation": {
+    "sourceCommit": "d235b6d1de013f56a1f9d3cec2e2335e0835200f",
+    "officialRemoteCalls": 0,
+    "confirmedLocalBug": false,
+    "comparisonScope": "8 interleaved synthetic first-window comparisons; no network; same actual RPC/relay ingress",
+    "product": {
+      "wallMs": {
+        "count": 8,
+        "minMs": 81.75704100000007,
+        "medianMs": 82.66229150000001,
+        "maxMs": 87.81591700000001,
+        "sumMs": 667.871915
+      },
+      "pythonMs": {
+        "count": 8,
+        "minMs": 27.00066700000002,
+        "medianMs": 27.815833500000025,
+        "maxMs": 29.03379199999995,
+        "sumMs": 222.471459
+      },
+      "ingressMs": {
+        "count": 8,
+        "minMs": 48.017917000000125,
+        "medianMs": 48.6983130000001,
+        "maxMs": 51.046334,
+        "sumMs": 391.6363340000004
+      },
+      "fileDecodeMs": {
+        "count": 8,
+        "minMs": 4.817166000000043,
+        "medianMs": 5.07831250000001,
+        "maxMs": 5.656291999999979,
+        "sumMs": 41.2681240000002
+      },
+      "cpuMs": {
+        "count": 8,
+        "minMs": 56.676,
+        "medianMs": 61.7355,
+        "maxMs": 70.031,
+        "sumMs": 496.015
+      }
+    },
+    "legacyProbe": {
+      "wallMs": {
+        "count": 8,
+        "minMs": 80.62145800000008,
+        "medianMs": 81.933333,
+        "maxMs": 86.27504200000001,
+        "sumMs": 659.9289990000001
+      },
+      "pythonMs": {
+        "count": 8,
+        "minMs": 27.057791000000066,
+        "medianMs": 27.792936999999966,
+        "maxMs": 29.221499999999992,
+        "sumMs": 222.9249989999999
+      },
+      "ingressMs": {
+        "count": 8,
+        "minMs": 47.30608399999983,
+        "medianMs": 48.52647950000002,
+        "maxMs": 50.412792000000024,
+        "sumMs": 388.2272099999999
+      },
+      "fileDecodeMs": {
+        "count": 8,
+        "minMs": 4.356499999999983,
+        "medianMs": 4.453875000000039,
+        "maxMs": 6.212375000000009,
+        "sumMs": 37.42137599999995
+      },
+      "cpuMs": {
+        "count": 8,
+        "minMs": 54.881,
+        "medianMs": 56.993,
+        "maxMs": 71.298,
+        "sumMs": 480.44000000000005
+      }
+    },
+    "productWireBytes": 3737490,
+    "legacyWireBytes": 3736158,
+    "sameFramesPerWindow": 28,
+    "reportSha256": "510c4b1d78bf6be849f98302d38f7ce6aae8915f10e6f368382b2712e501b9ae",
+    "manifestSha256": "49c78c452569bb451d1835d75de5683d7d33e10af1d7273bbe302285a3ab8f03",
+    "artifactsRootVerified": 2867
+  },
+  "actualRemoteFilesGatePassed": false,
+  "newUploadPhaseStarted": false,
+  "unknownCommitAndOsRestartPhaseReached": false,
+  "rangeProductAcceptanceCompleted": false,
+  "eightHourAcceptanceCompleted": false,
+  "pushedMain": false,
+  "productionChanged": false,
+  "clientBuiltOrReleased": false,
+  "nextDecision": {
+    "number": 49,
+    "recommended": "A",
+    "status": "pending-user-confirmation",
+    "description": "仅允许显式大文件read申请最高600秒单操作绝对期限；默认20秒及其他操作最高180秒保留。尚未修改。"
+  },
+  "limitations": [
+    "官方首轮读回仍在原180秒期限交付74MiB后失败，三次短Range不能替代100MiB官方验收。",
+    "主要耗时观测于首回复分段前及分段到达跨度；目标执行、官方服务与网络之间仍未定位。",
+    "现场同步receive包含额外观测解析开销，不能与嵌套区间重复相加。",
+    "本地公平交错测量不能替代官方吞吐或证明任意网络下的时限。",
+    "保留所有原失败、原夹具和原提交收据；未重发原上传或反复重试整文件。"
+  ]
+}

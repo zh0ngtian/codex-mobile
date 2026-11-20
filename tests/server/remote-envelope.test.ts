@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   encodeClientMessage, decodeServerFrame, RemoteChunkAssembler,
   type RpcMessage, type ServerMessageChunk,
@@ -120,6 +120,13 @@ describe('Remote 入站校验与分块组装', () => {
     expect(value.bufferedBytes).toBe(0); expect(value.pendingCount).toBe(0);
   });
 
+  it('只为新接收且通过校验的分片返回进度，重复片不算新增进度', () => {
+    const value = assembler(); const parts = chunks({ result: '你好🙂' });
+    expect(value.accept(parts[1])).toMatchObject({ progressed: true });
+    expect(value.accept(parts[1])).toMatchObject({ progressed: false });
+    expect(value.accept(parts[0])).toMatchObject({ progressed: true, message: { result: '你好🙂' } });
+  });
+
   it('同段冲突和元数据变更拒绝并释放已有内存', () => {
     for (const patch of [{ message_chunk_base64: Buffer.from('bad').toString('base64') }, { message_size_bytes: 999 }]) {
       const value = assembler(); const parts = chunks({ params: 'abcdef' }); value.accept(parts[0]);
@@ -176,6 +183,18 @@ describe('Remote 入站校验与分块组装', () => {
     value.accept(chunks({ params: 'close' })[0]); value.close();
     expect(value.pendingCount).toBe(0); expect(value.bufferedBytes).toBe(0);
     expect(value.eventNames()).toHaveLength(0);
+  });
+
+  it('新分片不延长自首片起默认 30 秒的组装绝对期限', () => {
+    vi.useFakeTimers();
+    try {
+      const value = assembler(); const parts = chunks({ result: 'absolute-deadline' }); const discarded: unknown[] = [];
+      value.on('discard', event => discarded.push(event));
+      value.accept({ ...parts[0], segment_count: 3 }); vi.advanceTimersByTime(10000);
+      value.accept({ ...parts[1], segment_count: 3 }); vi.advanceTimersByTime(19999);
+      expect(value.pendingCount).toBe(1); expect(discarded).toHaveLength(0);
+      vi.advanceTimersByTime(1); expect(value.pendingCount).toBe(0); expect(discarded).toHaveLength(1); expect(value.bufferedBytes).toBe(0);
+    } finally { vi.useRealTimers(); }
   });
 
   it('关闭逻辑流时只释放对应路由的 partial，不影响其他流', () => {

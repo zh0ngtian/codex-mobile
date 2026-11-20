@@ -1,0 +1,253 @@
+{
+  "schemaVersion": 1,
+  "task": "Task3d.3-trusted-target-projects-git-pins-titles",
+  "sourceCommit": "180cf6c8802c5a3e883adb73de0b99fc33e693c6",
+  "baselineMain": "2334cc2ed74c39a9072c22dc6d212999864dae14",
+  "sourceOnly": true,
+  "deployed": false,
+  "clientBuiltOrPublished": false,
+  "gates": {
+    "implementationCommitted": true,
+    "specPassed": true,
+    "qualityPassed": true,
+    "actualRemoteProbePassed": true
+  },
+  "implementation": {
+    "sourceCommit": "180cf6c8802c5a3e883adb73de0b99fc33e693c6",
+    "passed": true,
+    "reportSha256": "6b5749f7ddeb0fe7cc1662df40e22f74f2979c91af3d1bb93a6ce91481a30cdf",
+    "manifestSha256": "059718d518cfa70e1b0b84f4e95ea621ccd024e9f71eccbbe832be66f5a31085",
+    "rootAuditedAllArtifacts": true,
+    "sourceFiles": 188,
+    "ordinaryArtifacts": 1010,
+    "dependencyLinks": 1812
+  },
+  "finalSpec": {
+    "sourceCommit": "180cf6c8802c5a3e883adb73de0b99fc33e693c6",
+    "passed": true,
+    "reportSha256": "0e311bd0bda2d213bcf3a1ce1ecf4784750bedb687404d1f26176560be8db43c",
+    "manifestSha256": "59e029919df8d4dfaa9773774fee683fa01131c1d63f4b5366127f7435414ee0",
+    "rootAuditedAllArtifacts": true,
+    "sourceFiles": 451,
+    "ordinaryArtifacts": 470,
+    "dependencyLinks": 453,
+    "testsPassed": 39
+  },
+  "finalQuality": {
+    "sourceCommit": "180cf6c8802c5a3e883adb73de0b99fc33e693c6",
+    "passed": true,
+    "reportSha256": "86970dddfc2e7a5f36ca5b6f434e74d834fb5643f2885154dc6fd33c990312e6",
+    "manifestSha256": "9b51575673df35191fb49327eadb5177f82ca1ae0264daad2ef4694303a271d0",
+    "rootAuditedAllArtifacts": true,
+    "relatedPassed": 188,
+    "independentPassed": 6
+  },
+  "localValidation": {
+    "related": {
+      "files": 15,
+      "passed": 419,
+      "elapsed": 44.85137750022113
+    },
+    "server": {
+      "passedFiles": 68,
+      "skippedFiles": 2,
+      "passed": 1677,
+      "skipped": 7,
+      "elapsed": 133.2573575421702
+    },
+    "strictSource": {
+      "exit": 0,
+      "elapsed": 1.0290604170877486
+    },
+    "strictTests": {
+      "exit": 0,
+      "elapsed": 2.0057889171876013
+    },
+    "buildServer": {
+      "exit": 0,
+      "elapsed": 1.1899732910096645
+    },
+    "allSourceUnchanged": true
+  },
+  "contract": {
+    "projectState": "目标实际codexHome下六个既有状态字段；原子标准JSONDecoder配合局部容器结束位置校验保留Local JSON语义，无新增全局状态大小或深度产品限额",
+    "git": "同目标Commands、实际OS绝对cwd、默认权限；临时自有index与完整差异；网关按完整目标namespace持久化，不触碰用户index",
+    "pins": "复用可信同目标RPC；固定桌面PIN组和原有分页/移动回读",
+    "titles": "同一物理Relay下独立逻辑RPC；完整用户历史分页，4并发/120秒总期限/16MiB；固定gpt-6-luna、low、priority、never/read-only、ephemeral；结果未知不重放，调用方保持可用",
+    "decision51": "仅rollout仍为已批准标准Python逐记录解析；本项项目JSON局部兼容修复不改变该决策",
+    "publicTargetRoutesOrQueueOrMobileModeAdded": false
+  },
+  "firstFailuresRetained": [
+    {
+      "classification": "SPEC product",
+      "detail": "首冻结合法1100层未使用项目JSON被Python递归上限拒绝；3项真实RED后用固定脚本内局部显式容器状态栈修复，原子保留标准JSONDecoder，不更改rollout、期限、权限或产品上限",
+      "reportSha256": "cff0de871cb1ac9d3414b9307ae08b4c4c6b88dcd5249e20f7b0bb2904d3bc8a",
+      "manifestSha256": "006f03b2e526c44e2a63983e95e1fa84a62ca2b98bdc53584f59b9ef7ab583cc"
+    },
+    {
+      "classification": "implementation product and test setup",
+      "detail": "初次实现Git未确认HEAD误当unborn、Windows根相对cwd、坏UTF8和标题清理期限等真实RED原样保留；取消夹具TMPDIR、并行Local计数、Node git输出容量等oracle/setup失败分别记录，不作为产品RED"
+    },
+    {
+      "classification": "QUALITY setup",
+      "detail": "早期逐项依赖链接遗漏.vite-temp，01/02/03通过记录仅作历史；只移除自有链接并创建私有缓存，同范围04/05最终188+6通过。首轮全链接清单明确为事后重建，最终453条链接实际扫描。"
+    },
+    {
+      "classification": "root tooling",
+      "detail": "审计器适配SPEC前后来源快照的不同字段；官方预绑定修正scope文件路径拼写。失败均在审计/预绑定层，未执行官方业务或消费正式attempt，原说明保留。"
+    }
+  ],
+  "official": {
+    "A": {
+      "startedAt": "2026-11-15T09:52:54.973Z",
+      "finishedAt": "2026-11-15T09:54:54.238Z",
+      "actualExitCode": 0,
+      "actualSignalCode": null,
+      "startToBusinessAndCliMs": 91932,
+      "zeroFlowActualMs": 25001,
+      "isolatedRootRemoved": true,
+      "privateAdminCleanupPassed": true,
+      "lateRpcPassed": true,
+      "noNewPrepareDuringDwell": true,
+      "actualBoundPortMatched": true,
+      "newAuthorizationOrEnrollment": false,
+      "productionChanged": false,
+      "modelInferenceRequestsSent": 0,
+      "testChatsCreated": 0,
+      "offlineGraphMatchedAtRuntimeBuild": true,
+      "offlineGraphFilesMatched": 42,
+      "passed": true,
+      "checks": {
+        "businessCompleted": true,
+        "adapterCloseKeptCallerSession": true,
+        "lateRpcCompleted": true,
+        "closed": true,
+        "projectsRead": true,
+        "pinsRead": true,
+        "pinsExplicitUnsupported": false,
+        "gitSnapshotPassed": true,
+        "gitUserIndexUnchanged": true,
+        "gitStagedUnchanged": true,
+        "gitPersistedReadPassed": true,
+        "cancelStartCleared": true,
+        "gitFixtureCleanupPassed": true,
+        "fixtureCleanupPassed": true
+      },
+      "counts": {
+        "runtimeStarts": 1,
+        "prepares": 1,
+        "relayInstances": 1,
+        "commandExecRequests": 35,
+        "actualExecEnds": 35,
+        "rejectedExecs": 0,
+        "activeExecs": 0,
+        "peakActiveExecs": 1,
+        "maxSerializedOutgoingBytes": 13117,
+        "forbidden": 0,
+        "permissionViolations": 0,
+        "zeroFlowStartActive": 0,
+        "zeroFlowEndActive": 0,
+        "zeroFlowNewStreams": 0
+      },
+      "rpcCounts": {
+        "account/read": 43,
+        "remoteControl/status/read": 42,
+        "command/exec": 35,
+        "command/exec/write": 35,
+        "command/exec/terminate": 34,
+        "threadSection/list": 1,
+        "thread/list": 1,
+        "model/list": 3
+      },
+      "defaultPermissionsOnly": true,
+      "evidence": {
+        "sourceCommit": "180cf6c8802c5a3e883adb73de0b99fc33e693c6",
+        "passed": true,
+        "reportSha256": "dd6d069f059689b7cfe56e1ced181bf45e6a9a4c7726338e5ff57d67bb0964d2",
+        "manifestSha256": "6095b3ecb713c9ce9968bca7a311e8787a94f944df26f8efa047f0298c9646ff",
+        "rootAuditedAllArtifacts": true,
+        "sourceFiles": 87,
+        "artifacts": 271
+      }
+    },
+    "B": {
+      "startedAt": "2026-11-15T09:55:56.121Z",
+      "finishedAt": "2026-11-15T09:57:08.532Z",
+      "actualExitCode": 0,
+      "actualSignalCode": null,
+      "startToBusinessAndCliMs": 45082,
+      "zeroFlowActualMs": 25001,
+      "isolatedRootRemoved": true,
+      "privateAdminCleanupPassed": true,
+      "lateRpcPassed": true,
+      "noNewPrepareDuringDwell": true,
+      "actualBoundPortMatched": true,
+      "newAuthorizationOrEnrollment": false,
+      "productionChanged": false,
+      "modelInferenceRequestsSent": 2,
+      "testChatsCreated": 1,
+      "offlineGraphMatchedAtRuntimeBuild": true,
+      "offlineGraphFilesMatched": 41,
+      "passed": true,
+      "checks": {
+        "businessCompleted": true,
+        "adapterCloseKeptCallerSession": true,
+        "lateRpcCompleted": true,
+        "closed": true,
+        "titlePassed": true,
+        "sourceUnchanged": true,
+        "pinRoundTripPassed": true,
+        "pinsExplicitUnsupported": false,
+        "testChatArchived": true,
+        "summarySessionsClosed": true
+      },
+      "counts": {
+        "runtimeStarts": 1,
+        "prepares": 1,
+        "relayInstances": 1,
+        "commandExecRequests": 0,
+        "actualExecEnds": 0,
+        "rejectedExecs": 0,
+        "activeExecs": 0,
+        "peakActiveExecs": 0,
+        "maxSerializedOutgoingBytes": 897,
+        "forbidden": 0,
+        "permissionViolations": 0,
+        "zeroFlowStartActive": 0,
+        "zeroFlowEndActive": 0,
+        "zeroFlowNewStreams": 0
+      },
+      "rpcCounts": {
+        "account/read": 27,
+        "remoteControl/status/read": 26,
+        "thread/start": 2,
+        "thread/name/set": 1,
+        "turn/start": 2,
+        "thread/read": 7,
+        "thread/turns/list": 1,
+        "thread/unsubscribe": 1,
+        "threadSection/list": 3,
+        "thread/list": 4,
+        "thread/section/move": 2,
+        "thread/archive": 1,
+        "model/list": 2
+      },
+      "defaultPermissionsOnly": true,
+      "evidence": {
+        "sourceCommit": "180cf6c8802c5a3e883adb73de0b99fc33e693c6",
+        "passed": true,
+        "reportSha256": "a33f12dafc51a748a9c75cbfd3885306ad87f658eabb3c87fbefa1233be078bd",
+        "manifestSha256": "b534dabc2eacdab49e782fbeee494846046ed5d879a2aa2dbdf511aa6a722c04",
+        "rootAuditedAllArtifacts": true,
+        "sourceFiles": 87,
+        "artifacts": 271
+      }
+    }
+  },
+  "limitations": [
+    "仅当前Mac和自有小夹具；Windows仅受控协议验证",
+    "正式公开目标路由、共享持久队列、手机模式和统计失效装配继续后续任务",
+    "25秒空闲不是P95、8小时、凭据刷新、断网恢复或真实Mac睡眠唤醒验收",
+    "本项无生产部署、客户端构建或发布；官方B仅自有合成源会话1个、推理2次，源会话已归档"
+  ]
+}

@@ -1,0 +1,101 @@
+{
+  "date": "2026-11-17",
+  "task": "remote-refresh-spinner-20261117",
+  "baseline": "b3c57687f03eede037f8eced092fc11d3fd30e71",
+  "integratedMain": "e544c702bffc6457a143025ed8a633374980877e",
+  "sourceCommit": "8f2f0fca8cb048797d2d61e2023a4cd4eb3d94ab",
+  "deployedCommit": "de86215cffe7d05c3ae5e26c36ac449365fe1557",
+  "batchId": "f9a86e54-a0a3-434c-a197-53d2e45dfa53",
+  "scope": "gateway-only",
+  "webUi": true,
+  "defect": "首页刷新按钮误汇总每3秒自动后台同步，Remote往返重叠使按钮反复转动。",
+  "behavior": "按钮仅表示手动刷新；本轮列表读取后固定当时的列表快照任务并等待回填，未来定时任务和详情不能延长；同步提示继续表达后台状态。",
+  "validation": {
+    "redFailures": 4,
+    "focusedGreen": 46,
+    "relatedBaselineGreen": 205,
+    "integratedRelatedGreen": 235,
+    "frozenRelatedGreen": 235,
+    "adapterRegression": 290,
+    "buildContract": 164,
+    "coordinatorRecovery": 59,
+    "typecheck": "passed",
+    "serverStrict": "passed",
+    "webBuild": "passed",
+    "serverBuild": "passed"
+  },
+  "deployment": {
+    "batchId": "f9a86e54-a0a3-434c-a197-53d2e45dfa53",
+    "sha": "de86215cffe7d05c3ae5e26c36ac449365fe1557",
+    "source": "8f2f0fca8cb048797d2d61e2023a4cd4eb3d94ab",
+    "receiptMatches": true,
+    "digestsMatch": true,
+    "privateFilesPreserved": 6,
+    "remoteState": "online",
+    "pendingResume": [],
+    "webUi": true,
+    "serverDigest": "e015d587f8b9cb8fccc80129ab8dc68310e1130c98c3103c720d8f94d9ac1aff",
+    "frontendDigest": "43febefbe507d67d84774cffad93b870a04d4f04cbd9f49626061d256543b17a",
+    "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+    "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+    "preservationBaseline": "以部署前最新6份私有文件为准；并行已授权新增Mac配对在部署前修改controller-binding，原授权变更已保留。"
+  },
+  "web": {
+    "manual": {
+      "busyObserved": "true",
+      "endBusy": "false",
+      "endObservedUpperBoundMs": 97140,
+      "preciseTiming": false,
+      "deviceScope": "two-remote-machines",
+      "backgroundStillActive": true
+    },
+    "quiet": {
+      "durationMs": 86478,
+      "samples": [
+        {
+          "atMs": 0,
+          "busy": "false",
+          "statuses": [
+            "快照更新于 17:52:49 · 已同步"
+          ]
+        },
+        {
+          "atMs": 45664,
+          "busy": "false",
+          "statuses": [
+            "快照更新于 17:53:32 · 正在后台更新"
+          ]
+        },
+        {
+          "atMs": 86478,
+          "busy": "false",
+          "statuses": [
+            "快照更新于 17:54:15 · 正在后台更新"
+          ]
+        }
+      ],
+      "networkTruncated": true,
+      "successfulUpstreamRefreshes": 11,
+      "refreshMethods": [
+        "threadSection/list",
+        "thread/list"
+      ]
+    },
+    "createdTestChats": 0,
+    "viewport": "1280x720",
+    "networkCountMeaning": "网络缓冲发生截断，成功刷新数量仅为下界；86.5秒内三次按钮采样均为空闲，不能当作逐帧持续监测。",
+    "manualTimingMeaning": "点击时确认为忙碌；97.1秒后观察已空闲，是观察上界，未连续捕获停止时刻；两台Remote手动刷新仍偏慢，不作为性能改善。",
+    "screenshot": "网页验收截图保存在工作区.mobile-build/remote-refresh-spinner-fixed-20261117.jpg，未提交含用户会话名称的图片。"
+  },
+  "delivery": {
+    "gateway": "deployed",
+    "bundledWeb": "deployed",
+    "mobilePackages": "not-published",
+    "nativeVisualAcceptance": "not-performed",
+    "createdTestChats": 0
+  },
+  "pending": [
+    "多设备手动刷新的精确耗时与性能",
+    "冷列表、P95与长期连接独立验收"
+  ]
+}

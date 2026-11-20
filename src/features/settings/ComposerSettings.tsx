@@ -1,4 +1,4 @@
-import { Chevron } from "../../ui/icons";
+import { useEffect } from "react";
 import { t } from "../../i18n";
 import {
   modelOptionMeta,
@@ -10,64 +10,52 @@ import {
 export type ComposerPicker =
   | "agent"
   | "model"
-  | "speed"
   | "permission"
   | null;
 
 function ComposerSettingsForm({
-  picker,
-  effortOptions,
-  speedOptions,
-  permissionModes,
-  models,
-  selectedEffort,
-  selectedModel,
-  selectedModelLabel,
-  selectedServiceTier,
-  selectedSpeedLabel,
-  selectedPermissionModeId,
-  onPickerChange,
-  onChooseEffort,
-  onChooseModel,
-  onChooseSpeed,
-  onChoosePermissionMode,
+  picker, effortOptions, permissionModes, models, selectedEffort, selectedModel,
+  selectedPermissionModeId, onPickerChange, onChooseEffort, onChooseModel, onChoosePermissionMode,
 }: {
   picker: ComposerPicker;
   effortOptions: Array<{ id: string; label: string; description?: string }>;
-  speedOptions: Array<{ id: string | null; label: string; description: string }>;
   permissionModes: PermissionMode[];
   models: ModelCatalogEntry[];
   selectedEffort: string | null;
   selectedModel: string;
-  selectedModelLabel: string;
-  selectedServiceTier: string | null;
-  selectedSpeedLabel: string;
   selectedPermissionModeId: PermissionModeId | null;
   onPickerChange: (picker: ComposerPicker) => void;
   onChooseEffort: (effort: string) => void;
   onChooseModel: (model: string) => void;
-  onChooseSpeed: (serviceTier: string | null) => void;
   onChoosePermissionMode: (mode: PermissionModeId) => void;
 }) {
+  useEffect(() => {
+    if (!picker) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onPickerChange(null);
+    };
+    document.addEventListener("keydown", dismiss);
+    return () => document.removeEventListener("keydown", dismiss);
+  }, [picker, onPickerChange]);
   if (!picker) return null;
   return (
     <div className="composer-popover-backdrop" onClick={() => onPickerChange(null)}>
       <section
         className={`composer-popover ${picker === "permission" ? "permission-popover" : ""}`}
+        role="dialog"
+        aria-modal="true"
         aria-label={
           picker === "permission"
             ? t("权限模式")
             : picker === "model"
               ? t("模型")
-              : picker === "speed"
-                ? t("速度")
-                : t("智能")
+              : t("思考强度")
         }
         onClick={(event) => event.stopPropagation()}
       >
         {picker === "agent" && (
           <>
-            <div className="popover-eyebrow">{t("智能")}</div>
+            <div className="popover-eyebrow">{t("思考强度")}</div>
             <div className="popover-options effort-options">
               {effortOptions.map((option) => {
                 const selected = option.id === selectedEffort;
@@ -85,29 +73,15 @@ function ComposerSettingsForm({
                       <strong>{option.label}</strong>
                       {option.description && <small>{option.description}</small>}
                     </span>
-                    <i>{selected ? "✓" : ""}</i>
                   </button>
                 );
               })}
             </div>
-            <div className="popover-divider" />
-            <button className="popover-link" onClick={() => onPickerChange("model")}>
-              <span><strong>{t("模型")}</strong><small>{selectedModelLabel}</small></span>
-              <Chevron />
-            </button>
-            <button className="popover-link" onClick={() => onPickerChange("speed")}>
-              <span><strong>{t("速度")}</strong><small>{selectedSpeedLabel}</small></span>
-              <Chevron />
-            </button>
           </>
         )}
         {picker === "model" && (
           <>
-            <button className="popover-title" onClick={() => onPickerChange("agent")}>
-              <span><strong>{t("模型")}</strong><small>{selectedModelLabel}</small></span>
-              <Chevron direction="down" />
-            </button>
-            <div className="popover-divider" />
+            <div className="popover-eyebrow">{t("模型")}</div>
             <div className="popover-options model-options" aria-label={t("模型列表")}>
               {models.map((option) => {
                 const value = option.model;
@@ -127,38 +101,6 @@ function ComposerSettingsForm({
                       <strong>{option.displayName}</strong>
                       <small>{meta.description || meta.identity}</small>
                     </span>
-                    <i>{selected ? "✓" : ""}</i>
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
-        {picker === "speed" && (
-          <>
-            <button className="popover-title" onClick={() => onPickerChange("agent")}>
-              <span><strong>{t("速度")}</strong><small>{selectedSpeedLabel}</small></span>
-              <Chevron direction="down" />
-            </button>
-            <div className="popover-divider" />
-            <div className="popover-options" aria-label={t("速度列表")}>
-              {speedOptions.map((option) => {
-                const selected = option.id === selectedServiceTier;
-                return (
-                  <button
-                    key={option.id ?? "normal"}
-                    className={selected ? "selected" : ""}
-                    aria-pressed={selected}
-                    onClick={() => {
-                      onChooseSpeed(option.id);
-                      onPickerChange(null);
-                    }}
-                  >
-                    <span>
-                      <strong>{option.label}</strong>
-                      <small>{option.description}</small>
-                    </span>
-                    <i>{selected ? "✓" : ""}</i>
                   </button>
                 );
               })}
@@ -174,13 +116,12 @@ function ComposerSettingsForm({
                   key={mode.id}
                   className={selected ? "selected" : ""}
                   aria-pressed={selected}
-                  onClick={() => onChoosePermissionMode(mode.id)}
+                  onClick={() => { onChoosePermissionMode(mode.id); onPickerChange(null); }}
                 >
                   <span>
                     <strong>{mode.label}</strong>
                     <small>{mode.description}</small>
                   </span>
-                  <i>{selected ? "✓" : ""}</i>
                 </button>
               );
             })}

@@ -86,7 +86,8 @@ export function validateRestStart(value: unknown, expected: { clientId?: string;
   if (expected.accountUserId !== undefined && accountUserId !== expected.accountUserId) invalid();
   if (accountUserId !== expected.auth.accountUserId && accountUserId !== expected.auth.userId) invalid();
   if (challenge.client_id !== clientId || challenge.account_user_id !== accountUserId || challenge.purpose !== 'remote_control_client_enrollment' || challenge.audience !== 'remote_control_client_enrollment' || challenge.target_origin !== REMOTE_ORIGIN || challenge.target_path !== `${REMOTE_CLIENT_PATH}/${expected.operation}/finish`) invalid();
-  if (challenge.device_identity_hash !== undefined ? challenge.device_identity_hash !== expected.identityHash : expected.operation === 'refresh') invalid();
+  // 首次登记尚未绑定设备，官方以 null 或缺省表示；刷新必须证明原设备哈希。
+  if (challenge.device_identity_hash == null ? expected.operation === 'refresh' : challenge.device_identity_hash !== expected.identityHash) invalid();
   if (!Number.isSafeInteger(challenge.challenge_expires_at) || (challenge.challenge_expires_at as number) <= nowMs / 1000 || (challenge.challenge_expires_at as number) > nowMs / 1000 + 300) invalid();
   return { clientId, accountUserId, challenge: {
     token: text(challenge.challenge_token, 16384),

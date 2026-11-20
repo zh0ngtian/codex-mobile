@@ -18,8 +18,8 @@ async function fixture() {
   const home = await realpath(await mkdtemp(join(tmpdir(), 'remote-managed-auth-'))); await chmod(home, 0o700); cleanup.push(() => rm(home, { recursive: true, force: true }));
   const path = join(home, 'auth.json'); await writeFile(path, JSON.stringify(auth()), { mode: 0o600 });
   let now = NOW; let factoryCalls = 0; let initializes = 0; const calls: unknown[] = [];
-  let onRead = async () => ({ account: { type: 'chatgpt', email: null, planType: 'pro' }, requiresOpenaiAuth: true });
-  const canonical = { async initialize() { initializes++; return { codexHome: home, actualMetadata: true }; }, async call(method: string, params: unknown) { calls.push({ method, params }); return onRead(); }, close() {} };
+  let onRead = async (_params: unknown) => ({ account: { type: 'chatgpt', email: null, planType: 'pro' }, requiresOpenaiAuth: true });
+  const canonical = { async initialize() { initializes++; return { codexHome: home, actualMetadata: true }; }, async call(method: string, params: unknown) { calls.push({ method, params }); return onRead(params); }, close() {} };
   const options = { canonicalFactory: async () => { factoryCalls++; return canonical; }, now: () => now, operationTimeoutMs: 100 };
   const loader = new ManagedAuthLoader(options); cleanup.push(() => loader.close());
   return { home, path, loader, options, canonical, calls, factoryCalls: () => factoryCalls, initializes: () => initializes,
@@ -27,14 +27,17 @@ async function fixture() {
     async replace(value: unknown) { const next = join(home, 'auth.next'); await writeFile(next, JSON.stringify(value), { mode: 0o600 }); await rename(next, path); } };
 }
 
-it('首次singleflight只让显式canonical刷新一次并使用其codexHome最新tokens，不消费refresh_token或历史API key', async () => {
-  const f = await fixture(); const refreshed = token({ exp: NOW / 1000 + 7200 });
-  f.setRead(async () => { await f.replace(auth(refreshed)); return { account: { type: 'chatgpt', email: null, planType: 'pro' }, requiresOpenaiAuth: true }; });
+it('有效凭据首次并发加载只读取一次官方账号，跳过有故障的强制续期', async () => {
+  const f = await fixture(); const before = await readFile(f.path, 'utf8');
+  f.setRead(async params => {
+    if ((params as { refreshToken: boolean }).refreshToken) throw new Error('workspace routing discovery failed');
+    return { account: { type: 'chatgpt', email: null, planType: 'pro' }, requiresOpenaiAuth: true };
+  });
   const results = await Promise.all(Array.from({ length: 8 }, () => f.loader.load()));
-  expect(results).toEqual(Array.from({ length: 8 }, () => ({ accessToken: refreshed, accountId: 'workspace', accountUserId: 'account-user', userId: 'user' })));
-  expect(f.calls).toEqual([{ method: 'account/read', params: { refreshToken: true } }]); expect(f.factoryCalls()).toBe(1); expect(f.initializes()).toBe(1);
+  expect(results).toEqual(Array.from({ length: 8 }, () => ({ accessToken: token(), accountId: 'workspace', accountUserId: 'account-user', userId: 'user' })));
+  expect(f.calls).toEqual([{ method: 'account/read', params: { refreshToken: false } }]); expect(f.factoryCalls()).toBe(1); expect(f.initializes()).toBe(1);
   expect(f.loader.currentIdentity).toEqual({ codexHome: f.home, accountId: 'workspace', accountUserId: 'account-user', userId: 'user' });
-  expect(JSON.stringify(f.loader.currentIdentity)).not.toContain('accessToken'); expect(await readFile(f.path, 'utf8')).toContain(refreshed);
+  expect(JSON.stringify(f.loader.currentIdentity)).not.toContain('accessToken'); expect(await readFile(f.path, 'utf8')).toBe(before);
   await f.loader.load(); await f.loader.verifyIdentity(); expect(f.calls).toHaveLength(1);
 });
 
@@ -48,21 +51,58 @@ it('每次load读最新本地文件：未过期也立即拒绝账号/workspace/u
   }
 });
 
-it('access临期才singleflight canonical refresh，首次refresh后缺失/无效/已过期exp拒绝', async () => {
-  const f = await fixture(); await f.loader.load(); f.setNow(NOW + 3571000);
-  f.setRead(async () => { await f.replace(auth(token({ exp: NOW / 1000 + 7200 }))); return { account: { type: 'chatgpt', email: null, planType: 'pro' }, requiresOpenaiAuth: true }; });
-  await Promise.all(Array.from({ length: 8 }, () => f.loader.load())); expect(f.calls).toHaveLength(2);
-  for (const exp of [undefined, null, 'future', NOW / 1000, -1, Number.MAX_SAFE_INTEGER, NOW / 1000 + 1.5]) {
-    const g = await fixture(); await g.write(auth(token({ exp })));
-    await expect(g.loader.load()).rejects.toBeInstanceOf(RemoteAuthRequiredError); expect(g.calls).toHaveLength(1);
-  }
+it.each(['first-load', 'already-verified', 'expired'] as const)('临期或已到期时只并发续期一次并采用官方写回的新凭据：%s', async phase => {
+  const f = await fixture();
+  if (phase === 'already-verified') await f.loader.load();
+  f.setNow(NOW + (phase === 'expired' ? 3600000 : 3570000));
+  const refreshed = token({ exp: NOW / 1000 + 7200 });
+  f.setRead(async () => { await f.replace(auth(refreshed)); return { account: { type: 'chatgpt', email: null, planType: 'pro' }, requiresOpenaiAuth: true }; });
+  const results = await Promise.all(Array.from({ length: 8 }, () => f.loader.load()));
+  expect(results.map(result => result.accessToken)).toEqual(Array(8).fill(refreshed));
+  expect(f.calls).toEqual([
+    ...(phase === 'already-verified' ? [{ method: 'account/read', params: { refreshToken: false } }] : []),
+    { method: 'account/read', params: { refreshToken: true } },
+  ]);
 });
 
-it('等待canonical refresh期间切换绑定必须拒绝且不自动采用新账号', async () => {
-  const f = await fixture();
+it('等待普通账号核验时进入续期窗口，并发加载仍只续期一次', async () => {
+  const f = await fixture(); f.setNow(NOW + 3569000);
+  let markStarted!: () => void; let finishVerification!: () => void;
+  const started = new Promise<void>(resolve => { markStarted = resolve; });
+  const verification = new Promise<void>(resolve => { finishVerification = resolve; });
+  const refreshed = token({ exp: NOW / 1000 + 7200 });
+  f.setRead(async params => {
+    markStarted();
+    if ((params as { refreshToken: boolean }).refreshToken) await f.replace(auth(refreshed));
+    else await verification;
+    return { account: { type: 'chatgpt', email: null, planType: 'pro' }, requiresOpenaiAuth: true };
+  });
+  const first = f.loader.load(); await started;
+  f.setNow(NOW + 3570000);
+  const second = f.loader.load(); finishVerification();
+  expect((await Promise.all([first, second])).map(result => result.accessToken)).toEqual([refreshed, refreshed]);
+  expect(f.calls).toEqual([
+    { method: 'account/read', params: { refreshToken: false } },
+    { method: 'account/read', params: { refreshToken: true } },
+  ]);
+});
+
+it('没有有效exp的凭据拒绝且不请求续期；续期后到期的凭据也拒绝', async () => {
+  for (const exp of [undefined, null, 'future', -1, Number.MAX_SAFE_INTEGER, NOW / 1000 + 1.5]) {
+    const g = await fixture(); await g.write(auth(token({ exp })));
+    await expect(g.loader.load()).rejects.toBeInstanceOf(RemoteAuthRequiredError); expect(g.calls).toHaveLength(0);
+  }
+  const f = await fixture(); f.setNow(NOW + 3600000);
+  await expect(f.loader.load()).rejects.toBeInstanceOf(RemoteAuthRequiredError);
+  expect(f.calls).toEqual([{ method: 'account/read', params: { refreshToken: true } }]);
+});
+
+it.each([false, true])('等待官方账号读取期间切换绑定必须拒绝且不自动采用新账号（续期=%s）', async refresh => {
+  const f = await fixture(); if (refresh) f.setNow(NOW + 3570000);
   f.setRead(async () => { await f.replace(auth(token({}, { chatgpt_account_id: 'new-workspace' }), 'new-workspace')); return { account: { type: 'chatgpt', email: null, planType: 'pro' }, requiresOpenaiAuth: true }; });
   await expect(f.loader.load()).rejects.toBeInstanceOf(RemoteAuthRequiredError);
-  await expect(f.loader.load()).rejects.toBeInstanceOf(RemoteAuthRequiredError); expect(f.calls).toHaveLength(1);
+  await expect(f.loader.load()).rejects.toBeInstanceOf(RemoteAuthRequiredError);
+  expect(f.calls).toEqual([{ method: 'account/read', params: { refreshToken: refresh } }]);
 });
 
 it('非ChatGPT canonical账号、缺失codexHome和不安全auth文件均auth-required，没有其他实例或凭据fallback', async () => {

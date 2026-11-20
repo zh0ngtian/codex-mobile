@@ -11,9 +11,10 @@ struct BackendDevice: Identifiable, Codable, Equatable, Sendable {
     var savedConfiguration = ComposerConfiguration()
     var rememberedProject: String?
     var accountKey = ""
+    var gatewayID: String? = nil
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, gatewayAddress, enabled, connection, projects, capabilities, savedConfiguration, rememberedProject, accountKey
+        case id, name, gatewayAddress, enabled, connection, projects, capabilities, savedConfiguration, rememberedProject, accountKey, gatewayID
     }
 }
 
@@ -29,6 +30,7 @@ extension BackendDevice {
         capabilities = try values.decode(DeviceCapabilities.self, forKey: .capabilities)
         savedConfiguration = try values.decode(ComposerConfiguration.self, forKey: .savedConfiguration)
         rememberedProject = try values.decodeIfPresent(String.self, forKey: .rememberedProject)
+        gatewayID = try values.decodeIfPresent(String.self, forKey: .gatewayID)
         accountKey = try values.decodeIfPresent(String.self, forKey: .accountKey) ?? ""
     }
 }

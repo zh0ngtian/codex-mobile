@@ -22,14 +22,20 @@
 - [2026-10-20 当前项目展开耗时补测](performance/2026-10-20-sidebar-project-expand/README.md)：20次首次展开数据就绪P50/P95为91/113毫秒；另3次原生录像从展开首帧到五条文字接近最终清晰度约0.51–0.53秒，口径分开，采样时未发布；相关实现后续已随0.3.19交付。
 - [2026-10-20 边栏优化双端发布与网关部署](superpowers/plans/2026-10-20-sidebar-lazy-release.md)：已发布0.3.19（3019），两目标成功凭证及固定APK/已签名IPA、OTA与unsigned软件源回验；性能报告仍保留原采样口径。
 - [协议基准](../protocol/app-server-v2/README.md)：固定快照的版本、来源和使用边界。
-- [常驻 Remote 网关设计](superpowers/specs/2026-11-13-remote-gateway.md)与[实施计划](superpowers/plans/2026-11-13-remote-gateway.md)：开发中；协议、自有授权、有界 RPC、受管认证及账号绑定控制器/目录已有源码与隔离验证，一次性 OAuth、活动身份存储和运行管理/普通登录已通过隔离测试及独立审查，运行层的三流 RPC、同流恢复、零流保活及持久暂停恢复已有正式 Remote 隔离收据。Mac CLI、产品路由、共享队列和客户端尚未接入；[CLI 与身份恢复补充方案](superpowers/specs/2026-11-13-remote-gateway-cli-proposal.md)第44/45项已确认，身份存储和运行管理子项已验证，私有管理通道/CLI及网关入口待接入验收。固定计量读取的只读加网络例外已隔离验证，真实 OAuth、产品统计及长期性能仍待验收。不是现役授权或部署操作入口。
+- [常驻 Remote 网关设计](superpowers/specs/2026-11-13-remote-gateway.md)与[实施计划](superpowers/plans/2026-11-13-remote-gateway.md)：公开目标路由、唯一共享队列、会话观察和手机多网关模式/outbox 已实现并完成本地验证，见[本轮收据](superpowers/plans/evidence/2026-11-17-remote-gateway-completion-validation.json)。[Mac管理说明](remote-gateway-management.md)说明现有 URL、私有管理命令和部署边界。早期官方 RPC/文件/统计探针与失败收据继续保留；官方全功能、8小时和P95仍待验收。未部署现役服务或发布客户端。
+- [Remote文件读取方式第47项](superpowers/specs/2026-11-14-remote-file-buffered-read-proposal.md)、[第48项传输存活](superpowers/specs/2026-11-14-remote-heartbeat-progress-proposal.md)、[第49项读取预算](superpowers/specs/2026-11-14-remote-file-read-budget-proposal.md)及[第50项固定窗口](superpowers/specs/2026-11-14-remote-file-window-size-proposal.md)：当前固定512KiB单块、30秒绝对组装、read默认20秒/显式最高600秒。冻结f455772已通过本地1367项/7项既有跳过、双strict/服务端构建、新独立SPEC→QUALITY和[一次官方Files验收](superpowers/plans/evidence/2026-11-14-remote-files-single-window-product-probe.json)：原100MiB读回279秒、新上传76秒/读回176秒、各四组Range、失败保护、实际OS进程未知提交只查询与精确清理。Task3b通过；[本地与独立审查收据](superpowers/plans/evidence/2026-11-14-remote-file-window-size-validation.json)保留首RED/夹具失败，旧官方失败收据原样保留。该文件层收据保留分阶段历史状态；业务路由、队列及手机模式的当前进度以上方本轮收据为准，官方长期验收仍待。文件层单次样本不代表P95、8小时或任意网络下600秒通过，未部署或发布。
 
-- [2026-11-11 原生版发布与后续 Android 单端构建](superpowers/plans/2026-11-11-android-only-release.md)：0.3.45 双端与软件源验收成功；不影响 iOS 的后续改动只构建 APK，单端首次真实批次待后续发布验收。
+- [2026-11-14 WebUI 输入框补修与双端发布](superpowers/plans/2026-11-14-web-composer-github-release.md)：0.3.47 APK／未签名 IPA 与既有软件源验收成功，加号居中和一至六行自适应已验证。
+- [2026-11-11 原生版发布与后续 Android 单端构建](superpowers/plans/2026-11-11-android-only-release.md)：0.3.45 双端与软件源验收成功，已具备 APK 单端入口；后续 IPA 范围以[原生界面影响判据](release-coordination.md#ios-build-scope)为准，包含破坏原生操作的网关接口变更，仅 WebUI 不打 IPA。单端首次真实批次待后续发布验收。
 - [2026-11-10 网页引用补修联合发布](superpowers/plans/2026-11-10-web-citations-hidden-release.md)：0.3.44 GitHub双端及既有iOS软件源、配套网关成功；12会话54项来源与73处引用回验通过。
+
+- [Remote项目、Git与标题消费者收据](superpowers/plans/evidence/2026-11-15-remote-projects-git-titles-validation.json)：冻结180cf6c8完成本地1677项/7跳过、独立双审和官方A/B；项目及Git用户index保持、独立标题、仅自有pin往返与归档、25秒零流后RPC已验证。统计失效装配见下条；公开目标路由、队列与手机模式继续待完成，未部署或发布。
+
+- [Remote统计失效与首次设备保存修复收据](superpowers/plans/evidence/2026-11-15-remote-upload-invalidation-validation.json)：7f468统计来源关闭后的HTTP/WS空值、真实IPC remove及迟到值隔离已验证；9f0d首次保存A/StrictMode经新双审与iPhone17Pro实际验收通过。Task3消费者完成，继续Task4/5/6；仅源码，未部署或发布。
 
 ## 当前发布入口
 
-最近已验收客户端为0.3.45（3045）：Android 新增 Material You 原生界面和完整交互动效，参照 iOS 收紧布局、字号与长文字显示；共享设备表单地址改为明文。成功批次 `89b75441-f1ec-4b96-b895-ef7d1e6a1063`，冻结 `ddf58d120a3b7fd53c221ade11b515f0de9f6ce2`；GitHub APK／未签名 IPA 和既有 iOS 软件源已回验，独立104项渠道核对通过，APK 实际版本、原生 Compose 入口及签名证书延续性通过。273项发布回归、59项协调器恢复、171项构建合同、21项 Android 原生与145项业务回归及1项 iPhone 17 Pro地址补验通过。本次未部署网关，沿用既有成功部署；LAN、签名 IPA 与 OTA 继续停用。真机安装、数据保留与实际手感待验收，详见[发布凭证](superpowers/plans/evidence/2026-11-11-native-layout-release.json)。
+最近已验收客户端为0.3.47（3047）：WebUI 输入框对齐 iOS 的正文与工具行布局，长输入自动增高至六行，模型、思考强度、权限和 Fast 独立操作，附件加号使用居中 SVG。成功批次 `433ed0e5-e037-4af3-adeb-a65bfd59bf0e`，冻结 `248b05ebea81aa54f7642eec186f286618b8cb9e`；GitHub APK／未签名 IPA 和既有 iOS 软件源已回验，46项独立渠道核对通过。167项组件／业务回归、17项 iPhone 17 Pro WebKit 验收及四项发布门禁通过。本次未部署网关；LAN、签名 IPA 与 OTA 继续停用。真机键盘、安装、数据保留与实际手感待验收，详见[发布凭证](superpowers/plans/evidence/2026-11-14-web-composer-release.json)。
 
 此前0.3.35已发布后续消息从输入区连续交接到用户气泡和旧图片预览保留，继承0.3.34的首条发送动效，历史、页头、附件及队列语义保持；其[发布计划](superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)保留当次验收口径。
 

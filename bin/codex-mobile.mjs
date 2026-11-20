@@ -53,6 +53,7 @@ function printHelp() {
 用法：
   codex-mobile start [--port <端口>]
   codex-mobile auth [--plain]
+  codex-mobile remote <管理动作> [参数]
   codex-mobile --version
   codex-mobile --help
 
@@ -79,7 +80,10 @@ if (command === "--version" || command === "-v" || command === "version") {
   process.exit(0);
 }
 
-if (
+if (command === "remote") {
+  const { runRemoteCli } = await import("./remote.mjs");
+  process.exitCode = await runRemoteCli(commandArgs);
+} else if (
   command === "auth" &&
   (commandArgs.length === 0 ||
     (commandArgs.length === 1 && commandArgs[0] === "--plain"))
@@ -108,16 +112,18 @@ if (
   }
 }
 
-if (command !== "start" || commandArgs.length > 0) {
-  process.stderr.write(`未知命令：${args.join(" ") || command}\n`);
+if (command !== "remote" && (command !== "start" || commandArgs.length > 0)) {
+  process.stderr.write("未知命令或参数\n");
   printHelp();
   process.exit(1);
 }
 
-process.env.PORT = port;
-process.env.CODEX_MOBILE_RUNTIME_FILE = runtimeFile;
-process.env.CODEX_MOBILE_STATIC_DIR = resolve(packageRoot, "dist");
-process.env.CODEX_MOBILE_VERSION = packageJson.version;
-await import(
-  pathToFileURL(resolve(packageRoot, "npm-dist/server/index.js")).href
-);
+if (command !== "remote") {
+  process.env.PORT = port;
+  process.env.CODEX_MOBILE_RUNTIME_FILE = runtimeFile;
+  process.env.CODEX_MOBILE_STATIC_DIR = resolve(packageRoot, "dist");
+  process.env.CODEX_MOBILE_VERSION = packageJson.version;
+  await import(
+    pathToFileURL(resolve(packageRoot, "npm-dist/server/index.js")).href
+  );
+}

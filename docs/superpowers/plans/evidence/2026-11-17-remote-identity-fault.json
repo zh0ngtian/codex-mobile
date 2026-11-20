@@ -1,0 +1,112 @@
+{
+  "recordedAt": "2026-11-17T08:28:57.008486+00:00",
+  "task": "remote-identity-fault-20261117",
+  "status": "deployed-and-verified",
+  "batchId": "bc862e03-c0e3-4bce-8195-d79539a2ffe6",
+  "sourceCommit": "f26378eb580d6cab6932ce3f8966fbf936378048",
+  "frozenCommit": "719ea8035f90ffed38f168e14a47d6030968250b",
+  "phases": [
+    "gateway",
+    "main",
+    "prepare",
+    "verify"
+  ],
+  "persistentReceiptMatches": true,
+  "installedDigestsMatch": true,
+  "frontendPreserved": true,
+  "configurationTokenAndOriginalIdentityPreserved": true,
+  "remoteState": "online",
+  "remotePendingResumeCount": 0,
+  "http": {
+    "/": 200,
+    "/api/host": 200,
+    "/api/status": 200
+  },
+  "tests": {
+    "relatedRegression": 293,
+    "adapterRegression": 290,
+    "buildContract": 164,
+    "coordinatorRecovery": 59,
+    "typecheck": true,
+    "serverStrict": true,
+    "serverBuild": true,
+    "expectedRedCases": 2,
+    "newFailureScenarios": 6
+  },
+  "officialRemoteRpc": {
+    "scope": "production gateway public WS to official Remote for gateway Mac",
+    "startedFromAuthorizedAndPaired": true,
+    "samples": [
+      {
+        "connectAndInitializeMs": 1574,
+        "modelListMs": 1788,
+        "modelCount": 9,
+        "readOnly": true
+      },
+      {
+        "connectAndInitializeMs": 4635,
+        "modelListMs": 3002,
+        "modelCount": 9,
+        "readOnly": true
+      }
+    ],
+    "idleBetweenClientConnectionsSeconds": 30,
+    "observedStates": [
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online",
+      "online"
+    ],
+    "allObservedOnline": true,
+    "testChatsCreated": 0,
+    "modelInferenceRequestsSent": 0,
+    "finishedAt": "2026-11-17T08:26:07.368Z",
+    "limitations": [
+      "short observation; not 8h, natural credential refresh, sleep or P95 proof",
+      "public client close does not prove all internal logical sessions released"
+    ]
+  },
+  "webTimings": {
+    "recordedAt": "2026-11-17T08:27:53.663Z",
+    "mode": "remote",
+    "refresh": {
+      "buttonFinishedMs": 513,
+      "buttonBusyObserved": "false",
+      "deviceLoadingCleared": false,
+      "lastObservationMs": 84210
+    },
+    "conversation": {
+      "title": "对齐 WebUI 输入框布局与交互",
+      "clickToBodyAndEnabledInputMs": 3187,
+      "ready": true,
+      "firstOpenAfterServerRestart": true
+    },
+    "viewport": {
+      "height": 852,
+      "width": 438
+    },
+    "limitations": [
+      "刷新按钮完成不等于后台会话同步完成；设备加载标记84.2秒后仍存在",
+      "单次网页观察，不是P95；未等待历史附件图片下载"
+    ],
+    "testChatsCreated": 0,
+    "inferenceRequests": 0
+  },
+  "limitations": [
+    "本次修复身份误判并恢复连接；网页后台刷新84.2秒仍有加载标记，整体性能未通过",
+    "单次网页计时，非P95；短时RPC，不代表8小时、睡眠或其他机器"
+  ],
+  "testChatsCreated": 0,
+  "clientPackagesReleased": false
+}

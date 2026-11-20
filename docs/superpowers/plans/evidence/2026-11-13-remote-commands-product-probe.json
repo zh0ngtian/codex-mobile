@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "8e3a1214c300bd20b215ac253a2032ce7ea04077",
+  "startedAt": "2026-11-13T15:14:03.849Z",
+  "passed": true,
+  "scope": "隔离实际OS网关入口、同runtime默认权限Python命令、自有临时子进程收尾与RPC",
+  "runs": [
+    {
+      "index": 0,
+      "oneRuntimeStart": true,
+      "remoteReadOnlyRpcPassed": true,
+      "defaultPermissionCommandPassed": true,
+      "commandProbeMs": 5942,
+      "commandExecRequests": 3,
+      "ownedChildCleanupProved": true,
+      "targetTemporaryDirectoryRemoved": true,
+      "defaultPermissionViolations": 0,
+      "adapterCloseKeptCallerSession": true,
+      "authPrepares": 1,
+      "startToRpcAndCliOnlineMs": 26149,
+      "actualBoundPortMatchedUrl": true,
+      "terminationRequested": "SIGTERM",
+      "actualExitCode": 0,
+      "actualSignalCode": null
+    }
+  ],
+  "productionChanged": false,
+  "newAuthorizationOrEnrollment": false,
+  "testChatsCreated": 0,
+  "modelInferenceRequestsSent": 0,
+  "concurrentLiveOwnerRejectedBeforeRemoteStart": true,
+  "zeroStreamDwellMs": 25000,
+  "lateReadOnlyRpcAfterCompletedInitializationPhase": true,
+  "noNewAuthPrepareDuringZeroStreamDwell": true,
+  "readOnlyModelListRequests": 2,
+  "defaultPermissionCommandExecRequests": 3,
+  "ownedChildCleanupProved": true,
+  "targetTemporaryDirectoryRemoved": true,
+  "backgroundWasObservedRunningBeforeCommandReturn": true,
+  "backgroundHadNotNaturallyCompletedAtCleanupCheck": true,
+  "pythonCapabilityProbes": 1,
+  "businessCommandRequests": 2,
+  "commandPermissionOverrides": 0,
+  "binaryStdoutAndStderrProved": true,
+  "nonzeroBusinessExitCode": 23,
+  "argvCwdEnvNullProved": true,
+  "adapterCloseKeptCallerSession": true,
+  "finishedAt": "2026-11-13T15:14:56.665Z",
+  "limitations": [
+    "探针在同一实际入口runtime上执行固定Python命令及自有临时目录/后台子进程收尾并保留字节、argv、cwd、env与非零退出事实；手机Remote路由尚未接入。",
+    "单次OS进程及25秒零流保活不是P95、8小时、跨过期或睡眠唤醒验收。",
+    "未执行新的真实OAuth、登记、密钥创建、模型推理或测试聊天；未启动现役launchd。"
+  ],
+  "initialProbeBeforeStrongerChildAssertions": {
+    "passed": true,
+    "startedAt": "2026-11-13T15:10:32.855Z",
+    "finishedAt": "2026-11-13T15:11:27.698Z",
+    "defaultPermissionCommandExecRequests": 3,
+    "readOnlyModelListRequests": 2,
+    "commandProbeMs": 8136,
+    "startToCommandRpcAndCliOnlineMs": 27367,
+    "zeroStreamDwellMs": 25000,
+    "limitation": "首次验证计数稳定；随后补充子进程已实际运行且未自然结束的断言，并以本收据主记录再次验证通过。"
+  },
+  "totalRequestsIncludingInitialProbe": {
+    "defaultPermissionCommandExecRequests": 6,
+    "readOnlyModelListRequests": 4,
+    "modelInferenceRequestsSent": 0
+  }
+}

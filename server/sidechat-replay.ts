@@ -1,9 +1,14 @@
-import { readFile } from 'node:fs/promises';
-import { extname } from 'node:path';
+import { localMediaFiles, type MediaFileReference, type MediaFileSource } from './media-file-source.js';
 
 type Value = Record<string, any>;
+export interface SidechatReplayOptions {
+  files?: MediaFileSource;
+  resolveReference?: (value: string) => MediaFileReference | null | Promise<MediaFileReference | null>;
+  signal?: AbortSignal;
+}
 /** 恢复已结束的分支上下文；工具记录作为历史文字注入，不重新调用工具。 */
-export async function sidechatReplayItems(turns: Value[]) {
+export async function sidechatReplayItems(turns: Value[], options: SidechatReplayOptions = {}) {
+  const files = options.files ?? localMediaFiles;
   const items: Value[] = [];
   for (const turn of turns) for (const item of turn.items ?? []) {
     if (item.type === 'userMessage') {
@@ -12,9 +17,20 @@ export async function sidechatReplayItems(turns: Value[]) {
         if (part.type === 'text') content.push({ type: 'input_text', text: part.text });
         else if (['image', 'localImage'].includes(part.type)) {
           let url = part.url ?? part.path;
-          if (typeof url === 'string' && url.startsWith('/')) {
-            const mime = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' }[extname(url).toLowerCase()] ?? 'image/png';
-            url = `data:${mime};base64,${(await readFile(url)).toString('base64')}`;
+          if (typeof url === 'string' && !/^(?:data:|https?:\/\/)/i.test(url)) {
+            // 只使用服务端受控引用解析；上游对象的 origin/source 字段没有可信归属。
+            const reference = await options.resolveReference?.(url) ?? (files.paths.isAbsolute(url) ? { source: files, path: url } : null);
+            if (reference) {
+              const { source, path } = reference;
+              const mime = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' }[source.paths.extname(path).toLowerCase()] ?? 'image/png';
+              const file = await source.open(path, undefined, options.signal);
+              try {
+                if (file.details.type !== 'file') throw new Error('History image is not a file');
+                const parts: Buffer[] = []; let length = 0;
+                for await (const part of file.read()) { parts.push(part); length += part.length; }
+                url = `data:${mime};base64,${Buffer.concat(parts, length).toString('base64')}`;
+              } finally { await file.close(); }
+            } else if (files.kind === 'remote' || options.resolveReference) throw new Error('Unresolved target image reference');
           }
           content.push({ type: 'input_image', image_url: url });
         } else content.push({ type: 'input_text', text: JSON.stringify(part) });

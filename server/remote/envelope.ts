@@ -125,6 +125,7 @@ export function encodeClientMessage(route: RemoteRoute, message: RpcMessage, opt
 }
 
 export interface ChunkAssemblerOptions { maxMessageBytes?: number; maxTotalBytes?: number; maxAssemblies?: number; timeoutMs?: number }
+export interface RemoteAssemblyProgress { receivedSegments: number; totalSegments: number; receivedBytes: number; messageBytes: number }
 interface Assembly { count: number; size: number; bytes: number; reserved: number; segments: Map<number, Buffer>; timer: NodeJS.Timeout }
 export function remoteAssemblyKey(frame: RoutedFrame): string { return JSON.stringify([frame.client_id, frame.stream_id, frame.env_id, frame.seq_id]); }
 
@@ -147,7 +148,7 @@ export class RemoteChunkAssembler extends EventEmitter {
   }
   get bufferedBytes(): number { return this.totalBytes; }
   get pendingCount(): number { return this.assemblies.size; }
-  accept(frame: ServerMessageChunk): { key: string; message?: RpcMessage } {
+  accept(frame: ServerMessageChunk): { key: string; progressed: boolean; message?: RpcMessage } {
     const key = remoteAssemblyKey(frame);
     try {
       if (this.closed) throw new RemoteProtocolError('Remote 分块组装器已关闭');
@@ -159,21 +160,27 @@ export class RemoteChunkAssembler extends EventEmitter {
       const previous = pending?.segments.get(frame.segment_id);
       if (previous) {
         if (!previous.equals(bytes)) throw new RemoteProtocolError('Remote 分块内容冲突');
-        return { key };
+        return { key, progressed: false };
       }
       const metadataBytes = pending ? 0 : ASSEMBLY_METADATA_BYTES + key.length * 2;
       const reservation = metadataBytes + SEGMENT_METADATA_BYTES + bytes.length;
       if (this.reservedBytes + reservation > this.maxTotalBytes || (pending?.bytes ?? 0) + bytes.length > frame.message_size_bytes) throw new RemoteProtocolError('Remote 分块内存超限');
       if (!pending) {
         if (this.assemblies.size >= this.maxAssemblies) throw new RemoteProtocolError('Remote 并发分块超限');
-        const timer = setTimeout(() => { this.remove(key); this.emit('discard', { key, reason: 'timeout' }); }, this.timeoutMs);
+        const timer = setTimeout(() => {
+          const assembly = this.assemblies.get(key);
+          if (!assembly) return;
+          this.remove(key);
+          const progress: RemoteAssemblyProgress = { receivedSegments: assembly.segments.size, totalSegments: assembly.count, receivedBytes: assembly.bytes, messageBytes: assembly.size };
+          this.emit('discard', { key, reason: 'timeout' }, progress);
+        }, this.timeoutMs);
         timer.unref();
         pending = { count: frame.segment_count, size: frame.message_size_bytes, bytes: 0, reserved: 0, segments: new Map(), timer };
         this.assemblies.set(key, pending);
       }
       pending.segments.set(frame.segment_id, bytes); pending.bytes += bytes.length; this.totalBytes += bytes.length;
       pending.reserved += reservation; this.reservedBytes += reservation;
-      if (pending.segments.size !== pending.count) return { key };
+      if (pending.segments.size !== pending.count) return { key, progressed: true };
       if (pending.bytes !== pending.size) throw new RemoteProtocolError('Remote 分块总字节数不符');
       const ordered = Array.from({ length: pending.count }, (_, index) => pending.segments.get(index)!);
       const full = Buffer.concat(ordered, pending.bytes);
@@ -181,7 +188,7 @@ export class RemoteChunkAssembler extends EventEmitter {
       let message: unknown;
       try { message = JSON.parse(utf8.decode(full)); } catch { throw new RemoteProtocolError('Remote 分块 JSON 编码无效'); }
       validateMessage(message);
-      return { key, message };
+      return { key, progressed: true, message };
     } catch (error) { this.remove(key); throw error; }
   }
   private remove(key: string): void {

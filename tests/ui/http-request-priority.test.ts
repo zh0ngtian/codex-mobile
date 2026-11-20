@@ -69,7 +69,7 @@ describe("HTTP前台会话优先于后台刷新", () => {
     await Promise.all([first, second, collapsed, visible, foreground]);
   });
 
-  it("冷启动额度查询未结束时，后续后台列表仍完成关键初始化", async () => {
+  it("冷启动基础设置独立就绪，额度查询未结束时仍继续后台列表", async () => {
     const { calls, create } = harness();
     const { client } = create("bootstrap-rate-limits", "http://bootstrap-rate-limits.test");
     await vi.advanceTimersByTimeAsync(0);
@@ -80,7 +80,7 @@ describe("HTTP前台会话优先于后台刷新", () => {
         await client.request("thread/list", { cwd: "/first", limit: 5 }, { priority: "background" });
         await client.request("thread/list", { cwd: "/next", limit: 5 }, { priority: "background" });
       },
-      loadSettings: () => client.request("config/read", { includeLayers: false }),
+      loadSettings: (options) => client.request("config/read", { includeLayers: false }, options),
       loadRateLimits: async (options?: AppServerRequestOptions) => {
         await client.request("account/rateLimits/read", undefined, options);
         rateLimitsSettled = true;
@@ -89,6 +89,7 @@ describe("HTTP前台会话优先于后台刷新", () => {
     try {
       calls.find((call) => call.method === "config/read")!.finish();
       await vi.advanceTimersByTimeAsync(0);
+      expect(initialized).toBe(true);
       expect(calls.some((call) => call.method === "account/rateLimits/read")).toBe(true);
       calls.find((call) => call.method === "thread/list")!.finish();
       await vi.advanceTimersByTimeAsync(0);
@@ -104,6 +105,60 @@ describe("HTTP前台会话优先于后台刷新", () => {
       await vi.advanceTimersByTimeAsync(0);
       calls.forEach((call) => call.finish());
       await bootstrap;
+    }
+  });
+
+  it("慢设备读取启动设置时同网关另一设备仍能读取项目目录", async () => {
+    const { calls, create, fetcher } = harness();
+    vi.stubGlobal("fetch", fetcher);
+    const origin = "http://bootstrap-device-isolation.test";
+    const a = create("slow", origin), b = create("fast", origin);
+    await vi.advanceTimersByTimeAsync(0);
+    const bootstrap = runWorkspaceBootstrap({
+      loadThreads: async () => undefined,
+      loadSettings: (options) => a.client.request("config/read", {}, options),
+      loadRateLimits: async () => undefined,
+    });
+    const projects = fetchBackendProjectState({ id: "fast", name: "Mac", baseUrl: origin, token: "test", enabled: true, order: 0 }, "background", b.client.signal);
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls.map(call => call.method)).toEqual(["config/read", "projects"]);
+      calls[1].finish();
+      expect(await projects).toMatchObject({ projects: ["/project"] });
+    } finally {
+      calls.forEach(call => call.finish());
+      await vi.advanceTimersByTimeAsync(0);
+      calls.forEach(call => call.finish());
+      await Promise.all([bootstrap, projects]);
+    }
+  });
+
+  it("同网关另一设备的初始化握手不占已连接设备的前台优先级", async () => {
+    const { calls, create, fetcher } = harness();
+    vi.stubGlobal("fetch", fetcher);
+    const origin = "http://handshake-device-isolation.test";
+    const a = create("connecting", origin), b = create("connected", origin);
+    await vi.advanceTimersByTimeAsync(0);
+    const handshake = a.client.initialize();
+    void handshake.catch(() => undefined);
+    const projects = fetchBackendProjectState({ id: "connected", name: "Mac", baseUrl: origin, token: "test", enabled: true, order: 0 }, "background", b.client.signal);
+    void projects.catch(() => undefined);
+    try {
+      expect(calls.map(call => call.method)).toEqual(["initialize", "projects"]);
+      calls[1].finish();
+      await expect(projects).resolves.toMatchObject({ projects: ["/project"] });
+      calls[0].finish();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls.map(call => call.method)).toEqual(["initialize", "projects", "initialized"]);
+      const list = b.client.request("thread/list", {}, { priority: "background" });
+      void list.catch(() => undefined);
+      expect(calls.at(-1)?.method).toBe("thread/list");
+      calls.at(-1)!.finish();
+      await expect(list).resolves.toEqual({ method: "thread/list" });
+      calls[2].finish();
+      await handshake;
+    } finally {
+      a.transport.close(); b.transport.close();
     }
   });
 
@@ -129,7 +184,7 @@ describe("HTTP前台会话优先于后台刷新", () => {
     expect(await Promise.all(refreshing)).toEqual(Array(4).fill({ method: "thread/read" }));
   });
 
-  it("排队时间不消耗网络超时，开始派发后仍执行原超时", async () => {
+  it("只读排队消耗原请求预算，预算耗尽后不再派发", async () => {
     const { calls, create, request } = harness();
     const { client } = create("queue-timeout");
     await vi.advanceTimersByTimeAsync(0);
@@ -142,8 +197,7 @@ describe("HTTP前台会话优先于后台刷新", () => {
     expect(calls).toHaveLength(2);
     calls[0].finish();
     await vi.advanceTimersByTimeAsync(0);
-    expect(calls).toHaveLength(3);
-    await vi.advanceTimersByTimeAsync(101);
+    expect(calls).toHaveLength(2);
     expect(await queued).toBeInstanceOf(Error);
   });
 
@@ -270,7 +324,7 @@ describe("HTTP前台会话优先于后台刷新", () => {
     await vi.advanceTimersByTimeAsync(0);
     const project = () => fetchBackendProjectState({ id: "timeout-project", name: "Mac", baseUrl: origin, token: "test", enabled: true, order: 0 }, "background", client.signal).catch((error: Error) => error);
     const first = project(), second = project();
-    const queued = request(client, "thread/read", { priority: "background" });
+    const queued = request(client, "thread/read", { priority: "background", timeoutMs: 60_000 });
     try {
       expect(calls).toHaveLength(2);
       await vi.advanceTimersByTimeAsync(10_001);

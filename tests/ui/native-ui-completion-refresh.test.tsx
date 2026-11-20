@@ -32,6 +32,7 @@ afterEach(() => {
 });
 
 async function openRunningConversation() {
+  localStorage.setItem('codex-mobile:collapsed-projects', '[]');
   server.turns = [{ id: 'turn', status: 'inProgress', startedAt: 100, itemsView: 'summary', items: [
     { id: 'user', type: 'userMessage', text: '检查完成刷新' },
     { id: 'progress', type: 'agentMessage', phase: 'commentary', text: '执行进展' },

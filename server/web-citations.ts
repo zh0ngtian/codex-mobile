@@ -3,6 +3,7 @@ import { stat } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { messageRolloutFiles } from './message-rollout-files.js';
 import { WEB_REFERENCE, webCitationIds, webCitationURL, type WebCitation } from './web-citation-format.js';
+import type { RemoteRolloutSource } from './rollout-source.js';
 
 type RecordValue = Record<string, any>;
 type Cached = { signature: string; checked: Set<string>; sources: Map<string, WebCitation | null> };
@@ -29,12 +30,28 @@ function* outputTexts(output: unknown, depth = 0): Generator<string> {
 /** 仅从本会话工具输出的来源标题提取 HTTP(S) 地址；不改写 rollout，不缓存工具正文。 */
 export class MessageWebCitations {
   private cache = new Map<string, Cached>();
-  constructor(private codexHome: string) {}
+  constructor(private codexHome: string, private source?: RemoteRolloutSource) {}
 
-  async read(threadId: string, ids: string[]): Promise<WebCitation[]> {
+  async read(threadId: string, ids: string[], signal?: AbortSignal): Promise<WebCitation[]> {
     const wanted = [...new Set(ids.filter(id => new RegExp(`^${WEB_REFERENCE}$`).test(id)))].slice(0, 2048);
     if (!wanted.length) return [];
     const sources = new Map<string, WebCitation | null>();
+    if (this.source) {
+      const read = this.source.begin(signal);
+      for await (const path of read.files(threadId)) {
+        let values = new Map<string, WebCitation | null>();
+        for await (const part of read.project(path, threadId, 'citations', wanted)) {
+          if ('reset' in part) { values = new Map(); continue; }
+          const value = part.value; const url = webCitationURL(value.url);
+          if (!wanted.includes(value.refId) || !url || typeof value.title !== 'string') continue;
+          values.set(value.refId, values.has(value.refId) && values.get(value.refId)?.url !== url ? null : { refId: value.refId, url, title: value.title.slice(0, 512) });
+        }
+        for (const [id, value] of values) {
+          const prior = sources.get(id); sources.set(id, sources.has(id) && prior?.url !== value?.url ? null : value);
+        }
+      }
+      return wanted.flatMap(id => sources.get(id) ? [sources.get(id)!] : []);
+    }
     for await (const path of messageRolloutFiles(this.codexHome, threadId)) {
       const values = await this.readFile(path, threadId, wanted);
       for (const [id, value] of values) {

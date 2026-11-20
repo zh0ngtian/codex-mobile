@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HttpRpcTransport } from "../../src/backends/http-transport";
+import { gatewayOutbox } from "../../src/backends/outbox";
 import { AppServerClient } from "../../src/app-server/client";
 
 const transports: HttpRpcTransport[] = [];
@@ -7,10 +8,13 @@ afterEach(() => {
   transports.splice(0).forEach((transport) => transport.close());
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
-function setup(fetcher: typeof fetch, id = "test") {
-  const transport = new HttpRpcTransport({ baseUrl: "http://device.test", token: "test", id }, {
+function setup(fetcher: typeof fetch, id = "test", gatewayMode: "local" | "remote" = "local") {
+  const transport = new HttpRpcTransport({ baseUrl: "http://device.test", token: "test", id, gatewayMode,
+    ...(gatewayMode === "remote" ? { remoteTarget: { mode: "remote" as const, gatewayId: "g", account: { accountId: "a", accountUserId: "u" }, target: { environmentId: "e", installationId: "i" } } } : {}),
+  }, {
     fetch: fetcher, sessionId: "12345678-1234-4234-8234-123456789abc",
   });
   transports.push(transport);
@@ -20,6 +24,109 @@ const events = (overrides = {}) => new Response(JSON.stringify({
   epoch: "first", cursor: 1, messages: [], requests: [], active: true,
   updatedAt: Date.now(), reset: false, ...overrides,
 }));
+
+it.each(['local', 'remote'] as const)('%s列表和对话直接读取RPC最新结果，无快照探测、后台刷新或二次投影', async gatewayMode => {
+  vi.useFakeTimers(); vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
+  const calls: { url: URL; message: any }[] = [], messages: any[] = [];
+  let revision = 0;
+  const transport = setup((async (input, init) => {
+    const url = new URL(String(input)), message = JSON.parse(String(init?.body)).message;
+    calls.push({ url, message });
+    // 即使旧网关声明快照能力，新前端仍使用与Local相同的RPC入口。
+    if (message.method === 'initialize') return new Response(JSON.stringify({ result: { gateway: { directRequests: true, readSnapshotFallback: true } } }));
+    return new Response(JSON.stringify({ result: { revision: ++revision } }));
+  }) as typeof fetch, `rpc-parity-${gatewayMode}`, gatewayMode);
+  await vi.advanceTimersByTimeAsync(0);
+  transport.addEventListener('message', event => messages.push(JSON.parse((event as MessageEvent).data)));
+  const client = new AppServerClient(transport);
+  await client.request('initialize', {}); calls.length = 0; messages.length = 0;
+  const reads = [
+    ['threadSection/list', {}],
+    ['thread/list', { cwd: '/project', limit: 5 }],
+    ['mobile/sidebar/summaries', { threadIds: [], includeRunning: true }],
+    ['mobile/sidebar/projectless', { threadIds: ['t'] }],
+    ['thread/read', { threadId: 't', includeTurns: false }],
+    ['thread/turns/list', { threadId: 't', itemsView: 'full', limit: 5 }],
+  ] as const;
+  for (let round = 0; round < 2; round++) for (const [method, params] of reads) {
+    const expectedRevision = revision + 1;
+    await expect(client.request(method, params, { priority: round ? 'background' : 'foreground' })).resolves.toEqual({ revision: expectedRevision });
+  }
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(calls).toHaveLength(12);
+  expect(calls.every(call => call.url.pathname === '/api/rpc')).toBe(true);
+  expect(calls.map(call => call.message.method)).toEqual(Array.from({ length: 2 }, () => [
+    'threadSection/list', 'thread/list', 'mobile/sidebar/summaries', 'mobile/sidebar/projectless', 'thread/read', 'mobile/turns/details',
+  ]).flat());
+  expect(messages).toHaveLength(12);
+  expect(messages.every(message => message.id != null && !message.method)).toBe(true);
+  for (const { url } of calls) {
+    expect(url.searchParams.get('mode')).toBe(gatewayMode === 'remote' ? 'remote' : null);
+    expect(url.searchParams.has('target')).toBe(gatewayMode === 'remote');
+  }
+});
+
+it.each(['local', 'remote'] as const)('%s导航读取失败直接返回，不查询旧操作或自动重发', async gatewayMode => {
+  vi.spyOn(gatewayOutbox, 'list').mockResolvedValue([]);
+  const paths: string[] = [];
+  const transport = setup((async (input, init) => {
+    const url = new URL(String(input)); paths.push(url.pathname);
+    const message = JSON.parse(String(init?.body)).message;
+    return message.method === 'initialize'
+      ? new Response(JSON.stringify({ result: { gateway: { directRequests: true, readSnapshotFallback: true } } }))
+      : new Response('{}', { status: 503 });
+  }) as typeof fetch, `rpc-parity-error-${gatewayMode}`, gatewayMode);
+  await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
+  await transport.send(JSON.stringify({ id: 1, method: 'initialize', params: {} })); paths.length = 0;
+  await expect(transport.send(JSON.stringify({ id: 2, method: 'thread/list', params: { cwd: '/project', limit: 5 } }), 100)).rejects.toThrow('503');
+  expect(paths).toEqual(['/api/rpc']);
+});
+
+it.each(['timeout', 'closed'] as const)('Remote恢复旧记录期间%s时，导航不能重置预算或在关闭后发送', async outcome => {
+  vi.useFakeTimers();
+  vi.stubGlobal('indexedDB', {});
+  let release!: () => void;
+  vi.spyOn(gatewayOutbox, 'list').mockImplementationOnce(() => new Promise(resolve => { release = () => resolve([]); }));
+  const fetcher = vi.fn(async () => new Response(JSON.stringify({ result: {} })));
+  const transport = setup(fetcher as typeof fetch, `restore-read-${outcome}`, 'remote');
+  await vi.advanceTimersByTimeAsync(0);
+  const reading = transport.send(JSON.stringify({ id: 1, method: 'thread/list', params: { limit: 5 } }), 100).catch(error => error);
+  await vi.advanceTimersByTimeAsync(101);
+  if (outcome === 'closed') transport.close();
+  release();
+  expect(await reading).toBeInstanceOf(Error);
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
+it('直连普通读取503立即失败，不查询旧operation或自动重发', async () => {
+  const paths: string[] = [];
+  const transport = setup((async (input, init) => {
+    const url = new URL(String(input)); paths.push(url.pathname);
+    if (url.pathname === '/api/operations') return new Response('{}', { status: 404 });
+    const message = JSON.parse(String(init?.body)).message;
+    return message.method === 'initialize' ? new Response(JSON.stringify({ result: { gateway: { directRequests: true } } })) : new Response('{}', { status: 503 });
+  }) as typeof fetch, 'direct-read-failure');
+  await new Promise<void>(resolve => transport.addEventListener('open', () => resolve()));
+  await transport.send(JSON.stringify({ id: 1, method: 'initialize', params: {} })); paths.length = 0;
+  await expect(transport.send(JSON.stringify({ id: 2, method: 'account/read', params: { refreshToken: false } }), 100)).rejects.toThrow('503');
+  expect(paths).toEqual(['/api/rpc']);
+});
+
+it('后台读取等待调度期间耗尽原预算后不再发送', async () => {
+  vi.useFakeTimers(); const methods: string[] = []; let release!: () => void;
+  const transport = setup((async (_input, init) => {
+    const message = JSON.parse(String(init?.body)).message; methods.push(message.method);
+    if (message.method === 'account/read') await new Promise<void>(resolve => { release = resolve; });
+    return new Response(JSON.stringify({ result: {} }));
+  }) as typeof fetch, 'queued-read-deadline');
+  await vi.advanceTimersByTimeAsync(0);
+  const foreground = transport.send(JSON.stringify({ id: 1, method: 'account/read' }), 10000);
+  await vi.advanceTimersByTimeAsync(0);
+  const background = transport.send(JSON.stringify({ id: 2, method: 'thread/list' }), 100, 'background').catch(error => error);
+  await vi.advanceTimersByTimeAsync(101); release(); await foreground;
+  expect(await background).toBeInstanceOf(Error);
+  expect(methods).toEqual(['account/read']);
+});
 
 describe("HTTP 文字传输", () => {
   it.each([null, "/work/project"])("旧创建请求未知时，显式新会话有独立操作标识，cwd=%s", async cwd => {

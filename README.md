@@ -73,7 +73,7 @@ http://<电脑局域网IP>:18766/?token=<随机口令>
 
 客户端不设置设备数量上限，可同时维持所有已启用设备的连接；保存和恢复完整设备列表及排序。
 
-最近已验收客户端为0.3.45（3045）：Android 新增 Material You 原生界面和完整交互动效，参照 iOS 收紧布局、字号与长文字显示；共享设备表单地址改为明文。成功批次 `89b75441-f1ec-4b96-b895-ef7d1e6a1063`，冻结 `ddf58d120a3b7fd53c221ade11b515f0de9f6ce2`；GitHub APK／未签名 IPA 和既有 iOS 软件源已回验，独立104项渠道核对通过，APK 实际版本、原生 Compose 入口及签名证书延续性通过。273项发布回归、59项协调器恢复、171项构建合同、21项 Android 原生与145项业务回归及1项 iPhone 17 Pro地址补验通过。本次未部署网关，沿用既有成功部署；LAN、签名 IPA 与 OTA 继续停用。真机安装、数据保留与实际手感待验收，详见[发布凭证](docs/superpowers/plans/evidence/2026-11-11-native-layout-release.json)。
+最近已验收客户端为0.3.47（3047）：WebUI 输入框对齐 iOS 的正文与工具行布局，长输入自动增高至六行，模型、思考强度、权限和 Fast 独立操作，附件加号使用居中 SVG。成功批次 `433ed0e5-e037-4af3-adeb-a65bfd59bf0e`，冻结 `248b05ebea81aa54f7642eec186f286618b8cb9e`；GitHub APK／未签名 IPA 和既有 iOS 软件源已回验，46项独立渠道核对通过。167项组件／业务回归、17项 iPhone 17 Pro WebKit 验收及四项发布门禁通过。本次未部署网关；LAN、签名 IPA 与 OTA 继续停用。真机键盘、安装、数据保留与实际手感待验收，详见[发布凭证](docs/superpowers/plans/evidence/2026-11-14-web-composer-release.json)。
 
 此前0.3.35已发布iOS已有会话的后续消息动效与旧图片预览保留，继承0.3.34的首条发送动效；支持文字、图片与文件、多附件、仅附件、快速确认、失败返回编辑及待确认防重复，历史与页头保持。其[发布计划](docs/superpowers/plans/2026-10-24-followup-message-motion-release.md)与[公共凭证](docs/superpowers/plans/evidence/2026-10-24-followup-message-motion-release.json)保留当次验收口径。
 
@@ -153,7 +153,7 @@ iOS AgentApp 完整原生界面的最新交互、验收要点和覆盖关系统�
 
 ### 界面模式
 
-当前源码保留共享网页界面与 iOS SwiftUI 原生界面。Android 直接使用内置 Web 页面和网页输入框，Compose 原生呈现已按用户要求移除；iOS 继续支持原生与网页模式。此变更尚未正式发布，现役0.3.45 APK 仍包含此前 Android 原生版，渠道状态见最新发布凭证。
+当前源码保留共享网页界面与 iOS SwiftUI 原生界面。Android 直接使用内置 Web 页面和网页输入框，Compose 原生呈现已按用户要求移除；iOS 继续支持原生与网页模式。现役0.3.47 APK 已包含该变更，网页输入框同时完成 iOS 布局对齐，渠道状态见最新发布凭证。
 
 新版 Web 界面与网页搭配原生输入框的模式已移除，对应开关不再显示。iOS 升级保留“使用原生界面”的现有选择；旧新版 Web 与独立原生输入框偏好不再生效。iOS 首次安装默认使用原生界面和黑色强调色，已有明确保存的界面和颜色选择继续保留。
 
@@ -186,7 +186,11 @@ Android 使用固定 PakePlus WebView 容器直接呈现内置共享 Web 页面�
 
 ## 系统架构
 
-官方 Remote 常驻网关正在开发：协议复用、网关自有硬件授权、受管认证及账号绑定控制器/目标目录模块已有源码和隔离 RPC 验证；一次性 OAuth、活动身份存储和运行管理/普通登录模块已通过隔离测试及独立审查，运行管理层已用既有自有身份验证三流 RPC、断线恢复、零流保活与持久暂停恢复，未实际重新授权。Mac CLI、目标业务路由、共享离线队列及客户端模式选择尚未接入，长期稳定性和延迟分位数仍待验收。当前使用方式仍按下述架构；本轮不部署网关或发布客户端。已确认边界及待验收项见[设计](docs/superpowers/specs/2026-11-13-remote-gateway.md)和[实施计划](docs/superpowers/plans/2026-11-13-remote-gateway.md)。
+现役网关与自带网页已按2026-11-17用户选择B恢复消息队列：Local与Remote的普通读取、写入、创建、停止、审批、上传和标题总结直接请求对应Session／目标服务，不再经过统一离线操作队列；只有明确排队的消息由网关持有，复用引入Remote前的FollowUps逻辑。Remote离线时普通操作报错，不自动等待恢复后补发；已发送且结果未知仍按原UUID对账。该队列调整已由成功批次 `aa0726b9-5d07-45e0-b13e-1649860cda33` 部署，当次冻结 `07fa1673`；网页与服务端实际摘要、原配置和Remote授权／配对已核对，Local／Remote只读RPC、66秒WS持续连接及客户端重连通过。见[本批部署凭证](docs/superpowers/plans/evidence/2026-11-17-restored-queue-gateway-deploy.json)。手机安装包未发布。本地后台更新恢复引入Remote前的关注会话通知和托管追问处理，不再因打开过普通会话就持续轮询24小时；旧Local观察记录停止调度、原文件保留。该后台范围恢复已随首批性能修复部署，现役网关已包含。本地性能修复已部署，现役12次HTTP／WS读取为2–14ms，其中HTTP未新增持久读取记录，单次网页打开至正文可见约653ms；这些短测不代表P95。详见[实际部署与验收记录](docs/superpowers/plans/evidence/2026-11-17-remote-production-rpc.json)。
+
+Remote 前端与网关的读取已按2026-11-18用户要求在源码中对齐 Local：侧栏、置顶、运行摘要及对话通过原 `/api/rpc` 请求最新结果，不再先查询共享快照、后台刷新后通知前端重读。刷新保留已有列表，按钮仅等待本轮实际读取收尾；请求失败沿用本地保留内容和重试逻辑。网关到 Remote 设备仍走官方 Relay，完整目标及授权隔离保持。服务端快照接口继续兼容旧客户端。该改动已随成功批次 `c672d87b-d5a0-46d7-8c00-23e58b5add4d` 更新网关与自带网页，现役冻结 `a6c9ff0b`；实际资源和构建回执已核对。上线验收当时因普通登录失效，公开读取返回503。原 ChatGPT 账号已随后恢复登录；跳过有效凭据的强制续期已由网关批次 `9d9d2ddd-e55a-4af7-91a6-27e7a938e989` 部署。原配对保留，两台设备的会话只读 RPC 已回验；网页正文重试 4.86 秒，侧栏仍因项目目录和连接请求失败而未通过。未发布手机安装包，见[本批部署及阻塞凭证](docs/superpowers/plans/evidence/2026-11-18-remote-rpc-parity-deploy.json)及[账号续期与网关管理](docs/remote-gateway-management.md)。
+
+此前官方 Remote 常驻网关及配套 WebUI 已于2026-11-17部署到现有 Mac，前一批冻结来源为 `c55a9beb`；手机安装包尚未包含本轮改动。身份误判、列表快照反馈循环及后台同步导致首页刷新按钮持续转圈均已修复。按钮只表示本轮手动刷新，该生产版本的后台快照同步通过独立提示呈现；两台Remote的按钮状态已在网页验收，多设备手动刷新仍偏慢，未取得精确耗时。历史单机刷新5.9／7.4／8.4秒及首次详情3.3秒仅代表当轮，冷列表、P95和长期连接仍待验证，见[最新按钮修复凭证](docs/superpowers/plans/evidence/2026-11-17-remote-refresh-spinner.json)。手机保留多网关，每个网关在原URL表单中选择本地或远程；远程模式下网关Mac也走官方Relay。只有“测试并保存”验证后才切换，旧配置默认本地。公开路由、消费者、共享持久队列、手机outbox和Remote会话观察器已实现，原授权与本机配对保留。会话正文仍仅实测网关Mac，已补两台Remote侧栏刷新状态验收；此前公开WS间隔30秒、HTTP间隔120秒的两轮只读RPC成功，采样online。原8小时监测因性能部署中止，保留32次采样：30次RPC成功、2次超时，未完成8小时验收；本轮按用户要求直接网页验证，未重启长期监测。官方全量功能、其他机器、自然凭据刷新、睡眠唤醒与延迟分位数仍待验收。使用与证据见[Mac管理说明](docs/remote-gateway-management.md)、[现行交互约定](docs/interaction-alignment.md)、[设计](docs/superpowers/specs/2026-11-13-remote-gateway.md)及[最新部署与实测收据](docs/superpowers/plans/evidence/2026-11-17-remote-production-rpc.json)。
 
 ```mermaid
 flowchart LR
@@ -215,7 +219,7 @@ flowchart LR
 重试重复执行；网关重启后，无法确认的操作不会自动重放。遇到“请求结果待确认”时先检查
 会话，相同内容重试沿用原操作 ID，勿修改内容后反复发送。
 
-排队消息在网关确认后保存到 `$CODEX_HOME/codex-mobile-follow-ups/queue.json`。手机退出、断线或切换会话后，网关仍会等待当前回合结束并按顺序发送；网关重启会核对原请求记录再恢复。正文、附件、提及与发送设置在入队时一起冻结，客户端重新连接后读取同一队列。HTTP 和流式模式共用这套队列，设备网关须升级到支持 `followUpQueue` 的版本。
+现行源码的排队消息在网关确认前同步保存到 `$CODEX_HOME/codex-mobile-follow-ups/restored-queue.json`；未接目标路由的旧外接模式仍使用原 `queue.json`。首次升级以统一账本中的最新追问（含终态收据）为准迁移，之后只读新文件；旧账本及旧 `queue.json` 保留，不重新导入陈旧记录。旧普通操作停止自动派发，原UUID仍可查询；旧手机未提交普通项保留且停止自动提交。手机退出、断线或切换会话后，网关仍会等待当前回合结束并按顺序发送；网关重启会核对原请求记录再恢复。正文、附件、提及与发送设置在入队时一起冻结，客户端重新连接后读取同一队列。HTTP 和流式模式共用这套队列，设备网关须升级到支持 `followUpQueue` 的版本。
 
 发送失败或结果待确认时，当前会话的后续排队暂停。明确失败可以编辑、重试或取消；结果待确认只能核对会话后显式移除记录，移除不会撤销已发送的任务。普通直接发送失败时的手动重试草稿仍暂存于当前客户端；尚未获得网关入队确认的草稿也应保留到提交结果确认后。
 
@@ -373,7 +377,7 @@ npm run test:e2e
 
 ## 移动端构建
 
-仅在用户明确要求发布时，由本机已有 `releasectl` 协调正式发布；普通源码任务不发包。仅涉及 Android 时使用 `codex-mobile-github-android`／`mobile-github-android`，阶段为 `main → build → verify`，只构建 GitHub APK；涉及 iOS 或影响 iOS 的共享运行代码时使用 `codex-mobile-github-only`／`mobile-github-only`，阶段为 `main → build → source → verify`，生成同版本 APK／unsigned IPA 并同步既有 iOS 软件源。冻结项目决定 CI 平台和验收范围，Android 单端不启动 iOS 作业，也不读取或更新 iOS 软件源；共享表单等改动须核对 iOS 消费者。各项目继续共用 main 锁与版本预留，不写 LAN 包、不签名或发布 OTA。配置和恢复验收见[发布协调说明](docs/release-coordination.md)。
+仅在用户明确要求发布时，由本机已有 `releasectl` 协调正式发布；普通源码任务不发包。2026-11-14 起，只有影响 iOS 原生界面的呈现或操作才打 IPA：原生代码、共享业务／桥接，以及修改或删除网关接口导致原生操作异常均在范围内；仅 WebUI 或 iOS 网页模式变化不打 IPA。不影响原生界面的客户端发布使用 `codex-mobile-github-android`／`mobile-github-android`，只构建 APK，阶段为 `main → build → verify`；影响原生界面时使用 `codex-mobile-github-only`／`mobile-github-only`，生成同版本 APK／unsigned IPA 并同步既有软件源，阶段为 `main → build → source → verify`。冻结项目决定 CI 平台和验收范围，APK 单端不启动 iOS 作业，也不读取或更新 iOS 软件源。各项目继续共用 main 锁与版本预留，不写 LAN 包、不签名或发布 OTA。完整判据及接口兼容性验收见[发布协调说明](docs/release-coordination.md#ios-build-scope)。
 
 Android新版本从[GitHub Release](https://github.com/zh0ngtian/codex-mobile/releases)手动下载APK并安装。8765局域网发布服务已停止并disabled；客户端现有LAN更新检查在关闭后不可用，本次没有将自动更新切换到GitHub，也没有新增更新交互。旧APK、IPA、清单和服务配置保留在原目录，不再更新。
 
@@ -391,7 +395,7 @@ Android 安装包保持竖屏。iOS App 在 iPhone、iPad 及应用内浏览器�
 
 - GitHub按冻结平台构建复用 `mobile/*/build-recipe.yml`，prepare查询全部GitHub Release标签、仓库版本下限和保留失败预留（含旧0.3.37），不访问任何LAN清单、签名配置或HTTPS OTA。npm包按需手动测试、构建和发布。
 - 已获用户发布授权的客户端任务经协调器整合、复验、冻结后推送正式批次。验收独立完整下载本批实际平台的产物并核对大小和 SHA-256；包含 iOS 时另核对 unsigned IPA 及软件源版本、日志和署名。交付按本批范围提供 Release／APK，双端另附 IPA／软件源链接，保存 `github-release.json` 与实际 `platforms`；Android 单端不把旧 IPA 当成本次产物。
-- 改动不涉及客户端运行代码、客户端引用的共用模块、原生桥接或影响客户端产物的构建配置时，不得触发客户端 Web、APK 或 IPA 的构建与发布；仅修改文档、规则、测试、服务端或不影响客户端产物的脚本时，均遵循此规则。服务端变更仍须验证和构建服务端，只有用户明确要求部署时才部署网关。具体约束见 [AGENTS.md](AGENTS.md)。
+- 仅修改文档、规则、测试、不影响客户端产物的脚本或不影响客户端操作的服务端内部实现时，不触发客户端 Web、APK 或 IPA 的构建与发布。网关接口修改或删除影响 iOS 原生操作时，须完成兼容适配及原生操作验证，并纳入 iOS 打包范围；不能仅以改动位于服务端为由排除。客户端发布与网关部署仍分别遵守授权，具体约束见 [AGENTS.md](AGENTS.md)。
 
 本地构建配置与环境约定见 [构建说明](mobile/README.md)：
 

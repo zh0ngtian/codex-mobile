@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-15",
+  "scope": "gateway-webui",
+  "taskId": "web-markdown-images-update-20261115",
+  "sourceCommit": "b66ad5369511ce3e085b06afa1ef533326489ef7",
+  "batchId": "2df6c58f-70f6-4186-9bc7-4398702bd9cd",
+  "frozenCommit": "ac6132c2668e4de2490905f9ad785de0095e4a38",
+  "status": "complete",
+  "webUi": true,
+  "gateway": {
+    "frontendDigest": "fbc14f2b7d62259e9a4cceeb67085c3b2215d9ec298b8d97350140144d73f440",
+    "serverDigest": "aaad79bd927e36317fa3823327b817b5ba8447b70da4b064de0950252ddbfc55",
+    "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+    "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+    "archiveSha256": "56bf22fd5704383a246d6215c2595a8f7150d8adf464fdb0fbf23fda3e3fdde3",
+    "pid": 92116,
+    "oldPid": 15793
+  },
+  "verification": {
+    "persistedReceiptMatches": true,
+    "independentGatewayCheck": "passed",
+    "liveFrontendMatchesFrozenOutput": true,
+    "startupAndEnvironmentUnchanged": true,
+    "developmentCi": {
+      "attempt": 1,
+      "runId": 43729989349,
+      "sourceCommit": "ac6132c2668e4de2490905f9ad785de0095e4a38"
+    }
+  },
+  "localChecks": [
+    {
+      "name": "coordinator-recovery",
+      "status": "passed",
+      "result": "59 tests, OK"
+    },
+    {
+      "name": "build-contract",
+      "status": "passed",
+      "result": "22 files, 164 tests passed"
+    },
+    {
+      "name": "typecheck",
+      "status": "passed",
+      "result": "tsc -b --pretty false, exit 0"
+    },
+    {
+      "name": "adapter-regression",
+      "status": "passed",
+      "result": "284 tests, OK"
+    }
+  ],
+  "additionalChecks": {
+    "gatewayTests": 42,
+    "imageUiTests": 44,
+    "webBuild": "passed",
+    "specReview": "passed",
+    "qualityReview": "passed"
+  },
+  "browser": {
+    "threadId": "019f6f35-c5c0-7bd0-9e3b-9d70c6ad509a",
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "font": "normal",
+    "orientation": "portrait",
+    "loadedBodyImages": [
+      {
+        "alt": "原画定位总览",
+        "naturalWidth": 406,
+        "naturalHeight": 640,
+        "loaded": true
+      },
+      {
+        "alt": "先找到画里的主人",
+        "naturalWidth": 640,
+        "naturalHeight": 608,
+        "loaded": true
+      },
+      {
+        "alt": "人间的送别",
+        "naturalWidth": 372,
+        "naturalHeight": 640,
+        "loaded": true
+      },
+      {
+        "alt": "龙与玉璧",
+        "naturalWidth": 372,
+        "naturalHeight": 640,
+        "loaded": true
+      },
+      {
+        "alt": "天门与守卫",
+        "naturalWidth": 257,
+        "naturalHeight": 640,
+        "loaded": true
+      },
+      {
+        "alt": "日月图像",
+        "naturalWidth": 372,
+        "naturalHeight": 640,
+        "loaded": true
+      },
+      {
+        "alt": "天神与神鸟",
+        "naturalWidth": 372,
+        "naturalHeight": 640,
+        "loaded": true
+      },
+      {
+        "alt": "地下图像",
+        "naturalWidth": 257,
+        "naturalHeight": 640,
+        "loaded": true
+      },
+      {
+        "alt": "补充分解图像",
+        "naturalWidth": 372,
+        "naturalHeight": 640,
+        "loaded": true
+      }
+    ],
+    "overviewPreview": {
+      "loaded": true,
+      "naturalWidth": 2000,
+      "naturalHeight": 3150
+    },
+    "downloadPathDecodedCorrectly": true,
+    "screenshotVisuallyChecked": true,
+    "userThreadUnmodified": true,
+    "testSessionsCreated": 0
+  },
+  "limits": {
+    "missingOriginalUploads": 17,
+    "missingTemporaryImages": 3,
+    "missingFilesRecovered": false,
+    "androidPackageBuilt": false,
+    "iosPackageBuilt": false,
+    "clientReleasePublished": false,
+    "softwareSourceUpdated": false
+  },
+  "verifiedAt": "2026-11-15T15:36:25.463849+00:00"
+}

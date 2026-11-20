@@ -1,6 +1,7 @@
 import { AppServerClient } from "../app-server/client";
 import { HttpRpcTransport, transportUuid } from "./http-transport";
-import type { BackendConfig } from "./types";
+import { gatewayUrl, readGatewayTargets } from './gateway-route';
+import type { GatewayTarget, BackendConfig } from "./types";
 import { t } from "../i18n";
 import { backendWebSocketUrl } from "./connection-manager";
 import { httpRequestScheduler, type HttpRequestPriority } from "./http-request-scheduler";
@@ -13,6 +14,7 @@ export interface GatewayHostInfo {
   gatewayVersion: string;
   appServerReady: boolean;
   httpPolling?: boolean;
+  remote?: { version: number; supported: boolean; configured?: boolean; authorized?: boolean; paired?: boolean; temporarilyOffline?: boolean; targets?: GatewayTarget[] };
 }
 
 export interface BackendProjectState {
@@ -51,9 +53,9 @@ export async function fetchBackendProjectState(
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await httpRequestScheduler.run(new URL(config.baseUrl).origin, priority, controller.signal, async () => {
-      timeout = setTimeout(() => controller.abort(new Error(t("{method} 请求超时", { method: "/api/projects" }))), 10_000);
+      timeout = setTimeout(() => controller.abort(new Error(t("{method} 请求超时", { method: "/api/projects" }))), config.gatewayMode === 'remote' ? 60_000 : 10_000);
       const response = await fetch(
-        withToken(config.baseUrl, "/api/projects", config.token),
+        gatewayUrl(config, "/api/projects").toString(),
         { method: "GET", mode: "cors", signal: controller.signal },
       );
       if (!response.ok) throw new Error(t("项目目录接口返回 {status}", { status: response.status }));
@@ -95,11 +97,6 @@ export async function fetchBackendProjects(config: BackendConfig) {
   return (await fetchBackendProjectState(config)).projects;
 }
 
-function withToken(baseUrl: string, path: string, token: string) {
-  const url = new URL(path, `${baseUrl}/`);
-  if (token) url.searchParams.set("token", token);
-  return url.toString();
-}
 
 async function initializeHttpSession(
   config: BackendConfig,
@@ -122,7 +119,7 @@ async function initializeHttpSession(
             { once: true },
           );
         });
-        const client = new AppServerClient(socket);
+        const client = new AppServerClient(socket, config.gatewayMode === 'remote' ? { requestTimeoutMs: timeoutMs } : {});
         await client.initialize();
         await client.request("thread/loaded/list", { limit: 1 });
       })(),
@@ -191,7 +188,7 @@ export async function fetchBackendHostInfo(
   let response: Response;
   try {
     response = await fetchHost(
-      withToken(config.baseUrl, "/api/host", config.token),
+      gatewayUrl(config, "/api/host").toString(),
       {
         method: "GET",
         mode: "cors",
@@ -217,7 +214,13 @@ export async function fetchBackendHostInfo(
   ) {
     throw new Error(t("设备身份响应无效"));
   }
-  if (!info.appServerReady) {
+  if (config.gatewayMode === 'remote') {
+    if (info.remote?.version !== 1 || !info.remote.supported) throw new Error(t('网关尚不支持远程模式，请先升级网关'));
+    if (!info.remote.authorized) throw new Error(t('网关尚未完成 Remote 授权'));
+    if (!info.remote.paired) throw new Error(t('网关本机尚未完成 Remote 配对'));
+    info.remote.targets = readGatewayTargets(info.remote.targets);
+    if (!info.remote.targets.some(target => target.isGatewayHost)) throw new Error(t('远程机器目录不可用'));
+  } else if (!info.appServerReady) {
     throw new Error(t("设备 app-server 尚未就绪"));
   }
   return info;
@@ -227,9 +230,16 @@ export async function probeBackend(
   config: BackendConfig,
   dependencies: ProbeDependencies = {},
 ): Promise<GatewayHostInfo> {
-  const timeoutMs = dependencies.timeoutMs ?? 6_000;
+  // Remote 需经官方中继建立逻辑流并验证目标；控制面仍沿用独立的6秒预算。
+  const timeoutMs = dependencies.timeoutMs ?? (config.gatewayMode === 'remote' ? 60_000 : 6_000);
   const info = await fetchBackendHostInfo(config, dependencies);
-  if (config.transportMode === "stream") {
+  if (config.gatewayMode === 'remote') {
+    if (info.remote?.temporarilyOffline) return info;
+    const target = info.remote?.targets?.find(target => target.isGatewayHost);
+    if (!target) throw new Error(t('远程机器目录不可用'));
+    config = { ...config, remoteTarget: target.reference };
+  }
+  if (config.gatewayMode !== 'remote' && config.transportMode === "stream") {
     await withTimeout(
       dependencies.initializeStream?.(config) ?? initializeStreamSession(config, timeoutMs),
       timeoutMs,

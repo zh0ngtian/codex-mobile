@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "status": "complete",
+  "distribution": "github-only",
+  "softwareSourceUpdated": true,
+  "platforms": [
+    "android",
+    "ios"
+  ],
+  "version": "0.3.47",
+  "buildNumber": "3047",
+  "completedAt": "2026-11-14T03:39:39.961845+00:00",
+  "taskId": "web-composer-ios-alignment-github-only-20261114",
+  "taskSourceCommit": "ee8d91d272d9f162a3b1e6f3d0b046934cf22596",
+  "frozenCommit": "248b05ebea81aa54f7642eec186f286618b8cb9e",
+  "batchId": "433ed0e5-e037-4af3-adeb-a65bfd59bf0e",
+  "receiptSha256": "62d904049ca4c51f1bd2565582d9b188acc14e2d30ee1d790a22e2ec62b2a9d0",
+  "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.47",
+  "ci": {
+    "formal": {
+      "runId": 43551720813,
+      "attempt": 1,
+      "conclusion": "success"
+    },
+    "development": {
+      "runId": 43551720743,
+      "attempt": 1,
+      "conclusion": "success"
+    }
+  },
+  "validation": {
+    "adapterRegression": 273,
+    "coordinatorRecovery": 59,
+    "buildContract": 164,
+    "typecheck": "passed",
+    "componentBusiness": 167,
+    "webkit": 17,
+    "profile": "iPhone 17 Pro / 正常字号 / 竖屏",
+    "independentAssertions": 46,
+    "redGreenObserved": true,
+    "realTestSessions": 0,
+    "browserContextsClosed": true
+  },
+  "artifacts": {
+    "android": {
+      "name": "CodexMobile-v0.3.47.apk",
+      "url": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.47/CodexMobile-v0.3.47.apk",
+      "size": 4799584,
+      "sha256": "55c4c2d82da146fd9fa133ff34744a9fd62d9038c4e5f80800fb7f0aa9813e49",
+      "headStatus": 200,
+      "headLength": 4799584,
+      "signed": true
+    },
+    "ios": {
+      "name": "CodexMobile-v0.3.47-unsigned.ipa",
+      "url": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.47/CodexMobile-v0.3.47-unsigned.ipa",
+      "size": 5031172,
+      "sha256": "1454dbc09c387aeca6e76ec350f9d4068b724805c2b99a4d2e15d6ec9e73ba57",
+      "headStatus": 200,
+      "headLength": 5031172,
+      "signed": false
+    }
+  },
+  "apk": {
+    "bundleId": "vip.loock.codexmobile",
+    "version": "0.3.47",
+    "buildNumber": 3047,
+    "centeredPlusIncluded": true,
+    "sixLineComposerIncluded": true
+  },
+  "ipa": {
+    "CFBundleIdentifier": "vip.loock.codexmobile",
+    "CFBundleShortVersionString": "0.3.47",
+    "CFBundleVersion": "3047",
+    "signed": false,
+    "signatureResources": false,
+    "embeddedProvision": false
+  },
+  "softwareSource": {
+    "url": "https://signos-source-aggregator.305301890.workers.dev/sources/yao.json",
+    "appId": "bdf9cfa5-6c34-49ca-82fb-31a85ad9e6da",
+    "version": "0.3.47",
+    "buildVersion": "3047",
+    "downloadURL": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.47/CodexMobile-v0.3.47-unsigned.ipa",
+    "size": 5031172,
+    "sha256": "1454dbc09c387aeca6e76ec350f9d4068b724805c2b99a4d2e15d6ec9e73ba57",
+    "developerName": "zh0ngtian",
+    "developerPreserved": true,
+    "chineseReleaseNotesMatched": true,
+    "syncJobId": "1597f775-abc0-4004-b149-10d40219d83b"
+  },
+  "lanApkPublished": false,
+  "signedIpaPublished": false,
+  "otaPublished": false,
+  "fixedIpaPublished": false,
+  "gatewayDeployed": false,
+  "historicalLanFilesUnchanged": true,
+  "localState": {
+    "historicalPortsListening": false,
+    "services": {
+      "local.globaltranslation.apk-server": {
+        "disabled": true,
+        "running": false
+      },
+      "local.codex-mobile.ios-ota": {
+        "disabled": true,
+        "running": false
+      }
+    },
+    "primaryStagedUnchanged": true,
+    "rulesMatchApprovedSource": true
+  },
+  "limitations": [
+    "WebKit配置不等于真机验收；真机系统键盘、覆盖安装和数据保留仍待人工验收。"
+  ],
+  "checks": [
+    "任务和批次均完成",
+    "统一版本与固定来源",
+    "任务SHA包含",
+    "双端与软件源范围",
+    "lanApkPublished",
+    "signedIpaPublished",
+    "otaPublished",
+    "fixedIpaPublished",
+    "android:version",
+    "android:buildNumber",
+    "android:batchId",
+    "android:sourceCommit",
+    "android:size",
+    "android:sha256",
+    "android:tasks",
+    "android:runId",
+    "android:runAttempt",
+    "android:独立下载",
+    "ios:version",
+    "ios:buildNumber",
+    "ios:batchId",
+    "ios:sourceCommit",
+    "ios:size",
+    "ios:sha256",
+    "ios:tasks",
+    "ios:runId",
+    "ios:runAttempt",
+    "ios:独立下载",
+    "APK实际版本",
+    "APK包名",
+    "APK已包含居中SVG",
+    "APK已包含六行自适应",
+    "IPA实际版本",
+    "IPA包名",
+    "IPA无签名资源与描述文件",
+    "软件源版本",
+    "软件源:downloadURL",
+    "软件源:size",
+    "软件源:sha256",
+    "原开发者保留并包含当前用户",
+    "软件源中文日志",
+    "GitHub中文日志",
+    "历史文件未变:codex-mobile.apk",
+    "历史文件未变:codex-mobile.ipa",
+    "历史文件未变:codex-mobile.json",
+    "历史文件未变:codex-mobile-ios.json"
+  ]
+}

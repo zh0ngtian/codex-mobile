@@ -29,7 +29,7 @@ function conversationProps(overrides: Partial<Props> = {}): Props {
     onRetry: vi.fn(), onLoadOlderTurns: vi.fn(async () => true),
     onSubmit: vi.fn(event => event.preventDefault()), onRemoveImage: vi.fn(), onRemoveFile: vi.fn(),
     onSelectImages: vi.fn(async () => undefined), onSelectLocation: vi.fn(async () => false),
-    onOpenAgentSettings: vi.fn(), onOpenPermissionSettings: vi.fn(), onDraftChange: vi.fn(),
+    availableControls: { model: true, effort: true, fast: true, permission: true }, onOpenModelSettings: vi.fn(), onToggleFast: vi.fn(), onOpenAgentSettings: vi.fn(), onOpenPermissionSettings: vi.fn(), onDraftChange: vi.fn(),
     onInterrupt: vi.fn(), onQueuedFollowUpAction: vi.fn(),
     ...overrides,
   };

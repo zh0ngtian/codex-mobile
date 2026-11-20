@@ -63,7 +63,7 @@ export class NewChatDraftStore {
     const db = await this.open();
     try {
       return await new Promise<T>((resolve, reject) => {
-        const transaction = db.transaction("drafts", mode);
+        const transaction = db.transaction("drafts", mode, mode === 'readwrite' ? { durability: 'strict' } : undefined);
         let value: T;
         transaction.oncomplete = () => resolve(value);
         transaction.onabort = () => reject(transaction.error ?? new Error(t("无法保存草稿")));

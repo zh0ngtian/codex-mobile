@@ -107,7 +107,7 @@ function SkillComposer({ loading = false }: { loading?: boolean }) {
       onRemoveFile={() => undefined}
       onSelectImages={async () => undefined}
       onSelectLocation={async () => false}
-      onOpenAgentSettings={() => undefined}
+      availableControls={{ model: true, effort: true, fast: true, permission: true }} onOpenModelSettings={() => {}} onToggleFast={() => {}} onOpenAgentSettings={() => undefined}
       onOpenPermissionSettings={() => undefined}
       onDraftChange={setDraft}
       onInterrupt={() => undefined}
@@ -195,6 +195,19 @@ describe("输入框 Skill 选择器", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect((input as HTMLTextAreaElement).value).toBe("$skill-creator ");
+  });
+
+  it.each(["@", "@missing-skill"])("Escape 关闭 %s 的候选列表且保留草稿", (draft) => {
+    const { container } = render(<SkillComposer />);
+    const view = within(container);
+    const input = view.getByRole("textbox", { name: "向 Codex 提问" });
+
+    fireEvent.change(input, { target: { value: draft } });
+    expect(view.getByRole("listbox", { name: "已安装 Skill 和插件" })).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(view.queryByRole("listbox", { name: "已安装 Skill 和插件" })).toBeNull();
+    expect((input as HTMLTextAreaElement).value).toBe(draft);
   });
 
   it("完整渲染较长的 Skill 调用名", () => {

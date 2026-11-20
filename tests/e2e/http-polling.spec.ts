@@ -239,7 +239,7 @@ test(`ACK 丢失后自动确认原发送并保留输入：${scenario}`, async ({
     await expect(page.getByText("new.txt", { exact: true })).toBeVisible();
   }
   if (scenario === "thread-settings") {
-    await expect(page.getByRole("button", { name: "选择模型、智能与速度" })).toContainText("GPT Server");
+    await expect(page.getByRole("button", { name: "选择模型" })).toContainText("GPT Server");
     expect(subsequentTurns).toHaveLength(0);
     await page.getByRole("button", { name: "发送", exact: true }).click();
     await expect.poll(() => subsequentTurns.length).toBe(1);

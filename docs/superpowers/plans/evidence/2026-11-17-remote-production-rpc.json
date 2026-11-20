@@ -1,0 +1,973 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-11-17T06:57:23.966982+00:00",
+  "scope": "现役网关与已授权WebUI；不发布手机客户端",
+  "deployments": [
+    {
+      "taskId": "remote-web-scope-recovery-20261117",
+      "batchId": "54ca0273-63a0-44ad-94a1-72713b1673dc",
+      "sourceCommit": "b327021f1b16382aff0b941d3e3e29c97464236a",
+      "frozenCommit": "de559f0f73032192b79e5da1f97125e7206dd55d",
+      "webUiUpdated": true,
+      "recoveryOf": "251876ad-65f8-4389-9650-ea51a45b5f97",
+      "recoveryChain": [
+        "56c4c29f-5c53-4b8e-941a-fe2614e8ac8f",
+        "251876ad-65f8-4389-9650-ea51a45b5f97"
+      ],
+      "development": {
+        "attempt": 1,
+        "runId": 44021508706,
+        "sourceCommit": "de559f0f73032192b79e5da1f97125e7206dd55d"
+      },
+      "digests": {
+        "serverDigest": "e5015bf0f17c07fed516fe9f489104ca9b83f139a43399609116e774e91deebb",
+        "frontendDigest": "e9cd555498ecf69bac9d633465e6b659f3b273685729f0e32914611e6cd9ac22",
+        "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+        "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+        "archiveSha256": "973f7594db8f9d67d02cf32a79cff23eb2fc887cf92d6463a0b7ad90aed375cc"
+      },
+      "oldPid": 99843,
+      "pid": 38348,
+      "independentVerification": {
+        "receiptEqual": true,
+        "batchId": "54ca0273-63a0-44ad-94a1-72713b1673dc",
+        "frozenCommit": "de559f0f73032192b79e5da1f97125e7206dd55d",
+        "actualDigestsMatch": true,
+        "startupAndOriginalMainIndexPreserved": true,
+        "identityAndLocalPairPreservedAcrossRestart": true,
+        "state": "online",
+        "http": {
+          "/": 200,
+          "/api/host": 200,
+          "/api/status": 200,
+          "mainAsset": 200
+        },
+        "mainAssetMatchesInstalled": true,
+        "pid": 38348,
+        "verifiedAt": "2026-11-17T05:06:39.000820+00:00"
+      }
+    },
+    {
+      "taskId": "remote-project-transport-budget-20261117",
+      "batchId": "685b4928-d01e-4267-ba97-ba30bc64023f",
+      "sourceCommit": "5d867eac569140a256ad4e4b625fb629ad38c688",
+      "frozenCommit": "555cd3c3c5ec68508a8e73c663e538c42c5bce5d",
+      "webUiUpdated": false,
+      "recoveryOf": null,
+      "recoveryChain": [],
+      "development": {
+        "attempt": 1,
+        "runId": 44023835622,
+        "sourceCommit": "555cd3c3c5ec68508a8e73c663e538c42c5bce5d"
+      },
+      "digests": {
+        "serverDigest": "c7b3eef31415a0c1005b42dae8cba5b6841738fece546bd8b7cdb4c1ead77003",
+        "frontendDigest": "e9cd555498ecf69bac9d633465e6b659f3b273685729f0e32914611e6cd9ac22",
+        "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+        "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+        "archiveSha256": "fa46fcc84311d6aec6211403a48c8d185fb32314af1bca1208c966c52b58f809"
+      },
+      "oldPid": 38348,
+      "pid": 2363,
+      "independentVerification": {
+        "receiptEqual": true,
+        "batchId": "685b4928-d01e-4267-ba97-ba30bc64023f",
+        "frozenCommit": "555cd3c3c5ec68508a8e73c663e538c42c5bce5d",
+        "actualDigestsMatch": true,
+        "startupAndOriginalMainIndexPreserved": true,
+        "identityAndLocalPairPreservedAcrossRestart": true,
+        "state": "online",
+        "http": {
+          "/": 200,
+          "/api/host": 200,
+          "/api/status": 200,
+          "mainAsset": 200
+        },
+        "mainAssetMatchesInstalled": true,
+        "pid": 2363,
+        "verifiedAt": "2026-11-17T05:25:33.102008+00:00"
+      }
+    },
+    {
+      "taskId": "remote-navigation-performance-20261117",
+      "batchId": "15a6452b-2351-4a67-aea6-0f5eec0bf974",
+      "sourceCommit": "72d8478330853951499dee3d4dbd1e5f90b1cf77",
+      "frozenCommit": "985010f1d700d67848f8f16d93d60268cfb03d7b",
+      "webUiUpdated": true,
+      "digests": {
+        "archiveSha256": "1c0f7248e0ea18950289cd50530435d2b92f6b0ccfa66779fce641656ef0d3a0",
+        "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+        "frontendDigest": "bfe86b1d7d1851024f1eeef3556caa6b4945be023da99ba1540da824f58dd650",
+        "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+        "serverDigest": "5197f33860affc7f1c8766848510a0b04bec76d467f0a9972e5a21fd04b35e7c"
+      },
+      "oldPid": 2363,
+      "pid": 27986,
+      "independentVerification": {
+        "receiptEqual": true,
+        "batchId": "15a6452b-2351-4a67-aea6-0f5eec0bf974",
+        "frozenCommit": "985010f1d700d67848f8f16d93d60268cfb03d7b",
+        "actualDigestsMatch": true,
+        "startupAndOriginalMainIndexPreserved": true,
+        "identityAndLocalPairPreservedAcrossRestart": true,
+        "state": "online",
+        "http": {
+          "/": 200,
+          "/api/host": 200,
+          "/api/status": 200,
+          "mainAsset": 200
+        },
+        "mainAssetMatchesInstalled": true,
+        "pid": 27986,
+        "verifiedAt": "2026-11-17T06:10:47.755058+00:00"
+      },
+      "checks": [
+        {
+          "command": [
+            "python3",
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests/ci",
+            "-p",
+            "test_*.py"
+          ],
+          "cwd": "/private/tmp/eg-complete/navigation-ready-adapter/s",
+          "evidence": "/private/tmp/eg-complete/navigation-ready-adapter/test.log",
+          "exitCode": 0,
+          "logSha256": "3634ff0612075f23e0ad08b87947a08c2ac2691c2cfcbc828045acb68519f1c8",
+          "name": "adapter-regression",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "node",
+            "node_modules/vitest/vitest.mjs",
+            "run",
+            "tests/ci",
+            "--maxWorkers",
+            "2",
+            "--testTimeout",
+            "60000"
+          ],
+          "cwd": "/private/tmp/eg-complete/navigation-ready-contract/s",
+          "evidence": "/private/tmp/eg-complete/navigation-ready-contract/test.log",
+          "exitCode": 0,
+          "logSha256": "161e484d6f31650f4f261ee8c75a1a8fa00409c4a30bf3fda0cb53eba94c225c",
+          "name": "build-contract",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "python3",
+            "/private/tmp/remote-gateway-deploy-20261117/navigation-build-checks.py"
+          ],
+          "cwd": "/private/tmp/eg-complete/navigation-ready-type/s",
+          "evidence": "/private/tmp/eg-complete/navigation-ready-type/test.log",
+          "exitCode": 0,
+          "logSha256": "d3b4e64a9a2a81a44c2966c3d91328190927c306c6a85afdd96f2ac2de0f8a75",
+          "name": "typecheck",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "python3",
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests"
+          ],
+          "cwd": "/Users/zhongtian/WorkSpace/release-coordinator",
+          "evidence": "/private/tmp/remote-gateway-deploy-20261117/runtime-budget-recovery-short/test.log",
+          "exitCode": 0,
+          "logSha256": "3a0fe4d5bba8fa4bdf71c5cc16677be1bcc994ed98fb156a5a622855d9929a01",
+          "name": "coordinator-recovery",
+          "reusedUnchangedCoordinator": "5317a816938046f6a64f915b1aac72685d4bace3",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "taskId": "remote-navigation-scheduler-performance-20261117",
+      "batchId": "ef926db3-e847-425f-b996-9e1fbcd473d2",
+      "sourceCommit": "aa022237a9c214f852588c519cdd7a70560634a7",
+      "frozenCommit": "1e7d5aeff9905b5f469aeabe2d3a371d825a14ac",
+      "webUiUpdated": true,
+      "digests": {
+        "archiveSha256": "ead7e8f937408b6dd3a8bca279c8884131c4462c62ed1780c8d0edc440445afd",
+        "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+        "frontendDigest": "c8ce80c94329250f130bd3c18cbc5ee0ec23e882ca41dc28b52cabe56344dc0e",
+        "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+        "serverDigest": "6f27f3236cc6d9b236cd62b9722e56ca34e4fcd25ddbe7261dbe45ef4b3b22d8"
+      },
+      "oldPid": 27986,
+      "pid": 9299,
+      "independentVerification": {
+        "receiptEqual": true,
+        "batchId": "ef926db3-e847-425f-b996-9e1fbcd473d2",
+        "frozenCommit": "1e7d5aeff9905b5f469aeabe2d3a371d825a14ac",
+        "actualDigestsMatch": true,
+        "startupAndOriginalMainIndexPreserved": true,
+        "identityAndLocalPairPreservedAcrossRestart": true,
+        "state": "online",
+        "http": {
+          "/": 200,
+          "/api/host": 200,
+          "/api/status": 200,
+          "mainAsset": 200
+        },
+        "mainAssetMatchesInstalled": true,
+        "pid": 9299,
+        "verifiedAt": "2026-11-17T06:27:36.184463+00:00"
+      },
+      "checks": [
+        {
+          "command": [
+            "python3",
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests/ci",
+            "-p",
+            "test_*.py"
+          ],
+          "cwd": "/private/tmp/eg-complete/scheduler-ready-adapter/s",
+          "evidence": "/private/tmp/eg-complete/scheduler-ready-adapter/test.log",
+          "exitCode": 0,
+          "logSha256": "327551bc172fa5e06ceb5e450443f8ac4037d5a86512ee614a86ba3141baf308",
+          "name": "adapter-regression",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "node",
+            "node_modules/vitest/vitest.mjs",
+            "run",
+            "tests/ci",
+            "--maxWorkers",
+            "2",
+            "--testTimeout",
+            "60000"
+          ],
+          "cwd": "/private/tmp/eg-complete/scheduler-ready-contract/s",
+          "evidence": "/private/tmp/eg-complete/scheduler-ready-contract/test.log",
+          "exitCode": 0,
+          "logSha256": "035b9e5c65363718fbf7a46a355db71819ffe22727aa75783401ce80ff689b85",
+          "name": "build-contract",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "python3",
+            "/private/tmp/remote-gateway-deploy-20261117/navigation-build-checks.py"
+          ],
+          "cwd": "/private/tmp/eg-complete/scheduler-ready-type/s",
+          "evidence": "/private/tmp/eg-complete/scheduler-ready-type/test.log",
+          "exitCode": 0,
+          "logSha256": "83436844272bf021196a8143956c79468fdf75f50fc404ab59996fba9cb93f9d",
+          "name": "typecheck",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "python3",
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests"
+          ],
+          "cwd": "/Users/zhongtian/WorkSpace/release-coordinator",
+          "evidence": "/private/tmp/remote-gateway-deploy-20261117/runtime-budget-recovery-short/test.log",
+          "exitCode": 0,
+          "logSha256": "3a0fe4d5bba8fa4bdf71c5cc16677be1bcc994ed98fb156a5a622855d9929a01",
+          "name": "coordinator-recovery",
+          "reusedUnchangedCoordinator": "5317a816938046f6a64f915b1aac72685d4bace3",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "taskId": "remote-navigation-read-wakeup-20261117",
+      "batchId": "955f4db7-d891-4663-8000-e91b21438323",
+      "sourceCommit": "5c4626f7cc35630b58fd4b8d5f6c35b95e61a4b7",
+      "frozenCommit": "72d496f7c4974cd4637cc8fb52c22ee04177949e",
+      "webUiUpdated": false,
+      "digests": {
+        "archiveSha256": "35ee60efccdb9d96c036af72f7d6cba05952b43733623e0fc2270dbae6f46a21",
+        "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+        "frontendDigest": "c8ce80c94329250f130bd3c18cbc5ee0ec23e882ca41dc28b52cabe56344dc0e",
+        "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+        "serverDigest": "4c2cdc7a024b46292775132d04066716222ce7b461e35caa015b9492cd4a9063"
+      },
+      "oldPid": 9299,
+      "pid": 65461,
+      "independentVerification": {
+        "receiptEqual": true,
+        "batchId": "955f4db7-d891-4663-8000-e91b21438323",
+        "frozenCommit": "72d496f7c4974cd4637cc8fb52c22ee04177949e",
+        "actualDigestsMatch": true,
+        "startupAndOriginalMainIndexPreserved": true,
+        "identityAndLocalPairPreservedAcrossRestart": true,
+        "state": "online",
+        "http": {
+          "/": 200,
+          "/api/host": 200,
+          "/api/status": 200,
+          "mainAsset": 200
+        },
+        "mainAssetMatchesInstalled": true,
+        "pid": 65461,
+        "verifiedAt": "2026-11-17T06:40:32.598826+00:00"
+      },
+      "checks": [
+        {
+          "command": [
+            "python3",
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests/ci",
+            "-p",
+            "test_*.py"
+          ],
+          "cwd": "/private/tmp/eg-complete/wakeup-ready-adapter/s",
+          "evidence": "/private/tmp/eg-complete/wakeup-ready-adapter/test.log",
+          "exitCode": 0,
+          "logSha256": "f59dbc25cd0e2c8aa04e208f573e4817680c831843814350692d5fbc7c8944a0",
+          "name": "adapter-regression",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "node",
+            "node_modules/vitest/vitest.mjs",
+            "run",
+            "tests/ci",
+            "--maxWorkers",
+            "2",
+            "--testTimeout",
+            "60000"
+          ],
+          "cwd": "/private/tmp/eg-complete/wakeup-ready-contract/s",
+          "evidence": "/private/tmp/eg-complete/wakeup-ready-contract/test.log",
+          "exitCode": 0,
+          "logSha256": "f1305c3c9fac51c6feff0292fe182cb2eef0be62826511c437fb7f719c930048",
+          "name": "build-contract",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "python3",
+            "/private/tmp/remote-gateway-deploy-20261117/wakeup-build-checks.py"
+          ],
+          "cwd": "/private/tmp/eg-complete/wakeup-ready-type/s",
+          "evidence": "/private/tmp/eg-complete/wakeup-ready-type/test.log",
+          "exitCode": 0,
+          "logSha256": "c20ab9c71f59e94ad7d2354fa90b284c541fe4dc3077b8403673ed3002d9d8e2",
+          "name": "typecheck",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "python3",
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests"
+          ],
+          "cwd": "/Users/zhongtian/WorkSpace/release-coordinator",
+          "evidence": "/private/tmp/remote-gateway-deploy-20261117/runtime-budget-recovery-short/test.log",
+          "exitCode": 0,
+          "logSha256": "3a0fe4d5bba8fa4bdf71c5cc16677be1bcc994ed98fb156a5a622855d9929a01",
+          "name": "coordinator-recovery",
+          "reusedUnchangedCoordinator": "5317a816938046f6a64f915b1aac72685d4bace3",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "taskId": "remote-navigation-snapshot-lane-20261117",
+      "batchId": "ec9836a0-b9d5-4c79-8317-f2847fa7d911",
+      "sourceCommit": "728ffc0d42205643bb7828270e1b9cc2d66eaaf8",
+      "frozenCommit": "46e1fd5671ab2a6a723bf5bae261e2009ea46b75",
+      "webUiUpdated": true,
+      "digests": {
+        "archiveSha256": "1ab5bcf003ed69a3198b68814715effa5a92c72c473eef4a06fe1b69a1e2d417",
+        "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+        "frontendDigest": "a5c2faf253ec27fdcf61a2571be5b3b5dd927077caa9aff4afaa5d53085bb210",
+        "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+        "serverDigest": "4c2cdc7a024b46292775132d04066716222ce7b461e35caa015b9492cd4a9063"
+      },
+      "oldPid": 65461,
+      "pid": 34462,
+      "independentVerification": {
+        "receiptEqual": true,
+        "batchId": "ec9836a0-b9d5-4c79-8317-f2847fa7d911",
+        "frozenCommit": "46e1fd5671ab2a6a723bf5bae261e2009ea46b75",
+        "actualDigestsMatch": true,
+        "startupAndOriginalMainIndexPreserved": true,
+        "identityAndLocalPairPreservedAcrossRestart": true,
+        "state": "online",
+        "http": {
+          "/": 200,
+          "/api/host": 200,
+          "/api/status": 200,
+          "mainAsset": 200
+        },
+        "mainAssetMatchesInstalled": true,
+        "pid": 34462,
+        "verifiedAt": "2026-11-17T06:52:46.745076+00:00"
+      },
+      "checks": [
+        {
+          "command": [
+            "python3",
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests/ci",
+            "-p",
+            "test_*.py"
+          ],
+          "cwd": "/private/tmp/eg-complete/lane-ready-adapter/s",
+          "evidence": "/private/tmp/eg-complete/lane-ready-adapter/test.log",
+          "exitCode": 0,
+          "logSha256": "930635c51a51cd01d589674e2106b1bba2e5a0cc19721b25fcbe8b6c38e741f3",
+          "name": "adapter-regression",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "node",
+            "node_modules/vitest/vitest.mjs",
+            "run",
+            "tests/ci",
+            "--maxWorkers",
+            "2",
+            "--testTimeout",
+            "60000"
+          ],
+          "cwd": "/private/tmp/eg-complete/lane-ready-contract/s",
+          "evidence": "/private/tmp/eg-complete/lane-ready-contract/test.log",
+          "exitCode": 0,
+          "logSha256": "dc0cd65c2b12b0cc48a67ee1e4234ba9cc126df40fdd94c22d4c29b9611e0713",
+          "name": "build-contract",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "python3",
+            "/private/tmp/remote-gateway-deploy-20261117/navigation-build-checks.py"
+          ],
+          "cwd": "/private/tmp/eg-complete/lane-ready-type/s",
+          "evidence": "/private/tmp/eg-complete/lane-ready-type/test.log",
+          "exitCode": 0,
+          "logSha256": "9400c8a06a5cb18ff10d963211b841ec00c13465bd44935ac0e2a5e1d49601c9",
+          "name": "typecheck",
+          "status": "passed"
+        },
+        {
+          "command": [
+            "python3",
+            "-B",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests"
+          ],
+          "cwd": "/Users/zhongtian/WorkSpace/release-coordinator",
+          "evidence": "/private/tmp/remote-gateway-deploy-20261117/runtime-budget-recovery-short/test.log",
+          "exitCode": 0,
+          "logSha256": "3a0fe4d5bba8fa4bdf71c5cc16677be1bcc994ed98fb156a5a622855d9929a01",
+          "name": "coordinator-recovery",
+          "reusedUnchangedCoordinator": "5317a816938046f6a64f915b1aac72685d4bace3",
+          "status": "passed"
+        }
+      ]
+    }
+  ],
+  "recoveryScopePolicy": {
+    "sourceCommit": "b327021f1b16382aff0b941d3e3e29c97464236a",
+    "onlyExplicitRecovery": true,
+    "requiresInheritedWebAuthorization": true,
+    "allNewTasksExplicitTrue": true,
+    "falseOnlyInherited": true,
+    "newTaskSetMustBeUnambiguous": true,
+    "ordinaryMixedBatchStillRejected": true,
+    "originalFrozenTasksUnchanged": true
+  },
+  "preservedFailures": [
+    {
+      "batchId": "56c4c29f-5c53-4b8e-941a-fe2614e8ac8f",
+      "error": "database is locked",
+      "result": "产物曾替换但最终批次失败，不改写为成功"
+    },
+    {
+      "batchId": "251876ad-65f8-4389-9650-ea51a45b5f97",
+      "error": "WebUI 更新选项在冻结任务之间冲突",
+      "result": "原任务SHA、validation及冻结失败记录保留，由后续恢复批次完成"
+    }
+  ],
+  "verification": {
+    "adapterTests": {
+      "total": 290,
+      "existingSkip": 1
+    },
+    "gatewayReleaseTests": 48,
+    "buildContractTests": 164,
+    "coordinatorTests": {
+      "total": 59,
+      "reuseUnchangedCore": "5317a816938046f6a64f915b1aac72685d4bace3"
+    },
+    "typecheckAndStrict": true,
+    "serverBuild": true,
+    "checks": [
+      {
+        "name": "adapter-regression",
+        "status": "passed",
+        "logSha256": "2b22c9deeb1fdfbbed24564745a98a1cfea5a8325f52dea72f247bec6527d2bf"
+      },
+      {
+        "name": "build-contract",
+        "status": "passed",
+        "logSha256": "bf42898337f8a87b21ee5c19fd94588cfe768a22acfee9552fc5a632af128cba"
+      },
+      {
+        "name": "typecheck",
+        "status": "passed",
+        "logSha256": "f11972edf1371c6a92e0191771a171b241f194ee82ac7b0cb9df8f740e330355"
+      },
+      {
+        "name": "coordinator-recovery",
+        "status": "passed",
+        "logSha256": "3a0fe4d5bba8fa4bdf71c5cc16677be1bcc994ed98fb156a5a622855d9929a01"
+      }
+    ],
+    "scheduler": {
+      "runtimeSourcesUnchangedSince": "93d5dc8d586d4a4c44b2cc426095ec93e8513dc5",
+      "fullServerFirstRun": {
+        "passed": 151,
+        "failed": 4,
+        "total": 155,
+        "evidence": "/private/tmp/eg-complete/inflight-server/test.log"
+      },
+      "affectedFinal": {
+        "passed": 9,
+        "evidence": "/private/tmp/eg-complete/inflight-affected-final/test.log"
+      },
+      "controlSettleIsolatedPassed": "/private/tmp/eg-complete/inflight-server-retry/test.log",
+      "singleRunAllGreen": false,
+      "combinedCoverage": 155,
+      "reason": "受影响9项通过；原完整回归首失败和同运行代码分次复核均保留，未将首轮写成全绿。"
+    },
+    "projectBudget": {
+      "red": "真实3500ms Git stdin协议写入延迟导致旧3秒总预算失败",
+      "minimalChange": "仅Remote git总预算改为20000ms；Local仍3000ms，权限不变",
+      "relatedCases": 30,
+      "passed": true
+    }
+  },
+  "officialRemote": {
+    "authorizationAndPairingPreserved": true,
+    "verifiedTargets": 1,
+    "targetScope": "仅网关Mac，经官方Relay；未宣称其他机器已实测",
+    "webSocket": {
+      "scope": "production gateway public WS to official Remote for gateway Mac",
+      "startedFromAuthorizedAndPaired": true,
+      "samples": [
+        {
+          "connectAndInitializeMs": 4111,
+          "modelListMs": 7158,
+          "modelCount": 9,
+          "readOnly": true
+        },
+        {
+          "connectAndInitializeMs": 7100,
+          "modelListMs": 12216,
+          "modelCount": 9,
+          "readOnly": true
+        }
+      ],
+      "idleBetweenClientConnectionsSeconds": 30,
+      "observedStates": [
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online"
+      ],
+      "allObservedOnline": true,
+      "testChatsCreated": 0,
+      "modelInferenceRequestsSent": 0,
+      "finishedAt": "2026-11-17T05:25:53.553Z",
+      "limitations": [
+        "short observation; not 8h, natural credential refresh, sleep or P95 proof",
+        "public client close does not prove all internal logical sessions released"
+      ]
+    },
+    "http": {
+      "scope": "production public Remote HTTP RPC",
+      "samples": [
+        {
+          "initializeMs": 4254,
+          "initializedMs": 2882,
+          "thread/loaded/listMs": 7343
+        },
+        {
+          "initializeMs": 5852,
+          "initializedMs": 4655,
+          "thread/loaded/listMs": 19870
+        }
+      ],
+      "idleWithoutProbeRequestsSeconds": 120,
+      "observedStates": [
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online",
+        "online"
+      ],
+      "allObservedOnline": true,
+      "testChatsCreated": 0,
+      "modelInferenceRequestsSent": 0,
+      "finishedAt": "2026-11-17T05:27:41.775Z",
+      "limitations": [
+        "HTTP session may retain upstream logical stream; not zero-stream proof",
+        "120s observation is not 8h, refresh, sleep or P95 proof"
+      ]
+    },
+    "web": {
+      "at": "2026-11-17T05:28:19.262Z",
+      "mode": "remote",
+      "testAndSavePassed": true,
+      "projectResponses": [
+        {
+          "status": 200,
+          "ms": 51413
+        }
+      ],
+      "realExistingConversationBodyVisible": true,
+      "inputEnabled": true,
+      "connectionErrorVisible": false,
+      "testChatsCreated": 0
+    },
+    "preFinalProjectFailures": {
+      "http500Count": 2,
+      "independentRetryStatus": 200,
+      "independentRetryMs": 48601,
+      "note": "旧3秒Remote git窗口已由真实延迟回归复现并补修；最终单轮200不代表所有网络场景通过"
+    }
+  },
+  "localPerformance": {
+    "includedSource": "ee705d3d",
+    "mode": "local",
+    "samples": [
+      {
+        "transport": "HTTP",
+        "method": "initialize",
+        "ms": 34,
+        "accepted": false,
+        "ok": true
+      },
+      {
+        "transport": "HTTP",
+        "method": "thread/read",
+        "ms": 3,
+        "accepted": false,
+        "ok": true
+      },
+      {
+        "transport": "HTTP",
+        "method": "thread/turns/list",
+        "ms": 13,
+        "accepted": false,
+        "ok": true
+      },
+      {
+        "transport": "HTTP",
+        "method": "thread/read",
+        "ms": 5,
+        "accepted": false,
+        "ok": true
+      },
+      {
+        "transport": "HTTP",
+        "method": "thread/turns/list",
+        "ms": 12,
+        "accepted": false,
+        "ok": true
+      },
+      {
+        "transport": "HTTP",
+        "method": "thread/read",
+        "ms": 3,
+        "accepted": false,
+        "ok": true
+      },
+      {
+        "transport": "HTTP",
+        "method": "thread/turns/list",
+        "ms": 14,
+        "accepted": false,
+        "ok": true
+      },
+      {
+        "transport": "WebSocket",
+        "method": "initialize",
+        "ms": 5,
+        "ok": true
+      },
+      {
+        "transport": "WebSocket",
+        "method": "thread/read",
+        "ms": 4,
+        "ok": true
+      },
+      {
+        "transport": "WebSocket",
+        "method": "thread/turns/list",
+        "ms": 13,
+        "ok": true
+      },
+      {
+        "transport": "WebSocket",
+        "method": "thread/read",
+        "ms": 3,
+        "ok": true
+      },
+      {
+        "transport": "WebSocket",
+        "method": "thread/turns/list",
+        "ms": 12,
+        "ok": true
+      },
+      {
+        "transport": "WebSocket",
+        "method": "thread/read",
+        "ms": 2,
+        "ok": true
+      },
+      {
+        "transport": "WebSocket",
+        "method": "thread/turns/list",
+        "ms": 11,
+        "ok": true
+      }
+    ],
+    "maximumReadMs": 14,
+    "httpLedgerReceiptsAdded": 0,
+    "browserOpen": {
+      "at": "2026-11-17T05:22:18.607Z",
+      "mode": "local",
+      "clickedExistingConversation": true,
+      "observedMs": 653,
+      "loading": false,
+      "loaded": true,
+      "testChatsCreated": 0,
+      "limitations": [
+        "单次点击到可见正文的自动化观察时长，不代表P95"
+      ]
+    }
+  },
+  "eightHourObservation": {
+    "status": "stopped-for-navigation-performance-deployment",
+    "sourceCommit": "555cd3c3c5ec68508a8e73c663e538c42c5bce5d",
+    "startedAt": "2026-11-17T05:27:56.654Z",
+    "expectedEndAt": "2026-11-17T13:27:56.503327+00:00",
+    "sampleCountAtReceipt": 32,
+    "firstSample": {
+      "at": "2026-11-17T05:27:56.661Z",
+      "gapMs": 0,
+      "state": "online",
+      "rpc": {
+        "connectAndInitializeMs": 7289,
+        "modelListMs": 28619,
+        "modelCount": 9,
+        "readOnly": true
+      },
+      "ok": true
+    },
+    "completionVerified": false,
+    "privateStatusFile": "/private/tmp/remote-gateway-deploy-20261117/remote-eight-hour-status.json",
+    "limitations": [
+      "periodic state and RPC samples do not prove uninterrupted TCP or zero logical streams",
+      "sleep or sampling gaps are recorded; no P95 or full-feature acceptance claimed"
+    ],
+    "latestSampleAtReceipt": {
+      "at": "2026-11-17T06:05:52.298Z",
+      "gapMs": 122709,
+      "state": "online",
+      "ok": false,
+      "error": "rpc-timeout"
+    },
+    "successfulRpcSamples": 30,
+    "failedRpcSamples": [
+      {
+        "at": "2026-11-17T06:03:49.589Z",
+        "gapMs": 65244,
+        "state": "online",
+        "ok": false,
+        "error": "rpc-timeout"
+      },
+      {
+        "at": "2026-11-17T06:05:52.298Z",
+        "gapMs": 122709,
+        "state": "online",
+        "ok": false,
+        "error": "rpc-timeout"
+      }
+    ]
+  },
+  "remainingAcceptance": [
+    "Remote首次未缓存的列表和会话读取延迟",
+    "官方全功能与其他远程机器",
+    "8小时采样完整结果（旧监测已因部署中止，32次中30次RPC成功，2次超时）",
+    "自然凭据刷新、睡眠唤醒与P95"
+  ],
+  "testChatsCreated": 0,
+  "inferenceRequests": 0,
+  "clientPackagesPublished": false,
+  "softwareSourceUpdated": false,
+  "historicalLanOrOtaStarted": false,
+  "currentFrozenCommit": "46e1fd5671ab2a6a723bf5bae261e2009ea46b75",
+  "navigationPerformance": {
+    "scope": "仅网关Mac经官方Relay，iPhone17Pro尺寸网页；每项单次观察，不代表P95",
+    "currentWeb": {
+      "at": "2026-11-17T06:56:00.145Z",
+      "frozenCommit": "46e1fd5671ab2a6a723bf5bae261e2009ea46b75",
+      "mode": "remote",
+      "viewport": {
+        "width": 402,
+        "height": 874
+      },
+      "coldList": {
+        "stillLoadingAtMs": 31695,
+        "visibleByMs": 48282,
+        "exactCompletion": false
+      },
+      "warmListReloadMs": 5419,
+      "refresh": {
+        "existingListStillVisible": true,
+        "clickAndObservationMs": 310,
+        "freshUpstreamCompletionMeasured": false
+      },
+      "coldConversation": {
+        "stillLoadingAtMs": 12357,
+        "visibleByMs": 54627,
+        "exactCompletion": false
+      },
+      "warmConversation": {
+        "clickToBodyAndEnabledInputMs": 1112,
+        "bodyVisible": true
+      },
+      "testChatsCreated": 0,
+      "inferenceRequests": 0,
+      "overallColdPerformancePassed": false
+    },
+    "originalProjectCatalogMs": 51413,
+    "firstBatchProjectCatalogMs": 5769,
+    "lastColdProjectCatalogMs": 5248,
+    "previousWarmConversationMs": 233,
+    "finalRelatedUiTests": 43,
+    "finalRelatedUiSingleRunAllGreen": true,
+    "priorBroadRunsRetained": {
+      "navigation": {
+        "passed": 235,
+        "failed": 7,
+        "singleRunAllGreen": false
+      },
+      "scheduler": [
+        {
+          "passed": 93,
+          "failed": 1
+        },
+        {
+          "passed": 75,
+          "failed": 2
+        }
+      ],
+      "targetedRechecksPassed": true
+    },
+    "coldAcceptance": "未通过；仍需定位首次未缓存读取、原调度队列与上游等待；不能用热缓存或202受理证明冷读取已修复"
+  }
+}

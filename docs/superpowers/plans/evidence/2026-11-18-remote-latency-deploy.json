@@ -1,0 +1,147 @@
+{
+  "date": "2026-11-18",
+  "timezone": "Asia/Shanghai",
+  "task": "remote-latency-deploy-20261118",
+  "scope": {
+    "project": "codex-mobile-gateway-production",
+    "gateway": true,
+    "webUi": true,
+    "mobilePackagesPublished": false
+  },
+  "deployment": {
+    "result": "success",
+    "batchId": "8f5625d2-e647-4cee-b9b7-2f46cdf67ed4",
+    "sourceCommit": "7da93e793b766efebe89b6e3beea21c9dd7bdd2b",
+    "runtimeFixCommit": "7583b90053a63390370cb46d8772332119146133",
+    "frozenCommit": "c55a9beb869e6a7bffac654fbc734ed7a10df4f1",
+    "completedAt": "2026-11-17T16:17:54.148554+00:00",
+    "stages": [
+      "main",
+      "gateway",
+      "verify"
+    ],
+    "persistentReceiptSha256": "bdb98836c02a3ac5188f3f07b7048f9954e7f9237d12139bbe8a2ed5bf8c75b6",
+    "developmentCI": {
+      "attempt": 1,
+      "runId": 44123942099,
+      "sourceCommit": "c55a9beb869e6a7bffac654fbc734ed7a10df4f1"
+    },
+    "actualDigests": {
+      "serverDigest": "8ca30adc491589c8270bcbfffa24fdf500f52abc7a4e7040e3cb8d99816619e4",
+      "frontendDigest": "26080c8a2e16637a9ccc6b9806ba09ecc09a9b63b7b0fd7d28b5023a85720000",
+      "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+      "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233",
+      "archiveSha256": "e1f5c9fc1344dd5672e41e5c54129f28bc854bfd396e172f00d05ea2c0e599e1"
+    },
+    "oldPid": 64393,
+    "newPid": 75207,
+    "receiptAndActualArtifactsMatch": true
+  },
+  "preservation": {
+    "privateConfigAndIdentityFilesUnchanged": 9,
+    "acceptedTargetsUnchanged": 2,
+    "otherWorkspaceHeadAndIndexUnchanged": true,
+    "remoteAfterDeploy": "online",
+    "remoteAfterBrowserTest": "online",
+    "pendingResumeCount": 0
+  },
+  "checks": [
+    {
+      "name": "adapter-regression",
+      "exitCode": 0,
+      "status": "passed",
+      "logSha256": "f42287a886dcc6171a39965cf66815408eef68f558a42c11d2b0c5f495d16d46"
+    },
+    {
+      "name": "coordinator-recovery",
+      "exitCode": 0,
+      "status": "passed",
+      "logSha256": "b2fbf679e79c5fa86c99af73e112449cf1962bf5a2cc3c090c0c5703628151ec"
+    },
+    {
+      "name": "build-contract",
+      "exitCode": 0,
+      "status": "passed",
+      "logSha256": "dc84d7b5eb92e4435d03fed1308542e93524790a4753b800923d7fff398d3da4"
+    },
+    {
+      "name": "typecheck",
+      "exitCode": 0,
+      "status": "passed",
+      "logSha256": "ddcbb7a08bfec0ac49a7a6d573783271de42998d75a0e124eef2e8a0e0d5c546"
+    }
+  ],
+  "checkCounts": {
+    "adapterRegression": 290,
+    "coordinatorRecovery": 59,
+    "buildContractTests": 164,
+    "buildContractFiles": 22,
+    "typecheck": "passed"
+  },
+  "productionBrowser": {
+    "browser": "Edge",
+    "viewport": {
+      "width": 1829,
+      "height": 932
+    },
+    "loadedNewFrontendAsset": "/assets/index-Dj3vNOxt.js",
+    "initializeCapabilities": {
+      "directRequests": true,
+      "readSnapshotFallback": true,
+      "responsesVerified": 2
+    },
+    "refresh": {
+      "sampleCount": 1,
+      "buttonBusyObserved": true,
+      "buttonFinishedMs": 14270.100000143051,
+      "successfulFullRefreshMs": null,
+      "result": "not-accepted",
+      "endState": {
+        "buttonBusy": false,
+        "backgroundUpdating": true,
+        "firstTargetConnected": true,
+        "secondTargetConnected": false
+      },
+      "laterObservation": "两台设备重新显示已连接，但仍在加载会话；没有捕获全部列表成功同步的准确完成时间"
+    },
+    "conversations": [
+      {
+        "target": "paired-desktop",
+        "firstOpenAfterReload": true,
+        "clickToVisibleBodyAndComposerMs": 1478.7000000476837,
+        "observedLoadingMs": 33.59999990463257,
+        "renderedMessages": 9,
+        "result": "content-ready",
+        "cacheState": "未区分网关共享快照命中与上游冷读；不宣称冷启动耗时"
+      },
+      {
+        "target": "gateway-mac-via-relay",
+        "firstOpenOfMeasuredConversationInThisReload": true,
+        "clickToVisibleBodyAndComposerMs": 18778.800000190735,
+        "observedLoadingMs": 48.700000047683716,
+        "renderedMessages": 10,
+        "result": "content-ready",
+        "cacheState": "未独立核对共享快照是否命中；不宣称冷启动耗时"
+      }
+    ],
+    "measurementCorrections": [
+      "切换设备后旧页面保留为零尺寸隐藏容器；早期针对另一台设备的非可见容器采样作废，其中21.3ms与23.7ms不计入结果，也不据此判定第二台对话加载失败",
+      "有效第二台计时只观察尺寸非零的可见main，确认所点标题、加载开始、消息正文、输入框且无加载错误"
+    ],
+    "observedNetworkErrors": {
+      "operations404": true,
+      "projects500": true,
+      "bufferTruncated": true,
+      "requestCountsClaimed": false
+    },
+    "performanceAcceptance": "not-passed",
+    "limitations": [
+      "单次样本，不能代表P95或整体性能改善",
+      "双机刷新没有取得本轮全部成功的完成时间",
+      "对话加载1.48秒与18.78秒差异明显，仍需继续排查",
+      "桌面网页测试不作为iPhone原生布局或真机验收",
+      "没有新建会话、发送消息或调用推理；无需归档已有用户会话"
+    ],
+    "instrumentationCleanup": "已重载网页并确认临时计时对象移除；CDP网络捕获已关闭"
+  }
+}

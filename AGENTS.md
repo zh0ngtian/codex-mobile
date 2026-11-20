@@ -4,13 +4,20 @@
 - 交互和功能改动必须同步更新 [交互与功能约定](docs/interaction-alignment.md) 的现行要求、验收要点和变更记录；覆盖旧要求时就地修订，明确待实现、待验收与已验证/已发布状态。
 - 现役使用与架构见 [README](README.md)，运维和历史资料入口见 [文档索引](docs/README.md)；历史计划及验收记录不代表当前渠道版本。
 - 部署任务必须使用 superpowers 的计划与 TDD 流程。
+- 2026-11-14 用户再次确认客户端采用现行 GitHub-only 分发：APK／unsigned IPA 按受影响平台发布，包含 iOS 时同步既有软件源。旧工作区或会话引用的 LAN、签名 IPA、HTTPS OTA、固定下载地址及旧项目要求仅作历史记录，不再用于新批次；同步为现行规则后继续已授权发布，不为已确认的渠道重复询问。恢复旧渠道须由用户另行明确授权。
+
+## Codex 远程设备授权
+
+- 2026-11-17 用户授权新增 macOS 桌面版 Codex 设备 `FWWJ5VYDY4`，已通过现有网关完成配对，并写入网关接受目标记录。
+- 用户新增设备只需提供桌面端手动配对码。向现有配对接口提交该短码时使用 `manual_pairing_code`，不能当作普通 `pairing_code`；配对成功后从服务端返回及当前网关目标目录取得环境 ID 和安装 ID，核对同一完整目标，再通过 `remote accept` 加入网关接受目标记录。现行 `remote pair` CLI 仍要求两个 ID，不能据此要求用户手工提供，也不能宣称 CLI 已支持仅配对码。
+- 设备身份与授权凭据由仓库外既有网关私有目录 `~/.codex-mobile/remote/` 管理；不在仓库记录配对码、Token 或登录凭据。执行前查询网关实时状态；这里记录的是 Codex Remote 授权，不由历史 SSH 主机记录推断可控制设备，也不把设备配对视为客户端发布或生产部署授权。
 
 ## 多任务协调、合批构建与发布
 
 - 本项目的协调与交付约束以本文件为准；配置、适配器入口、失败恢复、验证要求及实际验收状态见 [发布协调说明](docs/release-coordination.md)。全局用户交互规则继续适用，不引用全局文件中不存在的发布章节。
 - 默认只交付源码，不发布客户端或部署生产网关；只有用户明确要求发布或部署时，才启用下述协调流程。普通开发不登记发布任务、不提交 ready、不分配发布版本或更新冻结发布清单。
-- 用户明确要求发布或部署的任务开始即在现有 `releasectl` 登记：仅涉及 Android 的客户端改动使用 `codex-mobile-github-android`；涉及 iOS 或影响 iOS 的共享运行代码时使用 `codex-mobile-github-only`，网关部署使用 `codex-mobile-gateway-production`。在独立 worktree 开发，持续 heartbeat，完成本地验证并推送固定 SHA 后提交 ready；发布提交整合、版本分配和 main 推进由协调器处理。配置及常用命令见发布协调说明。
-- 已获授权的客户端批次只覆盖 GitHub APK／unsigned IPA Release 及既有iOS软件源版本核对。自2026-10-25起停止Android局域网分发、本机iOS签名、HTTPS OTA及固定LAN IPA更新，现行策略见 `release/distribution-policy.json` 的 `androidDistribution=github-only` 与 `iosDistribution=unsigned-only`。双端 `mobile-github-only` 阶段严格为 `main/build/source/verify`，Android 单端 `mobile-github-android` 阶段严格为 `main/build/verify`；单端项目、target 均为 `codex-mobile-github-android`，环境仍为 `github-only`，共用 main 锁。冻结项目决定构建范围，单端不构建或下载 IPA、不读取或更新 iOS 软件源；带新策略的源码拒绝旧 `mobile`／`mobile-ota`／`mobile-unsigned` kind及旧客户端项目。无策略或旧ios-only策略的历史冻结工作区、旧模板和凭证保留原合同，不能改写为新范围。服务端部署批次覆盖网关验证、服务端构建和部署；只改服务端不得触发客户端构建。
+- 用户明确要求发布或部署的任务开始即在现有 `releasectl` 登记：不影响 iOS 原生界面及其操作的客户端改动（包括仅 WebUI 改动）使用 `codex-mobile-github-android`；影响 iOS 原生界面及其操作时使用 `codex-mobile-github-only`，具体判据见下文构建规则；网关部署使用 `codex-mobile-gateway-production`。在独立 worktree 开发，持续 heartbeat，完成本地验证并推送固定 SHA 后提交 ready；发布提交整合、版本分配和 main 推进由协调器处理。配置及常用命令见发布协调说明。
+- 已获授权的客户端批次只覆盖 GitHub APK／unsigned IPA Release 及既有iOS软件源版本核对。自2026-10-25起停止Android局域网分发、本机iOS签名、HTTPS OTA及固定LAN IPA更新，现行策略见 `release/distribution-policy.json` 的 `androidDistribution=github-only` 与 `iosDistribution=unsigned-only`。双端 `mobile-github-only` 阶段严格为 `main/build/source/verify`，Android 单端 `mobile-github-android` 阶段严格为 `main/build/verify`；单端项目、target 均为 `codex-mobile-github-android`，环境仍为 `github-only`，共用 main 锁。冻结项目决定构建范围，单端不构建或下载 IPA、不读取或更新 iOS 软件源；带新策略的源码拒绝旧 `mobile`／`mobile-ota`／`mobile-unsigned` kind及旧客户端项目。无策略或旧ios-only策略的历史冻结工作区、旧模板和凭证保留原合同，不能改写为新范围。服务端部署批次覆盖网关验证、服务端构建和部署；服务端内部改动且不影响客户端操作时，不触发客户端构建。网关接口变更影响 iOS 原生操作的情况遵循下文原生影响判据。
 - 已获授权的发布同时覆盖客户端与网关运行行为时，分别登记两个目标任务并 ready 同一已推送 SHA；两份目标成功凭证均核对后，才完成该发布交付。仅合入源码的任务不触发这两个发布目标。
 - 配套网关已成功部署后，后续仅修改发布策略、测试和文档时，可在核对网关运行代码未变、来源祖先关系及原成功凭证后复用该部署，不重复部署。客户端仍须按最新授权范围独立完成成功批次。
 - 允许创建多个模拟器并行验证，不同任务使用独立模拟器；同一模拟器同一时间只由一个任务使用，复用同一实例时仍须排队。正式发布的版本分配、构建、渠道回验与部署均归协调入口，参与任务共用最终发布凭证。
@@ -18,14 +25,15 @@
 
 ## 测试与验证
 
+- 不再通过独立 agent 复审；由当前任务的主执行者直接检查代码、核对需求并完成必要验证，不将独立 agent 的规格或质量复审作为交付门槛。已有审查记录与失败证据保留，不改写历史结论。
 - 界面与交互验收只需验证 iPhone 17 Pro、正常字号、竖屏下功能正常；不要求额外验证大字号、老设备、iPad 或横屏等场景。
 - 测试会话验证完成后必须及时归档。
 
 ## 构建与交付
 
 - 每次开始修改时记录 main 提交作为基线；完成本次范围的验证后合入主分支，完成提交并推送 main 即可交付，默认不发布。合入前核对最新 main（含远端）：修改期间 main 有新提交时，须对整合结果运行相关回归，通过后再提交推送；没有新提交时复用已有验证，不必重复回归。需要发布或部署的任务推送源码不等于交付完成，仍须等待授权批次验收成功。
-- 验证仅针对本次改动范围，可执行必要的验证构建；默认不启动正式 APK/IPA 打包、签名、渠道更新或生产网关部署。改动不涉及客户端运行代码、客户端引用的共用模块、原生桥接或影响客户端产物的构建配置时，不得触发客户端 Web、Android APK 或 iOS IPA 的构建与发布；仅修改服务端、测试、文档、仓库规则或不影响客户端产物的脚本时，均遵循此规则。服务端修改须完成必要验证和服务端构建，只有用户明确要求部署时才部署网关。
-- 用户明确要求客户端发布后，客户端运行代码（包括客户端引用的共用模块、原生桥接或影响客户端产物的构建配置）由协调入口整合、验证、冻结并推送成功，按冻结项目构建并发布 GitHub Release：仅涉及 Android 时只生成 APK；涉及 iOS 或影响 iOS 的共享运行代码时生成同版本 APK 与 unsigned IPA，并同步既有 iOS 软件源。不能只根据是否修改 Swift 文件判断 iOS 影响，共享表单、业务投影、桥接或构建配置也须核对消费者。版本高于全部GitHub Release标签、`mobile-version-floor.json` 及保留的失败版本预留（包括旧0.3.37）；prepare不访问任何LAN清单、签名配置、证书或HTTPS OTA。
+- 验证仅针对本次改动范围，可执行必要的验证构建；默认不启动正式 APK/IPA 打包、签名、渠道更新或生产网关部署。仅修改测试、文档、仓库规则或不影响客户端产物的脚本，以及不影响客户端操作的服务端内部实现时，不得触发客户端 Web、Android APK 或 iOS IPA 的构建与发布；涉及客户端运行代码、共用模块、原生桥接、宿主构建配置或网关接口兼容性时，先按实际影响确定验证与打包范围。服务端修改须完成必要验证和服务端构建，只有用户明确要求部署时才部署网关。
+- 2026-11-14 用户收紧 iOS 打包范围：只有影响 iOS 原生界面的呈现或操作时才打 IPA。包括原生 SwiftUI 修改，以及影响原生界面的共享业务、数据投影、桥接或宿主构建变更；网关接口修改、删除或参数／返回结构变化导致原生界面某个操作异常，也必须完成客户端适配与相关原生操作验证，并重新打 iOS 包。仅 WebUI 布局、样式、交互或 iOS 网页模式变化，不因资源会打进 IPA 就触发 iOS 构建。已获授权的客户端发布按此判据选择：不影响原生界面时只生成 APK；影响时生成同版本 APK 与 unsigned IPA，并同步既有 iOS 软件源。判断依据是原生界面和操作的实际调用链，不能只看是否改 Swift 或是否修改共享文件；网关部署与客户端发布仍分别遵守授权。版本高于全部GitHub Release标签、`mobile-version-floor.json` 及保留的失败版本预留（包括旧0.3.37）；prepare不访问任何LAN清单、签名配置、证书或HTTPS OTA。
 - Android局域网8765发布服务保持停止和disabled，不再运行 `apk-server.py publish-channel`，不更新原固定APK／IPA及清单。旧目录、包、清单和服务配置保留不删。Android现有LAN更新检查在服务关闭后不可用，新版本从GitHub手动下载；本次不实现或宣称自动更新已切换到GitHub。
 - 涉及安装包发布的交付回复按本批范围提供 GitHub Release 和 APK 的可点击链接、版本、文件大小与 SHA-256；双端批次另提供 unsigned IPA 与 iOS 软件源链接、IPA 大小与散列并注明未签名。独立完整下载本批各端产物；只有双端批次核对软件源。成功证据保存 `github-release.json` 并标明 `distribution=github-only`、实际 `platforms` 和 `softwareSourceUpdated`，同时明确 LAN、签名／OTA／固定 IPA 均未发布。Android 单端不能把历史 IPA 说成本次产物；旧固定渠道链接不作为交付。
 - 局域网渠道停用后，历史包／清单通过本地文件与原散列核对未被改写，不为回验重启服务；历史签名材料及HTTPS OTA目录保留原位。

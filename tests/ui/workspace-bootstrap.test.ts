@@ -41,6 +41,31 @@ describe("工作区冷启动调度", () => {
     rateLimits.resolve();
   });
 
+  it("会话列表未完成时基础设置仍完成初始化", async () => {
+    const threads = deferred<void>();
+    const bootstrap = runWorkspaceBootstrap({
+      loadThreads: () => threads.promise,
+      loadSettings: async () => "ready",
+      loadRateLimits: async () => undefined,
+    });
+    try {
+      await expect(Promise.race([
+        bootstrap,
+        new Promise(resolve => setTimeout(() => resolve("blocked"), 0)),
+      ])).resolves.toBe("ready");
+    } finally {
+      threads.resolve();
+    }
+  });
+
+  it("会话列表失败不会关闭已初始化的工作区", async () => {
+    await expect(runWorkspaceBootstrap({
+      loadThreads: async () => { throw new Error("sidebar timeout"); },
+      loadSettings: async () => "ready",
+      loadRateLimits: async () => undefined,
+    })).resolves.toBe("ready");
+  });
+
   it("额度查询失败不会让关键初始化失败", async () => {
     await expect(
       runWorkspaceBootstrap({

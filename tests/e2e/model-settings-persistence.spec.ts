@@ -1,7 +1,11 @@
 import { expect, test } from "./http-fixture";
 
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/host", route => route.fulfill({ json: { hostId: "model-settings", gatewayVersion: "0.3.0", appServerReady: true, httpPolling: true } }));
+});
+
 for (const serviceTier of ["priority", "fast", null]) {
-  test(`模型目录延迟时保留会话强度与速度 ${serviceTier ?? "正常"}`, async ({ page }) => {
+  test(`模型目录延迟返回后保留会话强度与速度 ${serviceTier ?? "正常"}`, async ({ page }) => {
     await page.addInitScript((serviceTier) => {
       localStorage.setItem("codex-mobile:language", "zh-CN");
       (window as any).__delayedSettingsRequests = [];
@@ -34,6 +38,9 @@ for (const serviceTier of ["priority", "fast", null]) {
           };
           const responses: Record<string, unknown> = {
             initialize: {},
+            "mobile/sidebar/summaries": { data: [thread], nextCursor: null },
+            "mobile/sidebar/projectless": { data: [], nextCursor: null },
+            "threadSection/list": { data: [{ id: "01984de2-8f74-7c91-a3b2-5c5e937cf318" }], nextCursor: null },
             "model/list": {
               data: [{
                 id: "gpt-6.1-sol",
@@ -61,7 +68,7 @@ for (const serviceTier of ["priority", "fast", null]) {
               },
             },
             "account/rateLimits/read": {},
-            "thread/list": { data: [thread], nextCursor: null },
+            "thread/list": { data: request.params?.sectionId ? [] : [thread], nextCursor: null },
             "thread/resume": {
               thread,
               initialTurnsPage: { data: [], nextCursor: null },
@@ -103,32 +110,29 @@ for (const serviceTier of ["priority", "fast", null]) {
 
     for (let startup = 0; startup < 2; startup += 1) {
       await page.goto("/");
+      // 前台目录读取完成后，后台侧栏请求才会继续派发。
+      await expect.poll(() => page.evaluate(() => typeof (window as any).__releaseModelCatalog)).toBe("function");
+      await page.evaluate(() => (window as any).__releaseModelCatalog());
       const thread = page.getByRole("button", { name: /推理强度恢复会话/ }).first();
-      await expect(thread).toBeVisible({ timeout: 500 });
+      await expect(thread).toBeVisible();
       await thread.click();
 
       const settings = page.getByRole("button", {
-        name: "选择模型、智能与速度",
+        name: "选择模型",
       });
-      await expect(settings).toContainText("gpt-6.1-sol");
-      await expect(settings).toContainText("高");
+      await expect(settings).toContainText("GPT-6.1-Sol");
+      await expect(page.getByRole("button", { name: "思考强度", exact: true })).toContainText("high");
       await expect(settings).not.toContainText("智能");
       if (startup === 0) {
-        await page.getByRole("textbox", { name: "向 Codex 提问" }).fill("目录加载前验证速度");
+        await page.getByRole("textbox", { name: "向 Codex 提问" }).fill("目录延迟后验证速度");
         await page.getByRole("button", { name: "发送" }).click();
         await expect.poll(() => page.evaluate(() =>
           (window as any).__delayedSettingsRequests.find((request: any) => request.method === "turn/start")?.params,
-        )).toMatchObject({ effort: "high", serviceTier });
+        )).toMatchObject({ effort: "high", serviceTier: serviceTier ? "priority" : null });
       }
-      await page.evaluate(() => (window as any).__releaseModelCatalog());
       await expect(settings).toContainText("GPT-6.1-Sol");
-      if (serviceTier) await expect(settings).toContainText("⚡");
-      else await expect(settings).not.toContainText("⚡");
-      await settings.click();
-      await page.getByRole("button", { name: /^速度/ }).click();
-      await expect(page.getByRole("button", { name: serviceTier ? /Fast.*快速/ : /正常.*默认速度/ }))
-        .toHaveAttribute("aria-pressed", "true");
-      await page.locator(".composer-popover-backdrop").click({ position: { x: 1, y: 1 } });
+      await expect(page.getByRole("button", { name: "速度", exact: true }))
+        .toHaveAttribute("aria-pressed", String(Boolean(serviceTier)));
     }
     await page.getByRole("textbox", { name: "向 Codex 提问" }).fill("验证速度");
     await page.getByRole("button", { name: "发送" }).click();
@@ -218,6 +222,9 @@ test("新对话偏好跨冷启动恢复，线程设置即时写回且正常速�
               approvals_reviewer: "user",
             },
           },
+          "threadSection/list": { data: [{ id: "01984de2-8f74-7c91-a3b2-5c5e937cf318" }], nextCursor: null },
+          "mobile/sidebar/summaries": { data: [], nextCursor: null },
+          "mobile/sidebar/projectless": { data: [], nextCursor: null },
           "thread/list": { data: [] },
           "thread/start": {
             thread: {
@@ -280,14 +287,11 @@ test("新对话偏好跨冷启动恢复，线程设置即时写回且正常速�
   await page.getByRole("button", { name: "聊天", exact: true }).click();
 
   const modelSettings = page.getByRole("button", {
-    name: "选择模型、智能与速度",
+    name: "选择模型",
   });
   await modelSettings.click();
-  await page.getByRole("button", { name: /模型.*GPT-Default/ }).click();
   await page.getByRole("button", { name: /GPT-Model-A/ }).click();
-  await modelSettings.click();
-  await page.getByRole("button", { name: /速度.*正常/ }).click();
-  await page.getByRole("button", { name: /快速.*1.5 倍速度/ }).click();
+  await page.getByRole("button", { name: "速度", exact: true }).click();
 
   await page.getByRole("textbox", { name: "向 Codex 提问" }).fill("检查设置");
   await page.getByRole("button", { name: "发送" }).click();
@@ -314,16 +318,9 @@ test("新对话偏好跨冷启动恢复，线程设置即时写回且正常速�
       }),
     );
   });
-  await expect(modelSettings).not.toContainText("⚡");
-  await modelSettings.click();
-  await page.getByRole("button", { name: /速度.*正常/ }).click();
-  const normalizedNormalSpeed = page.getByRole("button", {
-    name: /正常.*默认速度/,
-  });
-  await expect(normalizedNormalSpeed).toHaveAttribute("aria-pressed", "true");
-  await normalizedNormalSpeed.click();
-  await modelSettings.click();
-  await page.getByRole("button", { name: /低.*更快响应/ }).click();
+  await expect(page.getByRole("button", { name: "速度", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await page.getByRole("button", { name: "思考强度", exact: true }).click();
+  await page.getByRole("button", { name: /low.*更快响应/ }).click();
 
   await expect
     .poll(() =>
@@ -336,24 +333,21 @@ test("新对话偏好跨冷启动恢复，线程设置即时写回且正常速�
       ),
     )
     .toEqual([
-      { threadId: "new-thread", serviceTier: null },
       { threadId: "new-thread", effort: "low" },
     ]);
 
   await page.reload();
   await page.getByRole("button", { name: "聊天", exact: true }).click();
   const restoredModelSettings = page.getByRole("button", {
-    name: "选择模型、智能与速度",
+    name: "选择模型",
   });
   await expect(restoredModelSettings).toContainText("GPT-Model-A");
-  await expect(restoredModelSettings).toContainText("高");
-  await expect(restoredModelSettings).toContainText("⚡");
+  await expect(page.getByRole("button", { name: "思考强度", exact: true })).toContainText("high");
+  await expect(page.getByRole("button", { name: "速度", exact: true })).toHaveAttribute("aria-pressed", "true");
 
-  await restoredModelSettings.click();
-  await page.getByRole("button", { name: /速度.*快速/ }).click();
-  await page.getByRole("button", { name: /正常.*默认速度/ }).click();
-  await restoredModelSettings.click();
-  await page.getByRole("button", { name: /低.*更快响应/ }).click();
+  await page.getByRole("button", { name: "速度", exact: true }).click();
+  await page.getByRole("button", { name: "思考强度", exact: true }).click();
+  await page.getByRole("button", { name: /low.*更快响应/ }).click();
   await page.getByRole("textbox", { name: "向 Codex 提问" }).fill("检查正常速度");
   await page.getByRole("button", { name: "发送" }).click();
 
@@ -376,9 +370,9 @@ test("新对话偏好跨冷启动恢复，线程设置即时写回且正常速�
   await page.reload();
   await page.getByRole("button", { name: "聊天", exact: true }).click();
   const restoredNormalSettings = page.getByRole("button", {
-    name: "选择模型、智能与速度",
+    name: "选择模型",
   });
   await expect(restoredNormalSettings).toContainText("GPT-Model-A");
-  await expect(restoredNormalSettings).toContainText("低");
-  await expect(restoredNormalSettings).not.toContainText("⚡");
+  await expect(page.getByRole("button", { name: "思考强度", exact: true })).toContainText("low");
+  await expect(page.getByRole("button", { name: "速度", exact: true })).toHaveAttribute("aria-pressed", "false");
 });

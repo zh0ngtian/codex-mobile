@@ -8,7 +8,9 @@
 
 只有用户明确要求发布客户端或部署网关时，才登记对应发布任务并使用下文的 heartbeat、ready、冻结、构建发布及 receipt 流程。普通任务不登记发布任务、不提交 ready、不分配发布版本、不更新 `.release-batch.json`，不触发正式 APK/IPA 打包、渠道更新或生产网关部署；必要的开发验证构建仍按改动范围执行。客户端与网关均有源码变更本身不构成联合发布授权。
 
-2026-10-25用户先确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步要求Android关闭局域网分发，只保留GitHub Release。现行客户端按受影响平台选择项目：仅涉及 Android 时使用 `codex-mobile-github-android`／`mobile-github-android`，只交付 GitHub APK；涉及 iOS 或影响 iOS 的共享运行代码时使用 `codex-mobile-github-only`／`mobile-github-only`，交付 GitHub APK／unsigned IPA 及既有 iOS 软件源。策略 [distribution-policy.json](../release/distribution-policy.json) 同时规定 `iosDistribution=unsigned-only` 与 `androidDistribution=github-only`；新源码拒绝旧mobile／mobile-ota／mobile-unsigned kind及旧客户端项目，不能通过旧模板进入LAN或签名／OTA阶段。8765服务保持停止和disabled，旧包、清单、材料、失败批次及凭证保留不删。无策略或旧ios-only策略的历史工作区继续原合同。现役0.3.45已完成 Android 原生界面与共享地址明文修复的双端发布及软件源回验；本次未部署网关，配套网关沿用0.3.44的既有成功部署；此前0.3.43至0.3.39交付及0.3.38失败记录保留，见下方交付记录。
+2026-11-14用户再次确认现行GitHub-only渠道，并要求将仍引用LAN／签名OTA的旧工作区规则同步为现行合同。该确认适用于本次WebUI输入框与加号补修的双端客户端任务`web-composer-ios-alignment-github-only-20261114`；后续是否包含 iOS 包，按下文最新原生界面影响判据执行。旧规则不再作为新批次入口，也不为同一已确认渠道重复询问；本次不部署网关。该任务已完成0.3.47／3047发布，实际凭证见本文件最新交付记录。
+
+2026-10-25用户先确认停止本机iOS签名、HTTPS OTA及固定LAN IPA更新，随后进一步要求Android关闭局域网分发，只保留GitHub Release。现行客户端按 iOS 原生界面及其操作是否受影响选择项目：不影响时使用 `codex-mobile-github-android`／`mobile-github-android`，只交付 GitHub APK；影响时使用 `codex-mobile-github-only`／`mobile-github-only`，交付 GitHub APK／unsigned IPA 及既有 iOS 软件源。策略 [distribution-policy.json](../release/distribution-policy.json) 同时规定 `iosDistribution=unsigned-only` 与 `androidDistribution=github-only`；新源码拒绝旧mobile／mobile-ota／mobile-unsigned kind及旧客户端项目，不能通过旧模板进入LAN或签名／OTA阶段。8765服务保持停止和disabled，旧包、清单、材料、失败批次及凭证保留不删。无策略或旧ios-only策略的历史工作区继续原合同。现役0.3.47已完成WebUI输入框对齐及附件加号居中补修的双端发布与软件源回验；本次未部署网关，既有网关部署保持。0.3.46及更早发布和历史失败记录继续保留，见下方交付记录。
 
 ## 本机部署与作用域
 
@@ -16,7 +18,7 @@
 
 | 项目配置 ID | 仓库/正式分支 | 目标与环境 | 必要交付 |
 | --- | --- | --- | --- |
-| `codex-mobile-github-android` | `zh0ngtian/codex-mobile` / `main` | `codex-mobile-github-android` / `github-only` | 仅 Android 改动；只构建和验收 GitHub APK，不进入 source 阶段 |
+| `codex-mobile-github-android` | `zh0ngtian/codex-mobile` / `main` | `codex-mobile-github-android` / `github-only` | 不影响 iOS 原生界面及其操作的客户端改动，包括仅 WebUI；只构建和验收 GitHub APK，不进入 source 阶段 |
 | `codex-mobile-github-only` | `zh0ngtian/codex-mobile` / `main` | `codex-mobile-github-only` / `github-only` | GitHub APK／unsigned IPA Release及既有iOS软件源版本核对 |
 | `codex-mobile-github-release`（历史） | 相同仓库 / `main` | `codex-mobile-github-release` / `github-release` | 原unsigned含LAN合同；新策略禁止使用 |
 | `codex-mobile-gateway-production` | 相同仓库 / `main` | `codex-mobile-gateway` / `production` | 服务端构建、原本机安装位置及 launchd 网关部署验收；不构建客户端 |
@@ -29,12 +31,26 @@
 
 ## 项目配置与适配器
 
-2026-11-11 起，不涉及 iOS 的后续改动不打 iOS 包。发布前检查相对最近相关平台发布版本的差异，核对共享模块的实际消费者；未改 Swift 不等于未影响 iOS。纯 Android 选择单端入口，涉及 iOS 或影响 iOS 的共享运行代码则保持双端入口。不因仅修改文档或发布脚本而要求 iOS 运行回归。
+<a id="ios-build-scope"></a>
+
+### iOS 打包范围（2026-11-14 最新约定）
+
+只有影响 iOS 原生界面的呈现或操作才打 IPA。发布前对比各平台最近实际发布版本，沿原生界面的数据、桥接与网关接口调用链判断影响；不能只按 Swift 文件、共享文件路径或前端资源是否进入 IPA 判断。
+
+| 改动与实际影响 | 是否打 iOS 包 | 已获授权的交付范围 |
+| --- | --- | --- |
+| 仅 WebUI 布局、样式、交互，或仅 iOS 网页模式变化；原生界面及其操作不变 | 否 | 使用 APK 单端项目，不启动 iOS 作业、不读取或更新 iOS 软件源 |
+| 原生 SwiftUI 界面变化，或共享业务、数据投影、桥接、宿主构建变更影响原生界面的呈现或操作 | 是 | 使用双端项目，交付 APK／unsigned IPA 并同步既有软件源 |
+| 网关接口修改、删除或参数／返回结构变化，导致原生界面某个操作异常 | 是 | 完成客户端兼容适配、验证受影响原生操作后重新打包；客户端发布与网关部署分别登记已授权目标 |
+| 网关内部实现变化或兼容接口调整，原生界面及其操作不受影响 | 否 | 仅做对应服务端验证；已授权部署才登记网关目标 |
+| 仅文档、规则、测试或不影响客户端产物的脚本变化 | 否 | 仅交源码，不触发客户端构建或发布 |
+
+验收先明确受影响的原生页面／操作、接口和客户端适配，不把重新生成旧客户端包视为接口问题已修复。影响原生操作时，按 iPhone 17 Pro、正常字号、竖屏验证对应原生链路；仅 WebUI 变化不因此扩展为原生验收。普通源码任务仍不发包；本规则不自动授权客户端发布或网关部署。旧批次范围与凭证保留，0.3.47 按当时双端合同发布的事实不回写。
 
 项目配置路径与用途：
 
 - `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-github-android.json`：Android 单端，已登记；阶段严格为 `main/build/verify`，不含软件源凭据。首次正式单端批次尚待后续纯 Android 发布验收。
-- `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-github-only.json`：现行客户端目标，已按新模板完成登记、heartbeat与ready；0.3.45成功批次已完成渠道回验，见本文件最新交付记录及成功receipt；真机安装和数据保留仍待验收。
+- `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-github-only.json`：现行客户端目标，已按新模板完成登记、heartbeat与ready；0.3.47成功批次已完成渠道回验，见本文件最新交付记录及成功receipt；真机安装和数据保留仍待验收。
 - `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-gateway-production.json`。
 - `~/Library/Application Support/ReleaseCoordinator/projects/codex-mobile-lan-production.json`、`codex-mobile-ios-ota-production.json` 与 `codex-mobile-github-release.json`：仅保留历史合同，不改写旧失败批次或项目配置。
 
@@ -98,10 +114,12 @@ prepare在整合结果门禁通过后提交与上游字节一致的公共 `.rele
 | `build` | 按冻结 SHA 查询唯一正式 CI，记录 run/attempt；只下载本 run 缺失的平台，校验批次、任务、版本、真实来源、大小与散列；核对 Release tag 和附件 |
 | `apk`（历史） | 旧含LAN合同保留；现行GitHub-only拒绝该阶段，不访问或更新固定APK |
 | `source` | 本仓库 unsigned IPA 的版本/构建号、GitHub URL、大小、散列及当前 gh 用户署名；核对真实同步 job，保留原开发者与展示信息；公开记录缺失散列时，经版本/URL/大小核对后调用现役 `/attest` CAS 写入该产物散列并回验，响应丢失先对账 |
-| `gateway` | 仅 `npm run build:server`；更新原已安装包的 server/bin，保留已部署 dist、依赖、start.py 与环境；核对文件摘要、实际 launchd PID/命令、监听端口和认证状态接口；健康探测使用既有 `HOST`，通配地址转回环、IPv6 加方括号、本机请求绕过代理；响应丢失不重复重启 |
+| `gateway` | 默认仅 `npm run build:server`，更新原已安装包的 server/bin并保留已部署 dist；已获授权的任务可用下述 `webUi=true` 显式构建并更新 dist。两种范围均保留依赖、start.py 与环境；核对文件摘要、实际 launchd PID/命令、监听端口和认证状态接口；健康探测使用既有 `HOST`，通配地址转回环、IPv6 加方括号、本机请求绕过代理；响应丢失不重复重启 |
 | `verify` | 等待同冻结SHA必要开发CI；双端核对 main/build/source 并独立完整下载 GitHub APK／unsigned IPA；Android 单端仅核对 main/build 并独立完整下载 APK，不访问软件源；保存 `github-release.json` 与 `distribution=github-only` 成功证据，明确 `lanApkPublished=false` 及signed IPA／OTA／固定IPA均未发布；网关核对main/gateway |
 
 正式CI只在main冻结清单变化时触发，使用稳定作用域、`cancel-in-progress: false`、`queue: max`；gateway清单跳过客户端build/release，历史OTA清单保留原跳过行为。现行客户端额外阶段 `apk/ipa/iosbuild/sign/ota/gateway` 及未知阶段全部拒绝。手动dispatch需匹配已有batch／版本／最终SHA，不得用它另发独立版本或重复触发同批；重复正式run会被适配器拒绝并保留诊断。开发／PR检查使用另一并发组，仅执行原有必要检查，不发包。构建 matrix 来自冻结项目的校验输出，Android 单端仅含 ubuntu Android 作业；发布回执拒绝越界的 IPA 或 iOS 回执，双端仍必须有两端。recipe、容器SHA、工具版本、Android签名及iOS unsigned策略保留。
+
+网关 WebUI 更新须由用户明确授权，并在该任务的私有验证记录声明 `"scope": "gateway-only"`、`"sourceCommit": "该任务完整SHA"`、`"webUi": true`。该开关只接受布尔值，scope／SHA 必须绑定任务；普通批次多个任务显式选择冲突时拒绝。仅显式恢复批次可继承原已授权的网页范围：`recoveryOf` 必须非空，`newTaskIds` 必须完整、非空、无重复且均对应冻结任务，冻结任务 ID 不得歧义；至少一个继承任务为有效 true，所有新恢复任务均须明确有效 true，false 只能来自继承任务。满足这些条件时按 true 构建、安装并回执；缺少历史 true 授权、新任务 false／省略、无法区分新旧任务或非法 scope／来源 SHA／布尔值均拒绝，不改写失败链任务。这不扩大普通批次授权。未声明或显式 false 均沿用保留旧 dist 的合同，旧身份及检查点保持兼容。启用时从冻结工作区执行 `npm run build`，清理旧 dist，记录前端构建输入指纹、日志散列和 dist 摘要；成功凭证先原子落盘，再制作包含新 dist 的安装快照。源、输出或日志漂移拒绝复用；响应丢失按成功检查点恢复，不重复构建。部署身份及成功回执包含 `webUi=true`，并以实际前端摘要和现有网关健康检查验收；这不授权 APK／IPA 构建、桌面适配器安装或其他部署目标。
 
 网关依赖声明若与已安装包不同，当前阶段阻止部署，需先完成该依赖变更所需验证和关联修复；不能假装旧依赖满足新代码。仅修改协调器接入不自动要求客户端发布或网关部署；2026-10-13 的真实双端发布与网关验收是当次用户授权，不能作为后续任务的默认授权。
 
@@ -111,7 +129,7 @@ prepare在整合结果门禁通过后提交与上游字节一致的公共 `.rele
 
 ```bash
 ~/.local/bin/releasectl health
-# 仅 Android 改动用 codex-mobile-github-android；涉及 iOS 或影响 iOS 的共享改动用下列双端项目
+# 不影响 iOS 原生界面及其操作（含仅 WebUI）用 codex-mobile-github-android；影响原生界面或操作用下列双端项目
 ~/.local/bin/releasectl register --project codex-mobile-github-only --task MY_TASK
 ~/.local/bin/releasectl heartbeat --task MY_TASK
 ~/.local/bin/releasectl heartbeat --task MY_TASK --state closing
@@ -226,10 +244,71 @@ APK 为4,755,355字节，未签名IPA为5,030,497字节；两端独立完整下�
 
 ## 2026-11-11 平台范围与本次发布状态
 
-用户授权发布 Android 原生版本，并要求后续不涉及 iOS 时不打 iOS 包。新增独立 Android 单端项目，旧双端及历史冻结合同不改。本次发布差异中 `src/native-ui/device-panel.ts` 的地址明文修复也由 iOS 设备表单共用，因此选择双端任务 `codex-mobile-20261111-native-layout-release`；起初登记的 Android 任务已在 ready 前 withdrawn，无版本或批次。本次未部署网关；本地门禁、成功 receipt 与独立渠道验收均已通过，最终结果如下。
+用户当时授权发布 Android 原生版本，并要求后续不涉及 iOS 时不打 iOS 包；当前范围已由上文2026-11-14原生影响判据收紧。新增独立 Android 单端项目，旧双端及历史冻结合同不改。本次发布差异中 `src/native-ui/device-panel.ts` 的地址明文修复也由 iOS 设备表单共用，因此选择双端任务 `codex-mobile-20261111-native-layout-release`；起初登记的 Android 任务已在 ready 前 withdrawn，无版本或批次。本次未部署网关；本地门禁、成功 receipt 与独立渠道验收均已通过，最终结果如下。
 
 0.3.45／3045 已正式发布：[GitHub Release](https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.45)。客户端成功批次 `89b75441-f1ec-4b96-b895-ef7d1e6a1063`，冻结 `ddf58d120a3b7fd53c221ade11b515f0de9f6ce2`，任务来源 `f62563f4d43c553e20821e9398dac97c275af262`；正式 CI `42959923223` 与开发 CI `42959923167` 均成功。273项适配器、59项协调器恢复、171项构建合同、类型检查以及独立104项渠道核对通过。两端 HEAD／完整 GET、大小与 SHA-256、IPA 实际版本及未签名状态、软件源日志与署名均符合冻结来源；APK 原生 Compose 代码、实际版本及相对0.3.44的签名证书一致性已核对。Android 21项原生仪器及145项业务回归沿用相同运行源码证据，iPhone 17 Pro补验地址明文1项通过。没有创建真实测试会话。
 
-后续不影响 iOS 的改动使用独立 Android 项目，只构建和验收 APK，不访问 iOS 软件源；本次包含 iOS 消费的共享地址表单改动，因此仍按双端交付。新单端入口的契约回归与真实 shell 夹具通过，首次正式单端批次尚待后续纯 Android 发布验收。本次未部署网关，没有发布 LAN 包、签名 IPA、HTTPS OTA 或固定 IPA；历史四文件散列及停用服务状态保持。真机安装、覆盖升级、数据保留和实际手感仍待验收。
+当时约定后续不影响 iOS 的改动使用独立 Android 项目，只构建和验收 APK，不访问 iOS 软件源；本次包含 iOS 原生设备表单消费的共享地址明文改动，因此仍按双端交付。当前后续范围以上文2026-11-14原生影响判据为准。新单端入口的契约回归与真实 shell 夹具通过，首次正式单端批次尚待后续纯 Android 发布验收。本次未部署网关，没有发布 LAN 包、签名 IPA、HTTPS OTA 或固定 IPA；历史四文件散列及停用服务状态保持。真机安装、覆盖升级、数据保留和实际手感仍待验收。
 
 [公共发布凭证](superpowers/plans/evidence/2026-11-11-native-layout-release.json)记录本批来源、平台、文件大小与散列；长期成功 receipt 的 SHA-256 为 `9a76bba701896eb04f51fc0c3c2580cf2f8d0302e2a4b4bc6cedb397350ddb3b`。
+
+
+## 2026-11-14 WebUI 输入框与附件加号居中发布（0.3.47）
+
+任务 `web-composer-ios-alignment-github-only-20261114` ready 来源 `ee8d91d272d9f162a3b1e6f3d0b046934cf22596`，成功批次 `433ed0e5-e037-4af3-adeb-a65bfd59bf0e` complete。冻结 `248b05ebea81aa54f7642eec186f286618b8cb9e`，统一版本0.3.47／3047；正式双端CI `43551720813`与开发CI `43551720743`均attempt 1成功。main/build/source/verify完成，没有关联修复链；本次只发布客户端，未部署网关。
+
+附件加号先用WebKit新增几何居中断言并观察旧版失败，再改为中心对称SVG，保留34px视觉圆与44px纵向触区；17项WebKit和167项组件／业务回归通过，实际截图已核对。273项适配器回归、59项协调器恢复、164项构建契约和类型检查通过。测试均使用隔离夹具，没有真实测试会话，浏览器上下文已关闭。
+
+46项独立渠道核对通过。GitHub APK 为4,799,584字节，未签名IPA为5,031,172字节；两端HEAD、完整GET和构建元数据均与GitHub附件及成功receipt一致。APK实际0.3.47／3047，内含居中SVG与六行布局；IPA实际0.3.47／3047、`vip.loock.codexmobile`，无签名资源或描述文件。既有unsigned订阅的版本、构建号、URL、大小、SHA-256和中文日志匹配，原开发者署名保留并包含当前GitHub登录用户。
+
+历史LAN四文件散列未变，8765／8766无监听，两项旧渠道服务停止且disabled。凭证明确GitHub-only，未发布LAN APK、签名IPA、OTA或固定IPA。主工作区旧规则已按用户授权同步，原有暂存内容未变。真机键盘、覆盖安装和数据保留仍待人工验收；文档收尾不重复构建或发布。完整链接、大小、散列和脱敏核对结果见[公共凭证](superpowers/plans/evidence/2026-11-14-web-composer-release.json)，过程见[发布计划](superpowers/plans/2026-11-14-web-composer-github-release.md)。长期成功receipt SHA-256 为 `62d904049ca4c51f1bd2565582d9b188acc14e2d30ee1d790a22e2ec62b2a9d0`。
+
+
+## 2026-11-15 WebUI 正文图片修复部署
+
+用户明确要求更新并允许增加任务级 WebUI 开关后，`web-markdown-images-update-20261115` 通过现役网关目标完成，成功批次 `2df6c58f-70f6-4186-9bc7-4398702bd9cd`，来源 `b66ad5369511ce3e085b06afa1ef533326489ef7`、冻结 `ac6132c2668e4de2490905f9ad785de0095e4a38`。回执 `webUi=true`，实际 dist 与冻结构建摘要一致；原启动文件与环境散列保持，新PID与认证健康状态核对通过。原对话九张正文图、总览原图预览与下载路径完成真实网页验收。默认网关部署仍保留旧前端；本次未构建／发布 APK或IPA、未更新软件源。公共记录见[验收凭证](superpowers/plans/evidence/2026-11-15-webui-image-deploy.json)。
+
+## 2026-11-17 Remote 网关及测试网页部署
+
+用户明确要求部署网关并提供测试网页。任务 `remote-gateway-web-test-20261117` 以来源 `1e9917729082e1b1f6755335988f8375a4314613`、`scope=gateway-only`、`webUi=true` 通过成功批次 `48f7578a-d8f4-407e-9d24-4820c08336f1` 的 main/gateway/verify。冻结 `1fd52ff969d373dbdba281bcff41eb3bc6c69a6b`，开发 CI `44000253551` attempt 1 成功；同一持久 receipt 已核对。实际前端与服务端摘要、新 PID 和监听、认证健康接口、网页及入口资产、本地连接和同表单模式选择已验证，启动配置与 token 保持。四项本地门禁通过；旧原生 ACK 夹具因缺少现行 gatewayMode 的两次 RED 保留，补齐夹具后完整164项构建契约通过，未修改产品代码。常驻实例当前 Remote `unconfigured`，首次授权与本机配对仍待完成，不能将部署成功等同于官方 Remote RPC 或长期验收通过。本次未发布客户端、更新软件源或启用历史 LAN／OTA。见[公共部署收据](superpowers/plans/evidence/2026-11-17-remote-gateway-deploy.json)和[部署计划](superpowers/plans/2026-11-17-remote-gateway-deploy.md)。
+
+
+## 2026-11-17 Remote 首次登记协议修复网关部署
+
+任务 `remote-enrollment-null-hash-20261117` 已 complete，成功批次 `8165e654-74a1-4fef-b148-1daffe984c78` 的持久 receipt 与状态返回一致；来源 `1f6836eeb10f6ff6fc50d37a841c2a74c3657171`，冻结 `018099dc5d2d9caabf5211fccf7343ee2c0dc550`，开发 CI `44005877099` attempt 1 成功。修复仅网关内部首次登记 nullable 设备哈希解析，无客户端接口变化；`webUi=false`，未构建网页或发布客户端。284项适配器（1既有跳过）、164项构建契约、59项协调器及类型检查通过，整合结果门禁再次通过；相关认证范围合并覆盖373项，完整首失败和分次验证口径见[脱敏收据](superpowers/plans/evidence/2026-11-17-remote-enrollment-null-hash.json)。实际产物包含修复，PID 59896→93624，原网页、启动配置、token及原工作区 main/index保留；HTTP健康已核对，首次Remote身份、RPC与持续连接仍待补修后的授权验收。
+
+## 2026-11-17 Remote 恢复规则、网页与本地性能修复部署完成
+
+用户批准仅恢复批次继承已有网页授权后，来源b327021f的任务remote-web-scope-recovery-20261117以webUi=true修复失败叶251876ad，批次 `54ca0273-63a0-44ad-94a1-72713b1673dc` 冻结 `de559f0f73032192b79e5da1f97125e7206dd55d` 并complete。原失败56c4c29f（database is locked）、251876ad（范围冲突）及各冻结任务保留，不改写历史；恢复链原true／false与新true组合按批准规则处理，普通合批冲突仍拒绝。
+
+真实网页发现Remote git读取总预算仍3秒，3500ms协议延迟RED后仅Remote改为20秒、Local仍3秒；30项相关回归、类型与服务端构建通过。后续来源5d867eac的任务remote-project-transport-budget-20261117按webUi=false完成成功批次 `685b4928-d01e-4267-ba97-ba30bc64023f`，冻结 `555cd3c3c5ec68508a8e73c663e538c42c5bce5d`，保留前次网页资源。两批开发CI分别44021508706／44023835622，均attempt 1成功；main/gateway/verify、持久receipt、实际摘要、新PID、入口资产和认证健康独立核对通过，原配置、token、身份／配对及原工作区main/index保留。48项Gateway、290项适配器（1既有跳过）、164项构建契约和类型门禁通过，未变协调器复用59项成功证据。
+
+本地会话性能修复ee705d3d已包含：现役12次HTTP／WS读取2–14ms，HTTP无新增持久读取项，网页单次打开约653ms。Remote网页保存、项目和真实会话正文读取、WS30秒／HTTP120秒间隔只读RPC通过，仅实测网关Mac；目录首屏约51秒，保留此前500失败证据。当时启动的8小时监测随后因性能部署中止，未完成；完整功能、其他机器、自然刷新、睡眠与P95待验收。调度完整首轮151通过／4失败与分次覆盖155项记录保留，不能写成单次全绿。本轮没有客户端打包、渠道更新、LAN或OTA；脱敏凭证见[实际部署与RPC记录](superpowers/plans/evidence/2026-11-17-remote-production-rpc.json)。
+
+
+## 2026-11-17 Remote导航性能四批部署与网页验收
+
+用户授权推荐性能修复通过验证后部署，并指定直接网页验证。成功批次依次为`15a6452b-2351-4a67-aea6-0f5eec0bf974`（冻结985010f1，网页/服务端）、`ef926db3-e847-425f-b996-9e1fbcd473d2`（1e7d5aef，网页/服务端）、`955f4db7-d891-4663-8000-e91b21438323`（72d496f7，仅服务端，复用前批网页）、`ec9836a0-b9d5-4c79-8317-f2847fa7d911`（46e1fd56，网页/服务端）。均完成main/gateway/verify，持久receipt、实际安装摘要、网页资产及PID独立核对，原token、启动配置、Remote身份和配对、原工作区main/index保持。
+
+现役热打开正文与输入可用约1112ms，已有列表整页重载5419ms，刷新保留已有内容；冷列表31.7秒仍等待、48.3秒内才观测到可见，冷详情也存在明显等待，整体冷性能验收未通过。最终43项HTTP传输/调度、290项适配器（1既有跳过）、164项构建契约、类型与两种构建通过；历史完整服务端回归中的失败与分次复核记录保留，不写成单轮全绿。原8小时只读采样部署前中止，32次中30次RPC成功、2次超时；本轮按要求直接网页复验，未重启监测。未打包或发布APK/IPA、未更新软件源或历史渠道。详见[本轮计划](superpowers/plans/2026-11-17-remote-navigation-performance.md)与[脱敏凭证](superpowers/plans/evidence/2026-11-17-remote-production-rpc.json)。
+
+## 2026-11-17 原消息队列恢复网关与网页部署
+
+用户明确授权网关和自带网页一起更新后，任务 `restored-message-queue-web-deploy-20261117` 以 `scope=gateway-only`、`webUi=true` 完成成功批次 `aa0726b9-5d07-45e0-b13e-1649860cda33`。来源 `79468d9828976bb0f0cba113a1299844987cf8a2`、冻结 `07fa1673884d22b5176b55aaaca779ec18e225ab`，开发CI `44042137576` attempt1成功，main／gateway／verify及持久receipt一致。290项适配器、59项协调器、164项构建契约和类型门禁通过；原队列相关回归及服务端strict通过。
+
+服务端和网页实际摘要、新PID与监听、原配置／token、Remote身份／配对及其他工作区HEAD/index独立核对通过。Local／Remote HTTP只读RPC及队列读取、Remote WS66秒五次采样与客户端重连通过；未创建测试会话或调用推理。手机安装包与软件源未发布；短测不代表8小时或P95通过。本批不修改历史失败或成功记录，文档收尾复用同一部署。[脱敏收据](superpowers/plans/evidence/2026-11-17-restored-queue-gateway-deploy.json)。
+
+## 2026-11-17 Remote身份误判修复部署
+
+任务remote-identity-fault-20261117以来源f26378eb580d6cab6932ce3f8966fbf936378048完成成功批次bc862e03-c0e3-4bce-8195-d79539a2ffe6，冻结719ea8035f90ffed38f168e14a47d6030968250b。main/gateway/verify、持久receipt与实际摘要一致，当前Remote online、原授权与配对保持。服务端内部分类修复保留现役网页，无客户端构建。293项相关回归、290项适配器、164项构建契约、59项协调器、typecheck、服务端strict和构建通过。真实网页正文3187ms；刷新按钮513ms结束，设备会话加载84.2秒后仍在继续，整体性能未通过。仅文档收尾复用本批部署，详细证据见[身份误判修复与网页实测](superpowers/plans/evidence/2026-11-17-remote-identity-fault.json)。
+
+## 2026-11-17 Remote列表后台刷新循环修复部署
+
+任务remote-refresh-loop-20261117以来源14f9c427d962a25e63bfe312863f8e8d8773fa9b、scope=gateway-only、webUi=true完成批次7ee5a223-720f-421e-8609-d2ca613ada0f，冻结5013564ca0d427c9bb7217f83dc18dddfb10f8c3。main/gateway/verify及持久receipt、实际server/frontend/bin/manifest摘要、原配置/token和身份配对均核对，Remote online且pendingResume为空。202项UI及传输回归、6项服务端兼容回归、290项适配器、164项构建契约、59项协调器、类型/strict和Web/服务端构建通过；整合冻结提交后202项与类型复验通过。真实网页三次完整刷新5877/7441/8353ms、重启后首次详情正文和输入就绪3317ms，60.5秒空闲无目录重读或项目上游刷新。只更新现有网关和网页；手机安装包、LAN、签名/OTA均未发布。最后仅文档收尾，核对运行代码未变及来源祖先关系后复用本次成功部署。见[脱敏凭证](superpowers/plans/evidence/2026-11-17-remote-refresh-loop.json)。
+
+
+### 2026-11-17 首页刷新按钮与自动同步隔离部署
+
+任务remote-refresh-spinner-20261117，来源8f2f0fca8cb048797d2d61e2023a4cd4eb3d94ab，scope=gateway-only、webUi=true，成功批次f9a86e54-a0a3-434c-a197-53d2e45dfa53，冻结de86215cffe7d05c3ae5e26c36ac449365fe1557。main/gateway/verify、持久receipt及实际server/frontend/bin/manifest摘要均一致；部署前最新6份私有文件保全，保留并行已授权新增Mac的controller-binding变化，Remote online且pendingResume为空。定向RED→GREEN、整合及冻结后235项相关回归、290项适配器、164项构建契约、59项协调器、类型/strict与Web/服务端构建通过。
+
+真实网页同时连接两台Remote，自动同步时按钮空闲，手动点击忙碌后能停止；86.5秒内三次采样均空闲，网络截断缓冲中至少11次后台刷新200。手动刷新仅有97.1秒后已结束的观察上界，多设备慢请求及精确性能待验收，不使用历史单机数字替代。本批更新现有网关和网页，未发消息或创建测试会话，未发布APK／IPA、LAN、签名/OTA或软件源；仅文档收尾复用本批部署。见[脱敏凭证](superpowers/plans/evidence/2026-11-17-remote-refresh-spinner.json)。

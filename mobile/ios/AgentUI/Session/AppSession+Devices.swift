@@ -24,7 +24,7 @@ extension AppSession {
         deviceFormError = "设备表单尚未同步，请重试。"
         return nil
     }
-    func saveDevice(id: UUID?, name: String, address: String) async -> Bool {
+    func saveDevice(id: UUID?, name: String, address: String, gatewayMode: String = "local") async -> Bool {
         guard !deviceTesting else { return false }
         let title = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty, let url = URLComponents(string: address), ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host?.isEmpty == false, url.queryItems?.contains(where: { $0.name == "token" && $0.value?.isEmpty == false }) == true else { deviceFormError = "请输入设备名称和带 token 的完整 HTTP(S) 网关地址。"; return false }
@@ -33,7 +33,8 @@ extension AppSession {
         deviceTesting = true; defer { deviceTesting = false }
         if !preparedDeviceForm || preparedDeviceID != id || nativeSnapshot.panel?.items.contains(where: { $0.id == "gatewayUrl" }) != true { guard await prepareDeviceEditor(id) != nil else { return false } }
         guard operation == deviceOperation else { return false }
-        for (fieldID, value) in [("name", title), ("gatewayUrl", address)] {
+        guard ["local", "remote"].contains(gatewayMode) else { return false }
+        for (fieldID, value) in [("name", title), ("gatewayUrl", address), ("gatewayMode", gatewayMode)] {
             guard let field = nativeSnapshot.panel?.items.first(where: { $0.id == fieldID }), let command = field.command else { deviceFormError = "设备表单已变化，输入已保留。"; return false }
             var params = command.params; params["value"] = .string(value)
             guard operation == deviceOperation, await request(command.name, params), operation == deviceOperation else { deviceFormError = lastErrorMessage; return false }
@@ -50,11 +51,12 @@ extension AppSession {
         guard let raw = rawDeviceIDs[id], offset != 0 else { return }
         Task { for _ in 0..<abs(offset) { guard await request("device.move", ["id": .string(raw), "direction": .number(offset < 0 ? -1 : 1)]) else { return } } }
     }
+    var gatewayDevices: [BackendDevice] { devices.filter { $0.gatewayID == nil } }
     func reorderDevices(_ orderedIDs: [UUID]) {
-        guard orderedIDs.count == devices.count, Set(orderedIDs) == Set(devices.map(\.id)) else { return }
+        guard orderedIDs.count == gatewayDevices.count, Set(orderedIDs) == Set(gatewayDevices.map(\.id)) else { return }
         Task {
             for (target, id) in orderedIDs.enumerated() {
-                guard let raw = rawDeviceIDs[id], let current = devices.firstIndex(where: { $0.id == id }) else { return }
+                guard let raw = rawDeviceIDs[id], let current = gatewayDevices.firstIndex(where: { $0.id == id }) else { return }
                 for _ in 0..<abs(current - target) {
                     guard await request("device.move", ["id": .string(raw), "direction": .number(current > target ? -1 : 1)]) else { return }
                 }

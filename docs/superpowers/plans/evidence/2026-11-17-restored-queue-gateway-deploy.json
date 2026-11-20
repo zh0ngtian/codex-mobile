@@ -1,0 +1,204 @@
+{
+  "date": "2026-11-17",
+  "scope": "gateway-only",
+  "webUi": true,
+  "taskId": "restored-message-queue-web-deploy-20261117",
+  "batchId": "aa0726b9-5d07-45e0-b13e-1649860cda33",
+  "state": "complete",
+  "sourceCommit": "79468d9828976bb0f0cba113a1299844987cf8a2",
+  "frozenCommit": "07fa1673884d22b5176b55aaaca779ec18e225ab",
+  "includedBehaviorCommits": [
+    "e423461bd3440b353633ee6f76c8a306dae1584b",
+    "80d6b68fb7dba45053a79d37dad61af73360e8ba"
+  ],
+  "receiptEqual": true,
+  "phases": [
+    "main",
+    "gateway",
+    "verify"
+  ],
+  "development": {
+    "attempt": 1,
+    "runId": 44042137576,
+    "sourceCommit": "07fa1673884d22b5176b55aaaca779ec18e225ab"
+  },
+  "beforeChecks": {
+    "directRequests": false,
+    "restoredFollowUps": false,
+    "legacyFacadeRemoved": false
+  },
+  "afterChecks": {
+    "directRequests": true,
+    "restoredFollowUps": true,
+    "legacyFacadeRemoved": true
+  },
+  "runtime": {
+    "actualDigestsMatch": true,
+    "actualDigests": {
+      "serverDigest": "31823718687d0f6dac39da1cd557f09f1a08e407f9fb32ca452a94faadb5bc2b",
+      "frontendDigest": "8b3822fd747cb96e970ee574590bf7635088f8cb1a1dcba43887eecf0051b158",
+      "binDigest": "e1658eb973cdbe2001d9c12c6f1413c98abed6e7ce060ffddb0e00ace46935f5",
+      "manifestDigest": "932d4dc980f60916dd4972f4e6f3b7db6b943d73b73be7e1259c657eec170233"
+    },
+    "configAndTokenPreserved": true,
+    "otherWorkspaceHeadAndIndexPreserved": true,
+    "remoteIdentityAndLocalPairPreserved": true,
+    "remoteState": "online",
+    "pid": 66364,
+    "oldPid": 34462,
+    "installedAssetsMatchHTTP": true,
+    "verifiedAt": "2026-11-17T07:55:05.029962+00:00"
+  },
+  "rpc": {
+    "http": [
+      {
+        "mode": "local",
+        "method": "initialize",
+        "milliseconds": 32,
+        "direct": true
+      },
+      {
+        "mode": "local",
+        "method": "initialized",
+        "milliseconds": 4,
+        "direct": true
+      },
+      {
+        "mode": "local",
+        "method": "thread/loaded/list",
+        "milliseconds": 8,
+        "direct": true
+      },
+      {
+        "mode": "local",
+        "method": "model/list",
+        "milliseconds": 19,
+        "direct": true
+      },
+      {
+        "mode": "local",
+        "method": "GET follow-ups",
+        "queueRead": true
+      },
+      {
+        "mode": "remote",
+        "method": "initialize",
+        "milliseconds": 1255,
+        "direct": true
+      },
+      {
+        "mode": "remote",
+        "method": "initialized",
+        "milliseconds": 347,
+        "direct": true
+      },
+      {
+        "mode": "remote",
+        "method": "thread/loaded/list",
+        "milliseconds": 1295,
+        "direct": true
+      },
+      {
+        "mode": "remote",
+        "method": "model/list",
+        "milliseconds": 1615,
+        "direct": true
+      },
+      {
+        "mode": "remote",
+        "method": "GET follow-ups",
+        "queueRead": true
+      }
+    ],
+    "ws": [
+      {
+        "sample": 0,
+        "milliseconds": 1273,
+        "modelCount": 9
+      },
+      {
+        "sample": 1,
+        "milliseconds": 1074,
+        "modelCount": 9
+      },
+      {
+        "sample": 2,
+        "milliseconds": 1238,
+        "modelCount": 9
+      },
+      {
+        "sample": 3,
+        "milliseconds": 1094,
+        "modelCount": 9
+      },
+      {
+        "sample": 4,
+        "milliseconds": 1102,
+        "modelCount": 9
+      }
+    ],
+    "states": [
+      "online",
+      "online",
+      "online",
+      "online",
+      "online"
+    ],
+    "testChatsCreated": 0,
+    "modelInferenceRequestsSent": 0,
+    "continuousConnectionSeconds": 66,
+    "clientReconnectPassed": true,
+    "result": "passed",
+    "finishedAt": "2026-11-17T07:55:13.837Z",
+    "limitations": [
+      "短时持续连接和客户端重连验证，不代表8小时、睡眠唤醒或自然凭据刷新验收",
+      "目录仅有网关所在Mac，未验证其他远程机器"
+    ]
+  },
+  "localValidation": {
+    "adapterRegression": {
+      "passed": 290
+    },
+    "coordinatorRecovery": {
+      "passed": 59
+    },
+    "buildContract": {
+      "files": 22,
+      "passed": 164
+    },
+    "typecheck": "passed",
+    "serverStrict": "passed",
+    "queueRegression": {
+      "files": 12,
+      "passed": 117
+    },
+    "uploadRegression": {
+      "files": 1,
+      "passed": 2
+    },
+    "remoteTransportRecheck": {
+      "files": 2,
+      "passed": 58,
+      "overlapsQueueRegression": true
+    }
+  },
+  "web": {
+    "httpStatus": 200,
+    "assets": [
+      {
+        "path": "./assets/index-DDbHRxPf.js",
+        "httpStatus": 200,
+        "size": 884614,
+        "sha256": "2cef04518a43d42f372c2cca895bb0e3dba8dae73b4fe29fb90d5310737ad173"
+      }
+    ]
+  },
+  "clientPackagesPublished": false,
+  "testChatsCreated": 0,
+  "limitations": [
+    "短时持续连接和客户端重连验证，不代表8小时、睡眠唤醒或自然凭据刷新验收",
+    "目录仅有网关所在Mac，未验证其他远程机器",
+    "网页仅核对HTTP资源与实际安装摘要，本批未新增界面操作实测",
+    "已有冷列表及详情性能边界沿用前批记录，不宣称整体P95或8小时通过"
+  ]
+}

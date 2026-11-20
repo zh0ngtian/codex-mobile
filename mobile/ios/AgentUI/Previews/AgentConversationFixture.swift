@@ -612,8 +612,8 @@ final class AgentConversationFixture {
         } else if ["device.add", "device.cancel"].contains(command.name), ProcessInfo.processInfo.arguments.contains("--agent-no-devices-fixture") {
             // 只确认离线界面导航，不执行连接、保存或伪造网关成功。
             if command.name == "device.add" {
-                snapshot.panel = NativePanel(id: "devices", title: "设备", items: ["name", "gatewayUrl"].map { field in
-                    NativePanelItem(id: field, kind: "input", value: "", command: NativeCommand(name: "device.change", params: ["field": .string(field), "draftId": .string(command.id)]))
+                snapshot.panel = NativePanel(id: "devices", title: "设备", items: ["name", "gatewayUrl", "gatewayMode"].map { field in
+                    NativePanelItem(id: field, kind: "input", value: field == "gatewayMode" ? "local" : "", command: NativeCommand(name: "device.change", params: ["field": .string(field), "draftId": .string(command.id)]))
                 })
             } else { snapshot.panel = nil }
             snapshot.commandResults = [NativeCommandResult(id: command.id, name: command.name, ok: true, contextId: snapshot.contextId)]

@@ -1,7 +1,7 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { AppBootstrap } from '../../src/App';
-const server = vi.hoisted(() => ({ enabled: false, clients: new Map<string, any>(), requests: [] as string[], threads: new Map<string, any[]>(), threadListGate: null as Promise<void> | null, failThreadList: false }));
+const server = vi.hoisted(() => ({ enabled: false, clients: new Map<string, any>(), requests: [] as string[], projectRequests: [] as unknown[], threads: new Map<string, any[]>(), threadListGate: null as Promise<void> | null, failThreadList: false }));
 vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManager: class {
   constructor(private options: any) {}
   sync(backends: any[]) {
@@ -12,6 +12,7 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
      server.requests.push(method);
      if (method === 'threadSection/list') return { data: [{ id: '01984de2-8f74-7c91-a3b2-5c5e937cf318', name: 'Pinned' }], nextCursor: null };
      if (method === 'thread/list' && params?.sectionId) return { data: [], nextCursor: null };
+     if (method === 'thread/list') server.projectRequests.push(params);
      if (method === 'thread/list' && server.threadListGate) await server.threadListGate;
      if (method === 'thread/list' && server.failThreadList) throw new Error('首次会话读取失败');
      if (method === 'config/read') return { config: {} };
@@ -27,7 +28,7 @@ vi.mock('../../src/backends/connection-manager', () => ({ BackendConnectionManag
 } }));
 const posts: any[] = [];
 function command(id: string, name: string, params: Record<string, unknown> = {}) { window.dispatchEvent(new CustomEvent('codex-mobile-native-command', { detail: { id, name, params } })); }
-afterEach(() => { cleanup(); localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; posts.length = 0; server.enabled = false; server.clients.clear(); server.threads.clear(); server.requests = []; server.threadListGate = null; server.failThreadList = false; vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); localStorage.clear(); delete (window as any).__CODEX_NATIVE_UI__; delete (window as any).webkit; delete (window as any).codexMobilePublishNativeSnapshot; posts.length = 0; server.enabled = false; server.clients.clear(); server.threads.clear(); server.requests = []; server.projectRequests = []; server.threadListGate = null; server.failThreadList = false; vi.unstubAllGlobals(); });
 it('真实App注册导航与各设备workspace：原生关闭侧栏、切换列表筛选、创建对话和草稿均复用业务状态', async () => {
  Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (value: unknown) => posts.push(value) });
  vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { headers: { 'content-type': 'application/json' } })));
@@ -86,8 +87,70 @@ const memoryRegistry = { version: 1 as const, selectedBackendId: 'a', backends: 
 ] };
 function enableNativeMemoryTest() {
  server.enabled = true;
+ localStorage.setItem('codex-mobile:collapsed-projects', '[]');
  Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (snapshot: unknown) => posts.push(snapshot) });
 }
+
+it.each(['local', 'remote'] as const)('%s原生刷新命令等待共享RPC结果，保留旧行并交付新列表', async gatewayMode => {
+ enableNativeMemoryTest();
+ server.threads.set('a', [{ id: 'before-refresh', name: '刷新前会话', cwd: '/project' }]);
+ vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ projects: ['/project'], projectlessThreadIds: [] }))));
+ const backend = { ...memoryRegistry.backends[0], gatewayMode, ...(gatewayMode === 'remote' ? { remoteTarget: {
+  mode: 'remote' as const, gatewayId: 'g', account: { accountId: 'a', accountUserId: 'u' }, target: { environmentId: 'e', installationId: 'i' },
+ } } : {}) };
+ render(<AppBootstrap initialRegistry={{ ...memoryRegistry, backends: [backend] }} />);
+ const items = () => (posts.at(-1)?.groups ?? []).flatMap((group: any) => group.items);
+ await waitFor(() => expect(items().some((item: any) => item.title === '刷新前会话')).toBe(true));
+ let release!: () => void;
+ server.threadListGate = new Promise<void>(resolve => { release = resolve; });
+ server.threads.set('a', [{ id: 'after-refresh', name: '刷新后会话', cwd: '/project' }]);
+ const previousReads = server.projectRequests.length;
+ await act(async () => command(`refresh-${gatewayMode}`, 'navigation.refresh'));
+ await waitFor(() => expect(server.projectRequests.length).toBeGreaterThan(previousReads));
+ expect(items().some((item: any) => item.title === '刷新前会话')).toBe(true);
+ await waitFor(() => expect(posts.at(-1)?.groups.some((group: any) => group.cwd === '/project' && group.loading === 'loading')).toBe(true));
+ await act(async () => release());
+ await waitFor(() => expect(items().some((item: any) => item.title === '刷新后会话')).toBe(true));
+ expect(items().some((item: any) => item.title === '刷新前会话')).toBe(false);
+ await waitFor(() => expect(posts.at(-1)?.groups.find((group: any) => group.cwd === '/project')?.loading).toBe('ready'));
+});
+
+it.each([false, true])('首次打开边栏所有项目折叠，展开后重开和重启保留（原生=%s）', async native => {
+ server.enabled = true;
+ localStorage.setItem('codex-mobile:list-backend', 'a');
+ if (native) Object.assign(window, { __CODEX_NATIVE_UI__: true, webkit: { messageHandlers: { nativeUI: { postMessage() {} } } }, codexMobilePublishNativeSnapshot: (snapshot: unknown) => posts.push(snapshot) });
+ vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ projects: ['/a/first', '/a/second'], projectlessThreadIds: ['projectless-thread'] }))));
+ const registry = { ...memoryRegistry, backends: memoryRegistry.backends.slice(0, 1) };
+ let view = render(<AppBootstrap initialRegistry={registry} />);
+ const groups = () => native
+  ? posts.at(-1)?.groups.filter((group: any) => group.category === 'project') ?? []
+  : [...view.container.querySelectorAll('.project-heading')].map(button => ({ collapsed: button.getAttribute('aria-expanded') !== 'true' }));
+ const openSidebar = async () => {
+  if (native) await act(async () => command('open-sidebar', 'navigation.sidebar', { open: true }));
+  else if (screen.queryByRole('button', { name: '打开会话列表' })) fireEvent.click(screen.getByRole('button', { name: '打开会话列表' }));
+ };
+ const assertCollapsed = async (count: number) => { await waitFor(() => { expect(groups()).toHaveLength(3); expect(groups().filter((group: any) => group.collapsed)).toHaveLength(count); }); };
+ await openSidebar();
+ await assertCollapsed(3);
+ // 未展开时只读目录与摘要，不发项目分页。
+ expect(server.projectRequests).toHaveLength(0);
+ if (native) await act(async () => command('expand-first', 'project.toggle', { backendId: 'a', cwd: '/a/first' }));
+ else fireEvent.click(screen.getByRole('button', { name: 'first' }));
+ await assertCollapsed(2);
+ if (native) {
+  await act(async () => command('close-sidebar', 'navigation.sidebar', { open: false }));
+  await openSidebar();
+ } else {
+  fireEvent.click(screen.getByRole('button', { name: '关闭会话列表' }));
+  await openSidebar();
+ }
+ await assertCollapsed(2);
+ view.unmount();
+ server.clients.clear();
+ view = render(<AppBootstrap initialRegistry={registry} />);
+ await openSidebar();
+ await assertCollapsed(2);
+});
 
 it('阅读甲机器对话时无参新建继承甲项目，明确乙机器新建仍恢复乙项目', async () => {
  enableNativeMemoryTest();

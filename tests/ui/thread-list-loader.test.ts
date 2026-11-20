@@ -19,7 +19,7 @@ function deferred<T>() {
 }
 
 describe("会话列表轮询加载器", () => {
-  it("主目录与worktree使用同一五条游标，展开刷新和手动更多保持完整目录范围", async () => {
+  it("主目录与worktree的首批和更多都读取官方索引并保持完整目录过滤", async () => {
     const request = vi.fn(async (_method: string, params: any) => ({
       data: Array.from({ length: 5 }, (_, i) => ({ id: `${params.cursor ?? 'first'}-${i}`, cwd: i % 2 ? "/worktree" : "/main" })),
       nextCursor: params.cursor ? null : "next-page",
@@ -27,11 +27,20 @@ describe("会话列表轮询加载器", () => {
     const client = { projectWorktrees: { "/main": ["/worktree"] }, request };
     const onProjectData = vi.fn();
     await createLatestThreadListLoader({ onProjectData }).load(client, ["/main"], [], { expandedProjectCwds: ["/main"] });
-    expect(request).toHaveBeenCalledWith("thread/list", { limit: 5, cwd: ["/main", "/worktree"], sortKey: "recency_at" }, { priority: "background" });
+    expect(request).toHaveBeenCalledWith("thread/list", { limit: 5, cwd: ["/main", "/worktree"], sortKey: "recency_at", useStateDbOnly: true }, { priority: "background" });
     expect(onProjectData).toHaveBeenCalledWith("/main", expect.arrayContaining([expect.objectContaining({ cwd: "/worktree" })]), true, "next-page");
     const more = await loadProjectThreadRecords(client, "/main", "next-page");
-    expect(request.mock.calls.at(-1)).toEqual(["thread/list", { limit: 5, cwd: ["/main", "/worktree"], sortKey: "recency_at", cursor: "next-page" }]);
+    expect(request.mock.calls.at(-1)).toEqual(["thread/list", { limit: 5, cwd: ["/main", "/worktree"], sortKey: "recency_at", useStateDbOnly: true, cursor: "next-page" }]);
     expect(more.threads).toHaveLength(5); expect(more.hasMore).toBe(false);
+  });
+  it("没有项目和无项目分组时，侧栏总列表直接读取官方索引", async () => {
+    const request = vi.fn(async () => ({ data: [{ id: "recent" }], nextCursor: null }));
+    const onData = vi.fn();
+    await createLatestThreadListLoader({ onData }).load({ request });
+    expect(request).toHaveBeenCalledExactlyOnceWith(
+      "thread/list", { limit: 50, sortKey: "recency_at", useStateDbOnly: true }, { priority: "background" },
+    );
+    expect(onData).toHaveBeenCalledWith([{ id: "recent" }]);
   });
   it("全部折叠只更新摘要，不预取普通项目和无项目首批；显式展开再取五条", async () => {
     const request = vi.fn(async (method: string, params: any): Promise<any> => method === "mobile/sidebar/summaries"
@@ -55,6 +64,16 @@ describe("会话列表轮询加载器", () => {
     });
     expect(request.mock.calls.filter(([method]: any) => method === "thread/list").map(([, params]: any) => params.cwd)).toEqual(["/b"]);
     expect(request.mock.calls.filter(([method]: any) => method === "mobile/sidebar/projectless")).toHaveLength(1);
+  });
+  it("全局摘要与展开项目同优先级并进入首批后台读取", async () => {
+    const request = vi.fn(async (_method: string, _params: unknown, _options: unknown) => ({ data: [], nextCursor: null }));
+    const projects = Array.from({ length: 8 }, (_, i) => `/project-${i}`);
+    await createLatestThreadListLoader({}).load({ request, sidebarIndex: true }, projects, [], {
+      expandedProjectCwds: projects, preferredProjectCwds: projects, includeRunningThreads: true,
+    });
+    const firstReads = request.mock.calls.slice(0, 4);
+    expect(firstReads).toContainEqual(["mobile/sidebar/summaries", { threadIds: [], includeRunning: true }, { priority: "background-visible" }]);
+    expect(firstReads.filter(([method]) => method === "thread/list")).toHaveLength(3);
   });
   it("批量摘要失败仍等待项目任务收尾，不提前解除整轮在途状态", async () => {
     const project = deferred<any>(), onSettled = vi.fn();
@@ -82,7 +101,7 @@ describe("会话列表轮询加载器", () => {
     expect(onProjectData).toHaveBeenCalledWith(PROJECTLESS_GROUP_ID, expect.any(Array), true, "next");
     const more = await loadProjectlessThreadRecords(client, ["known"], 10, new Set(), new Set(), "next");
     expect(more.threads).toHaveLength(5); expect(more.hasMore).toBe(false);
-    expect(request.mock.calls.map(([m]) => m)).toEqual(["thread/list", "mobile/sidebar/projectless", "mobile/sidebar/summaries", "mobile/sidebar/projectless"]);
+    expect(request.mock.calls.map(([m]) => m)).toEqual(["mobile/sidebar/summaries", "thread/list", "mobile/sidebar/projectless", "mobile/sidebar/projectless"]);
   });
   it("旧运行摘要变为空闲时仍更新状态，但不再从五条分页中排除", async () => {
     const records = [{ id: "ended", status: { type: "idle" } }, ...Array.from({ length: 4 }, (_, i) => ({ id: `row-${i}` }))];
@@ -563,6 +582,7 @@ describe("会话列表轮询加载器", () => {
       limit: 5,
       cwd: "/project/a",
       sortKey: "recency_at",
+      useStateDbOnly: true,
       cursor: "current-page",
     });
   });
@@ -737,6 +757,7 @@ describe("会话列表轮询加载器", () => {
       limit: 5,
       cwd: "/project/a",
       sortKey: "recency_at",
+      useStateDbOnly: true,
     }, { priority: "background" });
     expect(onProjectStart).toHaveBeenCalledWith("/project/a");
     expect(onProjectStart).toHaveBeenCalledWith("/project/b");
@@ -795,6 +816,7 @@ describe("会话列表轮询加载器", () => {
       limit: 5,
       cwd: "/project/a",
       sortKey: "recency_at",
+      useStateDbOnly: true,
     }, { priority: "background" });
     expect(onProjectStart).not.toHaveBeenCalled();
     expect(onProjectData).toHaveBeenCalledWith(

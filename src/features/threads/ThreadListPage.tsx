@@ -41,6 +41,7 @@ export type ThreadManagementAction =
   | "refresh"
   | "duplicate"
   | "rename"
+  | "cancel-creation"
   | "archive";
 
 const LONG_PRESS_DELAY_MS = 500;
@@ -142,6 +143,10 @@ export function ThreadListPage({
     ...(hasProjectlessThreads ? [PROJECTLESS_GROUP_ID] : []),
     ...projectDirectories,
   ]);
+  const listedProjects = projectGroups.filter(group => !query.trim() || group.threads.length > 0);
+  const hasListContent = allGroups.pinned.length > 0 || (selectedBackendId === "all"
+    ? allGroups.recent.length > 0 : listedProjects.length > 0);
+  const showListSkeleton = threadListState === "loading" && !hasListContent;
   const renderNow = Math.floor(Date.now() / 1000);
   const clearLongPress = () => {
     if (longPressRef.current) {
@@ -382,7 +387,7 @@ export function ThreadListPage({
             {t("正在搜索会话")}
           </div>
         )}
-        {threadListState === "loading" && (
+        {showListSkeleton && (
           <div
             className="thread-list-skeleton"
             aria-label={t("正在加载会话")}
@@ -396,7 +401,7 @@ export function ThreadListPage({
             ))}
           </div>
         )}
-        {threadListState !== "loading" && selectedBackendId === "all" && (
+        {selectedBackendId === "all" && (
           <>
             {!!allGroups.pinned.length && (
               <section className="thread-section">
@@ -412,7 +417,7 @@ export function ThreadListPage({
             )}
           </>
         )}
-        {threadListState !== "loading" && selectedBackendId !== "all" && (
+        {selectedBackendId !== "all" && (
           <>
             {!!allGroups.pinned.length && (
               <section className="thread-section">
@@ -420,12 +425,7 @@ export function ThreadListPage({
                 {allGroups.pinned.map((thread) => renderRow(thread, false))}
               </section>
             )}
-            {projectGroups
-              .filter(
-                (group) =>
-                  !query.trim() ||
-                  group.threads.length > 0,
-              )
+            {listedProjects
               .map((group) => {
                 const projectKey = projectCollapseKey(
                   selectedBackendId,
@@ -607,7 +607,7 @@ export function ThreadListPage({
           setManagedThread(null);
         }}
         onRename={() => void runThreadAction("rename")}
-        onArchive={() => void runThreadAction("archive")}
+        onArchive={() => void runThreadAction(managedThread?.thread.gatewayPendingCreation ? 'cancel-creation' : "archive")}
       />
       <footer className="list-actions">
         <label className="search-box" aria-busy={searching}><AppIcon name="search" /><input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder={t("搜索聊天")} /></label>

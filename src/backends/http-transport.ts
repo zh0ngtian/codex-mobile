@@ -1,3 +1,5 @@
+import { gatewayOutbox } from './outbox';
+import { gatewayUrl, transportNamespace, type GatewayRoute } from './gateway-route';
 import { isClientForeground } from "../native-ui/foreground";
 import type { RpcMessage } from "../app-server/client";
 import { t } from "../i18n";
@@ -5,13 +7,13 @@ import { isNavigationResume } from "../../server/rpc-replay";
 import { httpRequestScheduler, type HttpRequestPriority } from "./http-request-scheduler";
 
 export interface HttpSyncState { updatedAt: number | null; stale: boolean }
-interface Config { baseUrl: string; token: string; id: string }
+interface Config extends GatewayRoute { id: string }
 interface PollResponse {
   epoch: string; cursor: number; messages: RpcMessage[]; requests: RpcMessage[];
   active: boolean; updatedAt: number; reset: boolean; hasMore?: boolean;
 }
 const readMethods = new Set(["initialize", "initialized", "thread/list", "threadSection/list", "thread/read", "thread/loaded/list", "thread/turns/list", "thread/items/list", "mobile/sidebar/summaries", "mobile/sidebar/projectless", "mobile/turns/commentary", "permissionProfile/list", "plugin/list", "model/list", "config/read", "configRequirements/read", "account/read", "account/rateLimits/read", "skills/list", "mcpServerStatus/list", "collaborationMode/list", "app/list", "fs/readFile"]);
-interface PendingWrite { requestId: string; message: RpcMessage; epoch?: string; queryOnly?: true }
+interface PendingWrite { requestId: string; message: RpcMessage; epoch?: string; queryOnly?: true; retained?: true; legacyOutbox?: true }
 const responseSignature = (message: RpcMessage, epoch?: string) => JSON.stringify({ id: message.id, epoch });
 function persistentWrite(operation: PendingWrite): PendingWrite {
   // 服务器回复可能包含密码等保密答案。磁盘只保留查询原 UUID 所需的路由信息。
@@ -23,8 +25,8 @@ function persistentWrite(operation: PendingWrite): PendingWrite {
 const pendingWrites = new Map<string, Map<string, PendingWrite>>();
 
 export class HttpOperationPendingError extends Error {
-  constructor(readonly requestId: string, readonly request: RpcMessage, cause?: unknown) {
-    super(t("请求结果待确认，请刷新会话后检查，勿重复发送"), { cause });
+  constructor(readonly requestId: string, readonly request: RpcMessage, cause?: unknown, readonly submissionState: 'pending' | 'not-submitted' = 'pending') {
+    super(t(submissionState === 'not-submitted' ? '旧版待提交操作已暂停，请先核对会话，勿重复提交' : "请求结果待确认，请刷新会话后检查，勿重复发送"), { cause });
     this.name = "HttpOperationPendingError";
   }
 }
@@ -38,7 +40,7 @@ export function transportUuid() {
 }
 
 function sessionFor(config: Config) {
-  const key = `codex-mobile:http-session:${config.id}:${config.baseUrl}`;
+  const key = `codex-mobile:http-session:${transportNamespace(config)}:${config.baseUrl}`;
   try {
     const saved = localStorage.getItem(key);
     if (saved && /^[\da-f-]{36}$/i.test(saved)) return saved;
@@ -57,6 +59,7 @@ export class HttpRpcTransport extends EventTarget {
   private cursor = 0;
   private epoch = "";
   private initialized = false;
+  private directRequests = false;
   private polling = false;
   private catchingUp = true;
   private catchUpAnnounced = false;
@@ -81,6 +84,7 @@ export class HttpRpcTransport extends EventTarget {
   private detailsUnsupported = false;
   private reconciling = false;
   private reconcileOffset = 0;
+  private readonly restored: Promise<void>;
   private readonly inflightWrites = new Set<string>();
   private readonly inflightRpcWrites = new Map<number | string, PendingWrite>();
 
@@ -91,9 +95,10 @@ export class HttpRpcTransport extends EventTarget {
 
   constructor(private readonly config: Config, options: { fetch?: typeof fetch; sessionId?: string } = {}) {
     super();
+    this.config = structuredClone(config);
     this.fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.sessionId = options.sessionId ?? sessionFor(config);
-    this.writesKey = `codex-mobile:http-writes:${config.id}:${this.sessionId}`;
+    this.writesKey = `codex-mobile:http-writes:${transportNamespace(config)}:${this.sessionId}`;
     this.writes = pendingWrites.get(this.writesKey) ?? new Map();
     if (!pendingWrites.has(this.writesKey)) {
       try {
@@ -118,6 +123,17 @@ export class HttpRpcTransport extends EventTarget {
       }
     }
     if (removedRead) this.saveWrites();
+    this.restored = config.gatewayMode === 'remote' && globalThis.indexedDB ? gatewayOutbox.list().then(entries => {
+      for (const entry of entries) {
+        if (entry.kind !== 'rpc' || entry.sessionId !== this.sessionId || !entry.signature || transportNamespace(entry.route) !== transportNamespace(config)) continue;
+        const saved = entry.message as RpcMessage;
+        if (!saved || saved.method === 'mobile/sidechat/rpc') continue;
+        this.writes.set(entry.signature, { requestId: entry.id, message: saved, epoch: entry.epoch, legacyOutbox: true,
+          ...(entry.state === 'retained' && saved.method ? { retained: true } : { queryOnly: true }) });
+      }
+    }) : Promise.resolve();
+    // 初始化时也会等待并显示真实存储错误；避免无人等待时产生 unhandled rejection。
+    void this.restored.catch(() => {});
     document.addEventListener("visibilitychange", this.onResume);
     window.addEventListener("online", this.onResume);
     setTimeout(() => {
@@ -128,7 +144,7 @@ export class HttpRpcTransport extends EventTarget {
   }
 
   private url(path: string, params: Record<string, string> = {}) {
-    const url = new URL(path, `${this.config.baseUrl}/`);
+    const url = gatewayUrl(this.config, path);
     url.searchParams.set("sessionId", this.sessionId);
     if (this.config.token) url.searchParams.set("token", this.config.token);
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
@@ -170,17 +186,26 @@ export class HttpRpcTransport extends EventTarget {
 
   async send(raw: string, timeoutMs = 10_000, priority: HttpRequestPriority = "foreground", operationKey?: string): Promise<void> {
     if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
+    const message = JSON.parse(raw) as RpcMessage;
+    const deadline = Date.now() + timeoutMs;
+    // 同一网关的另一个设备可能正在恢复，握手不能阻断已连接设备的读取。
+    if (message.method === "initialize" || message.method === "initialized") return this.sendNow(message, deadline, operationKey);
     return httpRequestScheduler.run(new URL(this.config.baseUrl).origin, priority, this.requestLifetime.signal,
-      () => this.sendNow(raw, timeoutMs, operationKey));
+      () => {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) throw new Error(t('{method} 请求超时', { method: message.method ?? 'HTTP' }));
+        return this.sendNow(message, deadline, operationKey);
+      });
   }
 
-  private async sendNow(raw: string, timeoutMs: number, operationKey?: string): Promise<void> {
+  private async sendNow(message: RpcMessage, deadline: number, operationKey?: string): Promise<void> {
     if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
-    const message = JSON.parse(raw) as RpcMessage;
+    if (this.config.gatewayMode === 'remote') await this.restored;
+    if (this.readyState !== 1) throw new Error(t("设备尚未连接，请稍后重试"));
     if (message.method?.startsWith("thread/realtime/")) {
       if (this.realtime?.readyState !== 1) throw new Error(t("实时会话连接不可用"));
       if (message.method === "thread/realtime/start") this.realtimeThreadId = String((message.params as { threadId?: string })?.threadId ?? "");
-      this.realtime.send(raw);
+      this.realtime.send(JSON.stringify(message));
       return;
     }
     // 审批必须绑定从首个事件页读取的 epoch，不能在握手完成时猜测。
@@ -193,12 +218,12 @@ export class HttpRpcTransport extends EventTarget {
       ? (message.method ? JSON.stringify({ method: message.method, params: message.params, ...(operationKey ? { operationKey } : {}) }) : responseSignature(message, this.epoch)) : null;
     if (signature && !this.writes.has(signature) && this.writes.size >= 32) throw new Error(t("请求结果待确认，请刷新会话后检查，勿重复发送"));
     const existing = signature ? this.writes.get(signature) : undefined;
-    if (existing?.queryOnly) {
+    if (existing?.queryOnly || existing?.retained) {
       // 重启后没有回复正文，绝不能把元数据当作回复重发或为同一审批生成新 UUID。
       this.scheduleOperations(0);
-      throw new HttpOperationPendingError(existing.requestId, existing.message);
+      throw new HttpOperationPendingError(existing.requestId, existing.message, undefined, existing.retained ? 'not-submitted' : 'pending');
     }
-    const operation = existing || { requestId: transportUuid(), message, epoch: this.epoch || undefined };
+    const operation: PendingWrite = existing || { requestId: transportUuid(), message, epoch: this.epoch || undefined };
     let requestId = operation.requestId;
     const original = operation.message;
     const params = original.params as Record<string, unknown> | undefined;
@@ -206,11 +231,13 @@ export class HttpRpcTransport extends EventTarget {
       ? { ...original, method: "mobile/turns/details", params: { ...params, itemsView: undefined, limit: Math.min(5, Math.max(1, Number(params.limit) || 5)), sortDirection: "desc" } }
       : original;
     let wireOperation = { ...operation, message: wireMessage };
-    if (signature) { this.writes.set(signature, operation); this.saveWrites(); }
+    if (signature && !existing && globalThis.navigator?.onLine === false) throw new Error(t('设备尚未连接，请稍后重试'));
+    if (signature) {
+      this.writes.set(signature, operation); this.saveWrites();
+    }
     let response: RpcMessage | undefined;
     let failure: unknown;
     let mayHaveBeenAccepted = Boolean(existing);
-    const deadline = Date.now() + timeoutMs;
     const remainingReadBudget = () => {
       const remaining = deadline - Date.now();
       if (!signature && remaining <= 0) throw new Error(t("{method} 请求超时", { method: message.method ?? "HTTP" }));
@@ -228,17 +255,20 @@ export class HttpRpcTransport extends EventTarget {
     if (signature) this.inflightWrites.add(requestId);
     if (signature && message.method && message.id != null) this.inflightRpcWrites.set(message.id, operation);
     try {
-      for (let attempt = 0; attempt < 3 && this.readyState === 1; attempt++) {
+      for (let attempt = 0; (attempt < 3 || !signature && Date.now() < deadline) && this.readyState === 1; attempt++) {
         try {
-          response = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wireOperation) }, {}, remainingReadBudget());
-          await fallbackDetails();
-          break;
+          if (attempt === 0 || !existing?.queryOnly) {
+            const accepted = await this.fetchJson("/api/rpc", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(wireOperation) }, {}, remainingReadBudget());
+            if (accepted?.accepted !== true) { response = accepted; await fallbackDetails(); break; }
+            mayHaveBeenAccepted = true;
+          }
         } catch (reason) {
           failure = reason;
+          if (this.directRequests && !signature) throw reason;
           if ([401, 409, 404, 400].includes((reason as { status?: number }).status ?? 0)) {
             // 旧未知项可能早已执行；新一轮拒绝不能撤销早先的受理事实。
             if (mayHaveBeenAccepted && signature) throw new HttpOperationPendingError(requestId, operation.message, reason);
-            if (signature && this.readyState === 1 && this.writes.get(signature) === operation) { this.writes.delete(signature); this.saveWrites(); }
+            if (signature && this.readyState === 1 && this.writes.get(signature) === operation) { this.writes.delete(signature); this.saveWrites(); if (operation.legacyOutbox) await gatewayOutbox.remove(requestId); }
             throw reason;
           }
           mayHaveBeenAccepted = true;
@@ -250,7 +280,7 @@ export class HttpRpcTransport extends EventTarget {
           if (result.status === "completed" && result.message) { response = result.message; await fallbackDetails(); break; }
           if (result.status === "uncertain") break;
         } catch { /* 404 和弱网都不能证明操作未提交。 */ }
-        if (Date.now() >= deadline || attempt === 2) break;
+        if (Date.now() >= deadline || signature && attempt === 2) break;
         const retryDelay = 300 * (attempt + 1);
         if (!signature && deadline - Date.now() <= retryDelay) break;
         await new Promise((resolve) => setTimeout(resolve, retryDelay));
@@ -259,7 +289,11 @@ export class HttpRpcTransport extends EventTarget {
         if (signature) throw new HttpOperationPendingError(requestId, operation.message, failure);
         throw failure ?? new Error(t("设备尚未连接，请稍后重试"));
       }
-      if (signature) { this.writes.delete(signature); this.saveWrites(); }
+      if (signature) { this.writes.delete(signature); this.saveWrites(); if (operation.legacyOutbox) await gatewayOutbox.remove(requestId); }
+      if (message.method === 'initialize' && !response.error) {
+        const gateway = (response.result as { gateway?: { directRequests?: boolean } } | undefined)?.gateway;
+        this.directRequests = gateway?.directRequests === true;
+      }
       if (message.id != null && message.method) this.emit({ ...response, id: message.id });
       else if (response.error) throw new Error(response.error.message);
       if (message.method === "initialized") {
@@ -311,11 +345,15 @@ export class HttpRpcTransport extends EventTarget {
         if (this.inflightWrites.has(operation.requestId)) continue;
         if (!operation.message.method && !this.epoch) continue;
         try {
-          const result = await this.fetchJson("/api/operations", {}, { requestId: operation.requestId }, 5_000);
+          let result;
+          // 历史上未提交的普通操作保留供核对，恢复连接不得自动发送。
+          if (operation.retained) continue;
+          result = await this.fetchJson("/api/operations", {}, { requestId: operation.requestId }, 5_000);
           if (this.readyState !== 1 || !isClientForeground()) return;
           if (result.status !== "completed" || !result.message || this.inflightWrites.has(operation.requestId) || this.writes.get(signature) !== operation) continue;
           this.writes.delete(signature);
           this.saveWrites();
+          if (operation.legacyOutbox) await gatewayOutbox.remove(operation.requestId);
           if (!operation.message.method && !result.message.error && operation.epoch === this.epoch) {
             this.answeredRequests.add(String(operation.message.id));
             this.latestRequests = this.latestRequests.filter((request) => String(request.id) !== String(operation.message.id));
@@ -389,7 +427,9 @@ export class HttpRpcTransport extends EventTarget {
       if (this.readyState !== 1) return;
       this.failures++;
       this.sync(true);
-      if ([401, 503].includes((reason as { status?: number }).status ?? 0)) this.close(4001, "upstream unavailable");
+      const status = (reason as { status?: number }).status;
+      // Remote 暂时不可读不撤销手机至网关的提交能力；写入仍按原上下文由网关核验。
+      if (status === 401 || (status === 503 && this.config.gatewayMode !== 'remote')) this.close(4001, "upstream unavailable");
     } finally {
       this.polling = false;
       this.schedule();

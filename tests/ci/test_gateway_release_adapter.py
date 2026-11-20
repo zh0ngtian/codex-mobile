@@ -67,6 +67,14 @@ class Adapter:
         put(self.work / 'package-lock.json', '{"lockfileVersion": 3}')
         put(self.work / 'tsconfig.npm.json', '{"include": ["server/**/*.ts"]}')
         put(self.work / 'server/index.ts', 'frozen server source')
+        put(self.work / 'src/main.tsx', 'frozen frontend source')
+        put(self.work / 'index.html', '<div id="root"></div>')
+        put(self.work / 'vite.config.ts', 'export default {}')
+        for name in ('tsconfig.json', 'tsconfig.app.json', 'tsconfig.server.json'):
+            put(self.work / name, '{}')
+        put(self.work / 'playwright.config.ts', 'export default {}')
+        put(self.work / 'tests/ui/example.tsx', 'frontend typecheck input')
+        put(self.work / 'tests/server/example.ts', 'server typecheck input')
         put(self.work / 'bin/codex-mobile.mjs', 'new entry')
         put(self.work / 'bin/access-url.mjs', 'new helper')
         self.pid = 100
@@ -82,6 +90,7 @@ class Adapter:
         self.query_error = False
         self.build_response_loss = False
         self.build_exit_code = 0
+        self.web_build_exit_code = 0
         self.http_payload = {'mode': 'managed', 'upstreamUrl': 'ws://127.0.0.1:18765'}
         self.requests = []
         self.proxy_handlers = []
@@ -124,6 +133,11 @@ class Adapter:
 
     def build(self, args, cwd=None, stdout=None, stderr=None):
         self.calls.append(list(args))
+        if args == ['npm', 'run', 'build']:
+            assert not self.work.joinpath('dist').exists(), '前端必须清理旧输出后构建'
+            put(self.work / 'dist/index.html', 'new frontend')
+            stdout.write(b'> codex-mobile build\n> tsc -b && vite build\n')
+            return types.SimpleNamespace(returncode=self.web_build_exit_code)
         if args != ['npm', 'run', 'build:server']:
             raise AssertionError(f'unexpected build: {args}')
         put(self.work / 'npm-dist/server/index.js', 'new server')
@@ -264,8 +278,11 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(self.adapter.live.joinpath('node_modules/ws/index.js').read_text(), 'keep dependency')
         self.assertEqual(self.adapter.live.joinpath('start.py').read_text(), 'existing start script')
         self.assertEqual(self.adapter.count(['npm', 'run', 'build:server']), 1)
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build']), 0)
         self.assertEqual(self.adapter.count(['launchctl', 'kickstart']), 1)
         receipt = result['result']
+        self.assertNotIn('webUi', receipt)
+        self.assertNotIn('webUi', json.loads(self.gateway.build_path.read_text())['identity'])
         self.assertEqual(receipt['sha'], 'a' * 40)
         self.assertEqual(receipt['batchId'], 'batch-1')
         self.assertEqual(receipt['pid'], 101)
@@ -276,6 +293,264 @@ class GatewayTests(unittest.TestCase):
         self.gateway.run()
         self.assertEqual(self.adapter.count(['npm', 'run', 'build:server']), 1)
         self.assertEqual(self.adapter.count(['launchctl', 'kickstart']), 1)
+
+    def enable_web_ui(self, selected=True):
+        self.adapter.context['tasks'] = [{'id': 'web-update', 'sha': 'a' * 40, 'validation': {
+            'sourceCommit': 'a' * 40, 'scope': 'gateway-only', 'webUi': selected}}]
+        return self.module.Gateway(self.adapter)
+
+    def test_web_ui_opt_in_builds_and_installs_frozen_frontend_with_receipt(self):
+        gateway = self.enable_web_ui()
+        put(self.adapter.work / 'dist/stale.js', 'stale frontend output')
+        environment = self.adapter.live.joinpath('gateway-env.json').read_bytes()
+        result = gateway.run()
+        self.assertTrue(result['webUi'])
+        self.assertEqual(self.adapter.package.joinpath('dist/index.html').read_text(), 'new frontend')
+        self.assertFalse(self.adapter.package.joinpath('dist/stale.js').exists())
+        self.assertEqual(self.adapter.package.joinpath('npm-dist/server/index.js').read_text(), 'new server')
+        self.assertEqual(self.adapter.package.joinpath('node_modules/nested/index.js').read_text(), 'nested dependency')
+        self.assertEqual(self.adapter.live.joinpath('node_modules/ws/index.js').read_text(), 'keep dependency')
+        self.assertEqual(self.adapter.live.joinpath('start.py').read_text(), 'existing start script')
+        self.assertEqual(self.adapter.live.joinpath('gateway-env.json').read_bytes(), environment)
+        self.assertEqual(self.adapter.root.joinpath('gateway-backup/package/dist/index.html').read_text(), 'existing frontend')
+        checkpoint = json.loads(gateway.build_path.read_text())
+        self.assertEqual(checkpoint['status'], 'success')
+        self.assertTrue(checkpoint['identity']['webUi'])
+        self.assertEqual(checkpoint['frontendDigest'], result['frontendDigest'])
+        self.assertEqual(checkpoint['logSha256'], self.module.sha256(gateway.build_log))
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build']), 1)
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build:server']), 1)
+        self.module.Gateway(self.adapter).run()
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build']), 1)
+
+    def test_explicit_false_keeps_default_identity_and_frontend(self):
+        gateway = self.enable_web_ui(False)
+        result = gateway.run()
+        self.assertNotIn('webUi', result)
+        self.assertEqual(gateway._identity(), self.gateway._identity())
+        self.assertEqual(self.adapter.package.joinpath('dist/index.html').read_text(), 'existing frontend')
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build']), 0)
+
+    def test_web_ui_opt_in_requires_boolean_and_bound_gateway_validation(self):
+        good = {'sourceCommit': 'a' * 40, 'scope': 'gateway-only', 'webUi': True}
+        invalid = [{**good, 'webUi': value} for value in ('true', 1, 0, None, {}, [])]
+        invalid += [{**good, 'sourceCommit': 'b' * 40}, {**good, 'scope': 'mobile'},
+                    {'scope': 'gateway-only', 'webUi': True},
+                    {'sourceCommit': 'a' * 40, 'webUi': False}]
+        for validation in invalid:
+            with self.subTest(validation=validation):
+                self.adapter.context['tasks'] = [{'id': 'bad', 'sha': 'a' * 40, 'validation': validation}]
+                with self.assertRaisesRegex(RuntimeError, 'WebUI|webUi|前端'):
+                    self.module.Gateway(self.adapter)
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build']), 0)
+
+    def test_explicit_web_ui_task_choices_conflict_but_omission_is_neutral(self):
+        gateway = self.enable_web_ui()
+        good = self.adapter.context['tasks'][0]
+        self.adapter.context['tasks'] += [{'id': 'no-web-choice', 'sha': 'b' * 40, 'validation': {}}]
+        self.assertEqual(self.module.Gateway(self.adapter)._identity(), gateway._identity())
+        self.adapter.context['tasks'] += [{**good, 'id': 'opposite', 'validation': {**good['validation'], 'webUi': False}}]
+        with self.assertRaisesRegex(RuntimeError, '冲突'):
+            self.module.Gateway(self.adapter)
+
+    def recovery_web_ui_context(self):
+        def task(name, sha, selected):
+            return {'id': name, 'sha': sha, 'validation': {
+                'sourceCommit': sha, 'scope': 'gateway-only', 'webUi': selected}}
+        self.adapter.context.update({
+            'recoveryOf': 'failed-leaf',
+            'newTaskIds': ['repair'],
+            'tasks': [task('authorized-web', 'a' * 40, True),
+                      task('server-repair', 'b' * 40, False),
+                      task('repair', 'c' * 40, True)]})
+        return self.adapter.context
+
+    def test_recovery_inherits_authorized_web_scope_and_receipts_actual_install(self):
+        context = self.recovery_web_ui_context()
+        original = json.dumps(context, sort_keys=True)
+        gateway = self.module.Gateway(self.adapter)
+        receipt = gateway.run()
+        self.assertTrue(receipt['webUi'])
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build']), 1)
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build:server']), 1)
+        self.assertEqual(self.adapter.package.joinpath('dist/index.html').read_text(), 'new frontend')
+        self.assertTrue(gateway.check()['done'])
+        self.assertEqual(json.dumps(context, sort_keys=True), original, '不可改写继承的冻结任务')
+
+    def test_recovery_web_scope_requires_explicit_unambiguous_new_tasks(self):
+        for key, value in [('recoveryOf', None), ('recoveryOf', ''),
+                           ('newTaskIds', None), ('newTaskIds', []),
+                           ('newTaskIds', 'repair'), ('newTaskIds', ['missing']),
+                           ('newTaskIds', ['repair', 'repair']),
+                           ('newTaskIds', ['repair', 'server-repair']),
+                           ('newTaskIds', ['repair', 'authorized-web'])]:
+            with self.subTest(key=key, value=value):
+                context = self.recovery_web_ui_context()
+                context[key] = value
+                with self.assertRaisesRegex(RuntimeError, '冲突'):
+                    self.module.Gateway(self.adapter)
+        context = self.recovery_web_ui_context()
+        context['tasks'].append(dict(context['tasks'][-1]))
+        with self.assertRaisesRegex(RuntimeError, '冲突'):
+            self.module.Gateway(self.adapter)
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build']), 0)
+
+    def test_recovery_web_scope_cannot_add_authorization_or_accept_unspecified_new_scope(self):
+        context = self.recovery_web_ui_context()
+        context['tasks'][0]['validation']['webUi'] = False
+        with self.assertRaisesRegex(RuntimeError, '冲突'):
+            self.module.Gateway(self.adapter)
+        for selected in [False, 'omitted']:
+            with self.subTest(selected=selected):
+                context = self.recovery_web_ui_context()
+                validation = context['tasks'][-1]['validation']
+                if selected == 'omitted':
+                    validation.pop('webUi')
+                else:
+                    validation['webUi'] = selected
+                with self.assertRaisesRegex(RuntimeError, '冲突'):
+                    self.module.Gateway(self.adapter)
+
+    def test_recovery_checks_every_new_task_and_inherits_neutral_tasks(self):
+        context = self.recovery_web_ui_context()
+        context['tasks'].append({'id': 'old-neutral', 'sha': 'd' * 40, 'validation': {}})
+        self.assertTrue(self.module.Gateway(self.adapter).web_ui)
+        context['newTaskIds'].append('old-neutral')
+        with self.assertRaisesRegex(RuntimeError, '冲突'):
+            self.module.Gateway(self.adapter)
+
+    def test_recovery_cannot_bypass_existing_scope_sha_and_boolean_validation(self):
+        for index in range(3):
+            for key, value in [('sourceCommit', 'wrong'), ('scope', 'mobile'), ('webUi', 1)]:
+                with self.subTest(index=index, key=key):
+                    context = self.recovery_web_ui_context()
+                    context['tasks'][index]['validation'][key] = value
+                    with self.assertRaisesRegex(RuntimeError, '布尔值并绑定'):
+                        self.module.Gateway(self.adapter)
+
+    def test_duplicate_task_id_cannot_hide_conflicting_web_choices(self):
+        self.enable_web_ui()
+        task = self.adapter.context['tasks'][0]
+        self.adapter.context['tasks'].append({**task, 'validation': {
+            **task['validation'], 'webUi': False}})
+        with self.assertRaisesRegex(RuntimeError, '冲突'):
+            self.module.Gateway(self.adapter)
+
+    def test_web_ui_build_failure_does_not_snapshot_install_or_restart(self):
+        gateway = self.enable_web_ui()
+        self.adapter.web_build_exit_code = 2
+        with self.assertRaisesRegex(RuntimeError, '构建失败'):
+            gateway.run()
+        checkpoint = json.loads(gateway.build_path.read_text())
+        self.assertEqual(checkpoint['status'], 'failed')
+        self.assertEqual(checkpoint['exitCode'], 2)
+        self.assertFalse(gateway.backup.exists())
+        self.assertFalse(gateway.stage.exists())
+        self.assertEqual(self.adapter.package.joinpath('dist/index.html').read_text(), 'existing frontend')
+        self.assertEqual(self.adapter.count(['launchctl', 'kickstart']), 0)
+        self.adapter.web_build_exit_code = 0
+        gateway.run()
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build']), 2)
+        self.assertTrue(gateway.check()['done'])
+
+    def test_web_ui_success_checkpoint_precedes_snapshot_and_survives_response_loss(self):
+        gateway = self.enable_web_ui()
+        self.adapter.build_response_loss = True
+        with self.assertRaisesRegex(RuntimeError, 'build response lost'):
+            gateway._prepare()
+        checkpoint = json.loads(gateway.build_path.read_text())
+        self.assertEqual(checkpoint['status'], 'success')
+        self.assertEqual(checkpoint['frontendDigest'], self.module.tree_digest(self.adapter.work / 'dist'))
+        self.assertEqual(checkpoint['logSha256'], self.module.sha256(gateway.build_log))
+        self.assertFalse(gateway.backup.exists())
+        self.adapter.build_response_loss = False
+        self.module.Gateway(self.adapter).run()
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build']), 1)
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build:server']), 1)
+
+    def test_web_ui_success_checkpoint_rejects_frontend_input_output_and_log_drift(self):
+        gateway = self.enable_web_ui()
+        with patch.object(self.module.tarfile, 'open', side_effect=RuntimeError('pack interrupted')):
+            with self.assertRaisesRegex(RuntimeError, 'pack interrupted'):
+                gateway._prepare()
+        inputs = ('src/main.tsx', 'public/asset.svg', 'index.html', 'vite.config.ts',
+                  'tsconfig.json', 'tsconfig.app.json', 'tsconfig.server.json', 'tsconfig.extra.json',
+                  'package.json', 'package-lock.json', 'playwright.config.ts',
+                  'protocol/app-server-v2/generated-local/types.ts', 'tests/ui/example.tsx',
+                  'tests/server/example.ts', '.env.production', 'dist/index.html')
+        for relative in inputs:
+            with self.subTest(relative=relative):
+                path = self.adapter.work / relative
+                original = path.read_bytes() if path.exists() else None
+                put(path, 'drift')
+                with self.assertRaisesRegex(RuntimeError, '构建|checkpoint|摘要|指纹'):
+                    self.module.Gateway(self.adapter)._build()
+                if original is not None:
+                    path.write_bytes(original)
+                else:
+                    path.unlink()
+                    if relative.startswith('public/'):
+                        path.parent.rmdir()
+                    elif relative.startswith('protocol/'):
+                        shutil.rmtree(self.adapter.work / 'protocol')
+        original_log = gateway.build_log.read_bytes()
+        put(gateway.build_log, 'log drift')
+        with self.assertRaisesRegex(RuntimeError, '构建|checkpoint|摘要|指纹'):
+            self.module.Gateway(self.adapter)._build()
+        gateway.build_log.write_bytes(original_log)
+        self.module.Gateway(self.adapter)._prepare()
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build']), 1)
+
+    def test_web_ui_log_drift_during_snapshot_is_rejected(self):
+        gateway = self.enable_web_ui()
+        real_copy = self.module.shutil.copytree
+        def mutate_then_copy(source, destination, *args, **kwargs):
+            if pathlib.Path(source).resolve() == self.adapter.package.resolve():
+                put(gateway.build_log, 'tampered successful compiler log')
+            return real_copy(source, destination, *args, **kwargs)
+        with patch.object(self.module.shutil, 'copytree', side_effect=mutate_then_copy):
+            with self.assertRaisesRegex(RuntimeError, '构建|摘要|指纹'):
+                gateway._prepare()
+        self.assertFalse(gateway.record_path.exists())
+        self.assertEqual(self.adapter.count(['launchctl', 'kickstart']), 0)
+
+    def test_web_ui_source_changed_while_compiling_is_failed_before_snapshot(self):
+        gateway = self.enable_web_ui()
+        original_build = self.adapter.build
+        def mutate_after_build(args, **kwargs):
+            result = original_build(args, **kwargs)
+            if args == ['npm', 'run', 'build']:
+                put(self.adapter.work / 'src/main.tsx', 'source drift during build')
+            return result
+        with patch.object(self.module.subprocess, 'run', mutate_after_build):
+            with self.assertRaisesRegex(RuntimeError, '指纹'):
+                gateway.run()
+        self.assertEqual(json.loads(gateway.build_path.read_text())['status'], 'failed')
+        self.assertFalse(gateway.backup.exists())
+        self.assertEqual(self.adapter.package.joinpath('dist/index.html').read_text(), 'existing frontend')
+        self.assertEqual(self.adapter.count(['launchctl', 'kickstart']), 0)
+
+    def test_web_ui_checkpoint_cannot_be_reused_across_frontend_scope(self):
+        with patch.object(self.module.tarfile, 'open', side_effect=RuntimeError('pack interrupted')):
+            with self.assertRaises(RuntimeError):
+                self.gateway._prepare()
+        gateway = self.enable_web_ui()
+        with self.assertRaisesRegex(RuntimeError, '构建|checkpoint|摘要|指纹'):
+            gateway._prepare()
+        self.assertEqual(self.adapter.count(['npm', 'run', 'build']), 0)
+
+    def test_web_ui_dist_modified_during_snapshot_is_rejected(self):
+        gateway = self.enable_web_ui()
+        real_copy = self.module.shutil.copytree
+        def mutate_then_copy(source, destination, *args, **kwargs):
+            if pathlib.Path(source).resolve() == self.adapter.package.resolve():
+                put(self.adapter.work / 'dist/index.html', 'tampered frontend output')
+            return real_copy(source, destination, *args, **kwargs)
+        with patch.object(self.module.shutil, 'copytree', side_effect=mutate_then_copy):
+            with self.assertRaisesRegex(RuntimeError, '构建|摘要|指纹'):
+                gateway._prepare()
+        self.assertFalse(gateway.record_path.exists())
+        self.assertEqual(self.adapter.count(['launchctl', 'kickstart']), 0)
 
     def test_restart_response_loss_reconciles_actual_process_without_second_restart(self):
         self.adapter.loss = True

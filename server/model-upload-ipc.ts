@@ -145,7 +145,7 @@ export async function publishDesktopModelUsage({ socketPath, upstreamUrl, meter 
     await chmod(internalPath, 0o600);
     identity = await privateSocket(internalPath);
     unsubscribe = meter.subscribe((threadId, usage) => {
-      for (const socket of sockets) sendUsage(socket, threadId, usage);
+      if (usage) for (const socket of sockets) sendUsage(socket, threadId, usage);
     });
     unsubscribeEvictions = meter.subscribeEvictions(threadId => {
       for (const socket of sockets) send(socket, { type: 'remove', threadId });
@@ -178,13 +178,24 @@ export function connectDesktopModelUsage({ socketPath, upstreamUrl, retryMs = 10
   const expectedHash = sourceHash(upstreamUrl);
   const delay = Number.isSafeInteger(retryMs) && retryMs > 0 ? retryMs : 1000;
   const threads = new Map<string, ModelUploadUsage>();
-  const listeners = new Set<(threadId: string, usage: ModelUploadUsage) => void>();
+  const listeners = new Set<(threadId: string, usage: ModelUploadUsage | null) => void>();
   let closed = false;
   let verified = false;
   let connection: Socket | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let generation = 0;
-  function invalidate() { verified = false; threads.clear(); }
+  function notify(threadId: string, usage: ModelUploadUsage | null, subscribers = [...listeners]) {
+    for (const listener of subscribers) {
+      if (usage ? !verified || closed || threads.get(threadId) !== usage : threads.has(threadId)) break;
+      if (listeners.has(listener)) try { listener(threadId, usage ? { ...usage } : null); } catch { /* 订阅者不影响共享来源。 */ }
+    }
+  }
+  function remove(threadId: string) { if (threads.delete(threadId)) notify(threadId, null); }
+  function invalidate() {
+    verified = false;
+    const affected = [...threads.keys()]; const subscribers = [...listeners]; threads.clear();
+    for (const threadId of affected) notify(threadId, null, subscribers);
+  }
   function schedule() {
     if (closed || retry) return;
     retry = setTimeout(() => { retry = undefined; void connect(); }, delay);
@@ -202,8 +213,10 @@ export function connectDesktopModelUsage({ socketPath, upstreamUrl, retryMs = 10
     connection = socket; socket.pause();
     let pending = Buffer.alloc(0);
     let greeted = false;
-    function fail() { invalidate(); socket.destroy(); }
+    const current = () => !closed && attempt === generation && connection === socket;
+    function fail() { if (current()) invalidate(); socket.destroy(); }
     function accept(raw: Buffer) {
+      if (!current()) return;
       let value: unknown;
       try { value = JSON.parse(raw.toString('utf8')); } catch { fail(); return; }
       if (!record(value)) { fail(); return; }
@@ -214,7 +227,7 @@ export function connectDesktopModelUsage({ socketPath, upstreamUrl, retryMs = 10
       }
       if (value.type === 'remove') {
         if (!keys(value, ['type', 'threadId']) || !identifier(value.threadId)) { fail(); return; }
-        threads.delete(value.threadId); return;
+        remove(value.threadId); return;
       }
       if (!keys(value, ['type', 'threadId', 'usage']) || value.type !== 'usage' || !identifier(value.threadId)
         || !record(value.usage) || !keys(value.usage, usageKeys)) { fail(); return; }
@@ -223,8 +236,8 @@ export function connectDesktopModelUsage({ socketPath, upstreamUrl, retryMs = 10
       const previous = threads.get(value.threadId);
       if (previous?.epoch === usage.epoch && previous.revision >= usage.revision) return;
       threads.set(value.threadId, usage);
-      while (threads.size > MAX_THREADS) threads.delete(threads.keys().next().value!);
-      for (const listener of listeners) listener(value.threadId, { ...usage });
+      while (threads.size > MAX_THREADS) remove(threads.keys().next().value!);
+      notify(value.threadId, usage);
     }
     socket.on('data', (data: Buffer) => {
       let offset = 0;
@@ -248,7 +261,7 @@ export function connectDesktopModelUsage({ socketPath, upstreamUrl, retryMs = 10
         } catch { socket.destroy(); }
       })();
     });
-    socket.on('end', () => { invalidate(); socket.destroy(); });
+    socket.on('end', fail);
     socket.on('error', fail);
     socket.once('close', () => {
       if (connection !== socket) return;
@@ -262,16 +275,18 @@ export function connectDesktopModelUsage({ socketPath, upstreamUrl, retryMs = 10
       const usage = verified ? threads.get(threadId) : undefined;
       return usage ? { ...usage } : null;
     },
-    subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    subscribe(listener) { if (!closed) listeners.add(listener); return () => { listeners.delete(listener); }; },
     close() {
-      return closing ??= (async () => {
-        closed = true; generation++; invalidate(); listeners.clear();
-        if (retry) { clearTimeout(retry); retry = undefined; }
+      if (closing) return closing;
+      closing = Promise.resolve().then(async () => {
         const socket = connection;
         if (socket && !socket.closed) {
           await new Promise<void>(resolveClose => { socket.once('close', resolveClose); socket.destroy(); });
         }
-      })();
+      });
+      closed = true; generation++; invalidate(); listeners.clear();
+      if (retry) { clearTimeout(retry); retry = undefined; }
+      return closing;
     },
   };
 }

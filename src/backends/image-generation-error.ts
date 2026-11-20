@@ -1,3 +1,4 @@
+import { gatewayUrl } from './gateway-route';
 import type { BackendConfig } from "./types";
 
 export interface ImageGenerationError {
@@ -12,7 +13,7 @@ export async function fetchImageGenerationError(
   threadId: string,
   itemId: string,
 ): Promise<ImageGenerationError | null> {
-  const url = new URL("/api/image-generation-error", `${backend.baseUrl}/`);
+  const url = gatewayUrl(backend, "/api/image-generation-error");
   url.searchParams.set("threadId", threadId);
   url.searchParams.set("itemId", itemId);
   if (backend.token) url.searchParams.set("token", backend.token);

@@ -10,6 +10,9 @@ export function AppIcon({
   name,
 }: {
   name:
+    | "plus"
+    | "bolt"
+    | "shield"
     | "archive"
     | "back"
     | "close"
@@ -17,6 +20,7 @@ export function AppIcon({
     | "copy"
     | "draft"
     | "device"
+    | "globe"
     | "folder"
     | "folder-open"
     | "file"
@@ -36,12 +40,16 @@ export function AppIcon({
     | "stop";
 }) {
   const paths = {
+    plus: <path d="M5 12h14M12 5v14" />,
+    bolt: <path d="m13 2-9 12h7l-1 8 10-12h-7z" />,
+    shield: <path d="M12 3 4 6v6c0 4 8 9 8 9s8-5 8-9V6z" />,
     archive: <><path d="M4 7h16v13H4z" /><path d="M3 4h18v3H3zM9 11h6" /></>,
     back: <path d="M15 18l-6-6 6-6M9 12h11" />,
     close: <path d="m7 7 10 10M17 7 7 17" />,
     copy: <><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" /></>,
     draft: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h4M9 12h6M9 16h6" /></>,
     device: <><rect x="4" y="4" width="16" height="12" rx="2" /><path d="M2 20h20M9 16v4m6-4v4" /></>,
+    globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><ellipse cx="12" cy="12" rx="4" ry="9" /></>,
     file: <><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v5h5" /></>,
     folder: <path d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />,
     "folder-open": <><path d="M3 10V7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v1" /><path d="M3 10h18l-2 9H5a2 2 0 01-2-2z" /></>,

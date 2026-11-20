@@ -31,7 +31,7 @@ function pageProps(overrides: Partial<ComponentProps<typeof ConversationPage>> =
     onArchive: async () => true, onRetry: () => undefined, onLoadOlderTurns: async () => true,
     onSubmit: () => undefined, onRemoveImage: () => undefined, onRemoveFile: () => undefined,
     onSelectImages: async () => undefined, onSelectLocation: async () => false,
-    onOpenAgentSettings: () => undefined, onOpenPermissionSettings: () => undefined,
+    availableControls: { model: true, effort: true, fast: true, permission: true }, onOpenModelSettings: () => undefined, onToggleFast: () => undefined, onOpenAgentSettings: () => undefined, onOpenPermissionSettings: () => undefined,
     onDraftChange: () => undefined, onInterrupt: () => undefined, onQueuedFollowUpAction: () => undefined,
     ...overrides,
   };
