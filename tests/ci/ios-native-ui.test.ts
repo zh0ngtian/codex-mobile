@@ -113,6 +113,27 @@ describe("SwiftUI 原生宿主契约", () => {
     expect((window as any).__CODEX_NATIVE_UI__).toBe(true);
     expect(changed).toHaveBeenCalledOnce();
   });
+  it.each([false, true])("原生模式隔离后台网页，恢复时重新开放（延迟创建文档根节点：%s）", (delayedRoot) => {
+    const dom = document.implementation.createHTMLDocument();
+    const root = dom.documentElement;
+    if (delayedRoot) root.remove();
+    new Function("location", "document", bootstrap())({ protocol: "file:", href: trustedURL }, dom);
+    if (delayedRoot) {
+      dom.append(root);
+      dom.dispatchEvent(new Event("DOMContentLoaded"));
+    }
+    expect(root.hasAttribute("inert")).toBe(true);
+    const changed = vi.fn(() => root.hasAttribute("inert"));
+    window.addEventListener("codex-mobile-native-recovery", changed, { once: true });
+    (window as any).codexMobileUseLegacyRecovery();
+    expect(root.hasAttribute("inert")).toBe(false);
+    expect(changed).toHaveReturnedWith(false);
+
+    const webMode = document.implementation.createHTMLDocument();
+    const script = bootstrap().replace("window.__CODEX_NATIVE_UI__ = true", "window.__CODEX_NATIVE_UI__ = false");
+    new Function("location", "document", script)({ protocol: "file:", href: trustedURL }, webMode);
+    expect(webMode.documentElement.hasAttribute("inert")).toBe(false);
+  });
   it("原生场景前后台信号更新共享运行时并触发已有恢复事件", () => {
     new Function("location", bootstrap())({ protocol: "file:", href: trustedURL });
     const visibility = vi.fn();

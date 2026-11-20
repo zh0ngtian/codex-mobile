@@ -16,9 +16,18 @@ enum NativeUITrust {
       window.__CODEX_IOS_HOST__ = true;
       window.__CODEX_NATIVE_UI__ = __CODEX_NATIVE_ENABLED__;
       window.__CODEX_NATIVE_ACTIVE__ = true;
+      // WebKit 的辅助功能树独立于 SwiftUI，直接隔离后台网页的 DOM。
+      if (window.__CODEX_NATIVE_UI__) {
+        const isolateLegacyPage = () => {
+          if (!window.__CODEX_NATIVE_UI_RECOVERED__) document.documentElement?.setAttribute("inert", "");
+        };
+        if (document.documentElement) isolateLegacyPage();
+        else document.addEventListener("DOMContentLoaded", isolateLegacyPage, {once: true});
+      }
       window.codexMobileUseLegacyRecovery = function() {
         if (window !== window.top || location.protocol !== "file:" || new URL(location.href).href !== new URL(trustedURL).href) return;
         window.__CODEX_NATIVE_UI_RECOVERED__ = true;
+        if (window.__CODEX_NATIVE_UI__) document.documentElement?.removeAttribute("inert");
         window.dispatchEvent(new Event("codex-mobile-native-recovery"));
       };
       window.codexMobileSetNativeActive = function(active) {
