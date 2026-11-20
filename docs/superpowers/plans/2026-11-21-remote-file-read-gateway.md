@@ -9,5 +9,23 @@
 - [x] 在 `tests/server/media-consumers-remote.test.ts` 断言小文件 GET 的 `f.stats` 为 0、`f.reads` 为 1，HEAD 只做一次元数据查询。补空文件和目录用例，大文件验证后续分段使用首窗版本。执行 `npm test -- tests/server/media-consumers-remote.test.ts -t '下载隔离字节|空文件下载'`，确认 GET 查询次数的断言在旧实现失败。
 - [x] 在 `server/remote/files.ts` 的读取生成器增加首窗元数据交付。由 `server/remote/file-read-python.ts` 在首窗安全打开常规文件并把读取长度限制为文件大小和 100 MiB 中较小的值；网关同时验证元数据、分块和总摘要协议。在 `server/media-file-source.ts` 和 `server/file-download.ts` 用首窗结果确定响应长度，关闭时释放生成器。重跑小文件、空文件、替换、错误和大文件用例。
 - [x] 完成远程网关、会话、中继、媒体及文件回归，执行 `npm run typecheck`、`npm run build:server`、`npm test -- tests/ci --maxWorkers=2 --testTimeout=60000`，以及项目发布适配器和协调器 Python unittest。
-- [ ] 在独立工作树推送固定 SHA，持续 heartbeat，向 `remote-file-read-gateway-20261121` 提交 `gateway-only`、`webUi=false` 的验证清单。等待协调器完成，核对批次回执、开发 CI、现役进程和安装摘要。
-- [ ] 比较部署前后的同一 Remote 目标和文件，核对文本预览 RPC、普通下载和原图字节、缩略图格式及响应时间，同步交互约定。
+- [x] 在独立工作树推送固定 SHA，持续 heartbeat，向 `remote-file-read-gateway-20261121` 提交 `gateway-only`、`webUi=false` 的验证清单。等待协调器完成，核对批次回执、开发 CI、现役进程和安装摘要。
+- [x] 比较部署前后的同一 Remote 目标和文件，核对文本预览 RPC、普通下载和原图字节、缩略图格式及响应时间，同步交互约定。
+
+## 部署与验收结果
+
+- 发布协调器任务与批次均已完成。批次 `b0c216cc-4517-4f05-9615-805d60589136`，固定来源 `1b385f3c7ec7f0968227bf411beee98ce1660abf`，实际部署提交 `027041428325200b0f2da5c596f1539cfa8b0776`，包含此前的图片优化。
+- 392 项网关回归和 513 项发布门禁测试通过，类型检查、服务端构建和[开发 CI](https://github.com/zh0ngtian/codex-mobile/actions/runs/44781863107)通过。
+- 生产网关的运行进程从 `10114` 切换为 `36250`。实际安装的服务端、入口脚本、包清单和网页资产摘要与成功回执一致，网页资产的部署前后摘要一致。
+
+使用生产网关对应的 Remote 目标，对同一组文件部署前后各测三次。原图为 46,497 字节，普通文件为 2,664 字节。每次首次缩略图请求使用独立图片路径，部署重启后内存缓存为空。原图、下载文件及文本读取结果均与目标字节一致，缩略图通过 JPEG 响应和边界校验。
+
+| 操作 | 部署前中位数 | 部署后中位数 |
+| --- | ---: | ---: |
+| 图片 HEAD | 1.16 秒 | 0.73 秒 |
+| 首次缩略图 | 4.07 秒 | 2.04 秒 |
+| 原图 | 2.75 秒 | 1.38 秒 |
+| 普通文件下载 | 2.14 秒 | 0.67 秒 |
+| 文本读取 RPC | 1.93 秒 | 0.80 秒 |
+
+文本读取路径沿用原有的单次 RPC，耗时记录为当次生产环境观测。文件替换、取消及大文件续读经隔离回归验证。生产对照覆盖一个 Remote 目标；手机实际界面和另一台 Remote 目标仍待现场复验。复测未创建聊天会话。
