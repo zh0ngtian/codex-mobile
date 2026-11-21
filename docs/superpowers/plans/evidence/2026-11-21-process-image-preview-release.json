@@ -1,0 +1,66 @@
+{
+  "status": "complete",
+  "client": {
+    "status": "complete",
+    "taskId": "process-image-preview-client-20261121",
+    "taskSourceCommit": "42b8c797fb8ee0b5346b26253f23449d59027223",
+    "batchId": "0041268e-60c4-48a8-bb4d-9f1cb1b57682",
+    "frozenCommit": "750a8dc30498d1b38bccd7db7319f1bfc8d516c0",
+    "version": "0.3.49",
+    "buildNumber": "3049",
+    "distribution": "github-only",
+    "platforms": [
+      "android",
+      "ios"
+    ],
+    "releaseUrl": "https://github.com/zh0ngtian/codex-mobile/releases/tag/v0.3.49",
+    "artifacts": {
+      "android": {
+        "name": "CodexMobile-v0.3.49.apk",
+        "url": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.49/CodexMobile-v0.3.49.apk",
+        "size": 4811008,
+        "sha256": "5c27fe2e996aba42fce030b83a9c8bb96c4295d8cfb0a322df207a728f0d20f1"
+      },
+      "ios": {
+        "name": "CodexMobile-v0.3.49-unsigned.ipa",
+        "url": "https://github.com/zh0ngtian/codex-mobile/releases/download/v0.3.49/CodexMobile-v0.3.49-unsigned.ipa",
+        "size": 5047602,
+        "sha256": "4e1df0dcc1aa12f20a54a981e5977dd78b07c2dab1cdc2ee26c23666c8fac695"
+      }
+    },
+    "ipaSigned": false,
+    "historicalLanFilesUnchanged": true,
+    "lanApkPublished": false,
+    "fixedIpaPublished": false,
+    "otaPublished": false,
+    "signedIpaPublished": false,
+    "softwareSourceUpdated": true,
+    "developerName": "zh0ngtian",
+    "buildRun": 44847461400,
+    "developmentRun": 44847461356,
+    "receiptSha256": "d165e33925ca3056278dcbcff0c8569f9beda077b784492a88c83b4ef5beae2e",
+    "softwareSourceUrl": "https://signos-source-aggregator.305301890.workers.dev/sources/yao.json"
+  },
+  "gateway": {
+    "batch": "86da5c31-f1de-4342-b119-0e8374cbf709",
+    "source": "42b8c797fb8ee0b5346b26253f23449d59027223",
+    "frozen": "63531523cad10433b040745c2b6a38b45eb29837",
+    "developmentRun": 44847273340,
+    "ciUrl": "https://github.com/zh0ngtian/codex-mobile/actions/runs/44847273340",
+    "receiptSha256": "f5796d9c81dfdedd89e7b4e00731f57e22f5e96bca5430a9a5466a66f1f6ef9a"
+  },
+  "validation": {
+    "adapterRegression": 290,
+    "coordinatorRecovery": 59,
+    "buildContract": 166,
+    "processRegression": 440,
+    "nativeSimulatorBeforeRelease": 2,
+    "nativeSimulatorAgainstProduction": 1,
+    "simulator": "iPhone 17 Pro / iOS 27.0",
+    "historicalImageRefsBeforeDeployment": 0,
+    "historicalImageRefsAfterDeployment": 2,
+    "thumbnailDownloadsVerified": 2,
+    "originalDownloadsMatchSourceBytes": 2,
+    "testedOnPhysicalDevice": false
+  }
+}
